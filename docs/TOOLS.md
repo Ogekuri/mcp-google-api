@@ -72,4 +72,4 @@ Traccia il rank di un locale su una griglia di punti (ARP/ATRP/Solv) per una key
 
 - Coordinate in input: `{ latitude, longitude }` oppure stringa `"lat,lng"` dove indicato.
 - Tutti i tool restituiscono JSON in `content[0].text`; errori con `isError: true`.
-- I campi grezzi dell'API (es. `price_range` Money) sono **conservati verbatim**, mai convertiti in numeri semplici — vedi [GEOSCOUT.md](GEOSCOUT.md).
+- I campi grezzi dell'API (es. `price_range` Money) sono **conservati verbatim**, mai convertiti in numeri semplici.

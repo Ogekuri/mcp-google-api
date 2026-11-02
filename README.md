@@ -13,7 +13,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for **Google 
 
 Supported transports: **stdio** (local MCP clients) and **Streamable HTTP**.
 
-> Compatible with the **GeoScout 6.2** search protocol — see [docs/GEOSCOUT.md](docs/GEOSCOUT.md).
+> Ships the **venue-discovery** agent skill (`src/resources/skills/`) for budget-, quality-, category-, and schedule-validated venue search.
 
 </p>
 
@@ -43,7 +43,7 @@ Supported transports: **stdio** (local MCP clients) and **Streamable HTTP**.
 - **Per-request credentials** — key resolution from `X-Google-Maps-API-Key` or `Authorization: Bearer` headers, session key, or `GOOGLE_MAPS_API_KEY` environment.
 - **Standalone CLI** — `doctor` self-checks, `exec <tool>` one-shot calls, `batch-geocode` with bounded concurrency.
 - **Automatic update check** — at server startup the server compares its version against the latest npm release and prints an upgrade notice on stderr; it never blocks startup and can be disabled with `MCP_AUTO_UPDATE_DISABLED=1` (see [Configuration prerequisites](#configuration-prerequisites)).
-- **GeoScout 6.2 compatible** — see [docs/GEOSCOUT.md](docs/GEOSCOUT.md).
+- **Venue-discovery skill** — server-side `priceLevels`/`minRating`/`strictTypeFiltering` filters and raw payloads back the bundled `venue-discovery` skill (`src/resources/skills/`).
 
 ## Requirements
 
@@ -54,7 +54,7 @@ Supported transports: **stdio** (local MCP clients) and **Streamable HTTP**.
 
 Mapping verified against the sources: every endpoint the server calls and the tools that call it.
 
-| # | API to enable | Endpoint used by the server | Tools that require it | Needed for | GeoScout priority |
+| # | API to enable | Endpoint used by the server | Tools that require it | Needed for | Skill priority |
 |---|---|---|---|---|---|
 | 1 | **Places API (New)** | `places.googleapis.com` (`places:searchText`, `places:searchNearby`, `GET places/{id}`, photo media) via `@googlemaps/places` | `maps_search_places`, `maps_search_nearby`, `maps_place_details`, `maps_explore_area`, `maps_compare_places`, `maps_search_along_route`, `maps_local_rank_tracker` | Place search/details, `priceLevels`/`minRating` filters, `priceRange`, opening hours | **Required** |
 | 2 | **Geocoding API** | `maps.googleapis.com/maps/api/geocode/json` via `@googlemaps/google-maps-services-js` | `maps_geocode`, `maps_reverse_geocode`, `maps_batch_geocode` (+ internal address-resolution fallback) | Address ↔ coordinate conversion | High |
@@ -81,7 +81,7 @@ gcloud services enable places-backend-new.googleapis.com \
 
 ### Notes
 
-- For minimal/GeoScout use, **Places API (New)** + **Geocoding API** suffice; enable the others only for the corresponding tools (or limit exposure with `GOOGLE_MAPS_ENABLED_TOOLS`).
+- For minimal venue-discovery use, **Places API (New)** + **Geocoding API** suffice; enable the others only for the corresponding tools (or limit exposure with `GOOGLE_MAPS_ENABLED_TOOLS`).
 - **Maps Grounding Lite** and **Geolocation API** are **not required** by this server: the former belongs to Google's hosted MCP (`mapstools.googleapis.com`), the latter is used by no tool (there is no `ip_geolocate` in this fork).
 - The legacy **Places API** is not needed: the server uses Places API (New) exclusively.
 - Weather API and Air Quality API have limited regional coverage: outside coverage, the tool returns an unsupported-location error message.
@@ -266,7 +266,7 @@ mcp-google-map/
 
 - [docs/TOOLS.md](docs/TOOLS.md) — tool catalog and parameters
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — environment variables, transports, API key
-- [docs/GEOSCOUT.md](docs/GEOSCOUT.md) — GeoScout 6.2 compatibility (budget filters, FieldMask, raw payload)
+- [src/resources/skills/](src/resources/skills/) — bundled `venue-discovery` agent skill (budget filters, FieldMask, raw payload)
 
 ## Development
 

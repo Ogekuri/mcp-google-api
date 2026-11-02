@@ -5,7 +5,7 @@ description: Discover and validate bars, pastry shops, restaurants, cafes, and b
 
 # Venue Discovery via mcp-google-map — Operative Instructions
 
-Version 1.0.0 — adapted from GeoScout 6.2 ("API data integrity, verifiable validation, DEBUG ALWAYS ON"), translated to English, and bound to the `mcp-google-map` MCP server.
+Version 1.1.0 — API data integrity, verifiable validation, DEBUG ALWAYS ON, bound to the `mcp-google-map` MCP server.
 
 ## PART I — CORE
 

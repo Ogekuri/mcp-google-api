@@ -37,8 +37,7 @@
     "places",
     "places-api-new",
     "geocoding",
-    "directions",
-    "geoscout"
+    "directions"
   ],
   "license": "GPL-3.0",
   "repository": {

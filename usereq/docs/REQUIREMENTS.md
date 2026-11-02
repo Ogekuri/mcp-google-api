@@ -23,7 +23,7 @@ Project file/folder structure (evidence: repository tree):
 ```
 mcp-google-map/
 ├── .github/workflows/           # GitHub Actions: ci.yml (push/PR checks), release.yml (tag releases)
-├── docs/                        # Usage docs (CONFIGURATION.md, TOOLS.md, GEOSCOUT.md)
+├── docs/                        # Usage docs (CONFIGURATION.md, TOOLS.md)
 ├── scripts/                     # Shell helpers: build.sh, setup.sh, start-http.sh, start-mcp.sh, test.sh
 ├── src/
 │   ├── cli.ts                   # yargs entry: doctor, exec, batch-geocode, server start
@@ -79,7 +79,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PRJ-011**: MUST provide a non-interactive `setup` CLI command that verifies local readiness without prompts or Google API calls.
 - **PRJ-012**: MUST ship LLM agent skills as self-contained English `SKILL.md` resources under `src/resources/skills/<skill-id>/`, exactly one skill per directory.
 - **PRJ-013**: MUST maintain `src/resources/skills/manifest.json` indexing every skill (id, name, version, language, path, description) plus `src/resources/skills/README.md` authoring conventions enabling new skills without source-code changes.
-- **PRJ-014**: MUST ship the `venue-discovery` skill, adapted from GeoScout 6.2 and translated to English, dedicated to discovering bars, pastry shops, restaurants, cafes, and bakeries.
+- **PRJ-014**: MUST ship the `venue-discovery` skill dedicated to discovering bars, pastry shops, restaurants, cafes, and bakeries.
 
 ### 2.2 Project Constraints
 - **CTN-001**: MUST declare all tools read-only, non-destructive, idempotent, and open-world via MCP tool annotations (evidence: `MAPS_TOOL_ANNOTATIONS`, `src/config.ts`).
@@ -174,13 +174,13 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-024**: MUST search nearby places inside a circle restriction of radius (default 1000 m) with `maxResultCount` capped at 20 for `maps_search_nearby`.
 - **REQ-025**: MUST treat the `maps_search_nearby` `keyword` parameter as a single Places API (New) included type, not free text (`NewPlacesService.searchNearby` sets `includedTypes`).
 - **REQ-026**: MUST apply `openNow` and `minRating` filters for `maps_search_nearby` client-side after the API response, not server-side (`PlacesSearcher.searchNearby`).
-- **REQ-027**: MUST forward `openNow`, `minRating`, `includedType`, `strictTypeFiltering`, and `priceLevels` as server-side Places Text Search filters for `maps_search_places`.
+- **REQ-027**: MUST forward `openNow`, `minRating`, `includedType`, `strictTypeFiltering`, and `priceLevels` as server-side Places Text Search filters for `maps_search_places`, serving the `venue-discovery` skill (REQ-100-REQ-108).
 - **REQ-028**: MUST apply location bias for `maps_search_places` as a circle with radius defaulting to 5000 m when unspecified.
 - **REQ-029**: MUST translate `pageSize` or `maxResultCount` (default 10) into the single request field `maxResultCount` clamped into 1-20 for `maps_search_places`, because the SDK proto lacks `pageSize`.
-- **REQ-030**: MUST attach `raw_place` per result and the full `raw_response` when `maps_search_places` runs with `includeRaw: true`.
+- **REQ-030**: MUST attach `raw_place` per result and the full `raw_response` when `maps_search_places` runs with `includeRaw: true`, backing the `venue-discovery` audit (REQ-107).
 - **REQ-031**: MUST return place details with contact info, hours, price data, parking, accessibility, dining, serves, atmosphere, payment, review and generative summaries, reviews with attribution URIs, and photo metadata for `maps_place_details`.
 - **REQ-032**: MUST resolve at most `maxPhotos` photo URLs via Places photo media (maxWidthPx 800) for `maps_place_details`, silently skipping failed photos, and omit photos when `maxPhotos` is 0.
-- **REQ-033**: MUST include `raw_place` and the applied field mask when `maps_place_details` runs with `includeRaw: true`.
+- **REQ-033**: MUST include `raw_place` and the applied field mask when `maps_place_details` runs with `includeRaw: true`, backing `venue-discovery` re-verification (REQ-100).
 - **REQ-034**: MUST derive the legacy place ID from the `places/{id}` resource name, falling back to the `id` field (`extractLegacyPlaceId`).
 - **REQ-035**: MUST compute open-now status from `currentOpeningHours.openNow`, then `regularOpeningHours.openNow`, then period arithmetic using `utcOffsetMinutes` when available, else machine local time (`isCurrentlyOpen`).
 - **REQ-081**: MUST return `nextPageToken` in `maps_search_places` output when the Places API response includes one.
@@ -267,6 +267,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-106**: The `venue-discovery` skill MUST define output sections: search summary, validated venues, notes and limitations, and a debug JSON array logging every executed tool call with raw payloads separated from interpretations.
 - **REQ-107**: The `venue-discovery` skill MUST instruct `includeRaw: true` for auditable `raw_place`/`raw` payload capture and MUST document that `pageToken` is forwarded but has no server-side effect.
 - **REQ-108**: The `venue-discovery` skill MUST retain a binding anti-fabrication regression case where a high-rating over-budget venue is excluded.
+- **REQ-109**: The `venue-discovery` skill MUST obtain its economic and quality filtering via REQ-027 and its audit payloads via REQ-030 and REQ-033.
 
 ### 3.3 Known Limitations (True State)
 - **LIM-001**: `maps_search_nearby` may return fewer than 20 results when client-side `openNow`/`minRating` filters discard matches post-query.
@@ -279,7 +280,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 ## 4. Test Requirements
 - **TST-001**: MUST verify REQ-073/REQ-074/REQ-075 by running `npm test` (`tests/cliExec.unit.test.ts`): injected runners assert stdout JSON on success, stderr JSON plus exit code 1 on failure responses, thrown errors, and alias resolution; pass when all assertions hold.
 - **TST-002**: MUST verify REQ-070/REQ-071/REQ-072/REQ-089/REQ-090/REQ-091 by running `npm test` (`tests/cliExec.unit.test.ts`, `tests/doctorExt.unit.test.ts`): local mode makes zero API calls, engines floor enforced, config diagnostics masked, tool profiles reported, probes selectable and independent; pass when reports match expectations.
-- **TST-003**: MUST verify REQ-024-REQ-030 and REQ-081 by running `npm test` (`tests/geoscoutFilters.unit.test.ts`): mocked `PlacesClient` assertions confirm forwarded filters, field masks, priceRange preservation, `pageSize`→`maxResultCount` translation, `nextPageToken`, `pageToken` forwarding, raw payloads, and legacy array contract.
+- **TST-003**: MUST verify REQ-024-REQ-030 and REQ-081 by running `npm test` (`tests/placesFilters.unit.test.ts`): mocked `PlacesClient` assertions confirm forwarded filters, field masks, priceRange preservation, `pageSize`→`maxResultCount` translation, `nextPageToken`, `pageToken` forwarding, raw payloads, and legacy array contract.
 - **TST-004**: MUST verify REQ-054/REQ-055/REQ-057 by running `npm test` (`tests/locationResolution.unit.test.ts`): mocked clients assert resolved waypoints, geocode→text-search fallback, thrown errors on unresolvable stops, and coordinate handling without API calls.
 - **TST-005**: MUST verify REQ-058 by running `npm test` (`tests/planRoute.unit.test.ts`): 2-4 stop scenarios assert optimization is applied or skipped per thresholds and ordering is preserved when disabled.
 - **TST-006**: MUST verify REQ-036-REQ-043 by running `npm test` (`tests/routesWaypoints.unit.test.ts`): mocked `fetch` asserts structured waypoint forwarding, two-intermediate optimization minimum, string compatibility, matrix rebuild, and waypoint-aware error labels.

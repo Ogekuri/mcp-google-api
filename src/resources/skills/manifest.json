@@ -5,11 +5,11 @@
     {
       "id": "venue-discovery",
       "name": "venue-discovery",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "language": "en",
       "path": "venue-discovery/SKILL.md",
-      "description": "Discover and validate bars, pastry shops, restaurants, cafes, and bakeries for breakfast, lunch, or dinner using the 18 mcp-google-map MCP tools exclusively, enforcing budget, quality-grade, category, opening-hours, and distance constraints on verifiable Google Places API (New) data.",
-      "adaptedFrom": "GeoScout 6.2 (Italian source); translated to English and bound to the mcp-google-map MCP server"
+      "description": "Discover and validate bars, pastry shops, restaurants, cafes, and bakeries for breakfast, lunch, or dinner using the 18 mcp-google-map MCP tools exclusively, enforcing budget, quality-grade, category, opening-hours, and distance constraints on verifiable Google Places API (New) data."
+    }
     }
   ]
 }

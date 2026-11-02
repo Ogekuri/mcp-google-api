@@ -194,7 +194,7 @@ export class NewPlacesService {
   }
 
   /**
-   * Text Search (New) with full GeoScout 6.2 support:
+   * Text Search (New) with the full venue-discovery filter surface (REQ-027, REQ-109):
    * - priceLevels: cumulative server-side economic filter (enum strings)
    * - strictTypeFiltering: strict place-type filtering
    * - minRating, includedType, openNow: server-side filters
