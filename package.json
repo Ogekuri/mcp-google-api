@@ -50,7 +50,7 @@
   "homepage": "https://github.com/Ogekuri/mcp-google-map#readme",
   "dependencies": {
     "@googlemaps/google-maps-services-js": "^3.4.0",
-    "@googlemaps/places": "^2.1.0",
+    "@googlemaps/places": "^3.1.0",
     "@modelcontextprotocol/sdk": "^1.32.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
