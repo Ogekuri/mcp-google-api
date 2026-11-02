@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.5.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.4.0..v0.5.0) - 2026-11-02
+### ⛰️  Features
+- add enable/disable/install/uninstall/show CLI configuration commands [useReq] *(cli)*
+  - Add enable/disable/install/uninstall/show commands managing MCP-server
+  - registration and packaged skills for pi, openclaw, codex, antigravity,
+  - claude (REQ-110..REQ-119, PRJ-015, DES-017..DES-020)
+  - Add cliSettings/cliTargets/cliInstaller/cliShow utils with atomic
+  - read-modify-write preserving unrelated config entries (JSON mcpServers
+  - and codex TOML mcp_servers)
+  - Fix malformed skills manifest.json; ship src/resources/skills in the
+  - npm package (PKG-024); document commands in README (PKG-023)
+  - Update REQUIREMENTS/WORKFLOW/REFERENCES
+
+### 🐛  Bug Fixes
+- Fix .gitignore file.
+- drop deprecated glob@10 via @googlemaps/places ^3.1.0 [useReq] *(deps)*
+  - Install-time deprecation warnings traced to the production dependency tree: @googlemaps/places@2.x -> google-gax@5 -> rimraf@5 -> glob@10.5.0 (npm deprecation cites publicized security vulnerabilities).
+  - Bump @googlemaps/places ^2.1.0 -> ^3.1.0: google-gax@^6 removes rimraf/glob from the tree; engines node >= 22 preserved; PlacesClient surface unchanged (tsc clean, 57 unit tests pass).
+  - Add tests/dependencyTree.unit.test.ts reproducer: lockfile tree must contain no glob package and must lock @googlemaps/places at major 3. Remaining crypto-js and node-domexception deprecations plus the protobufjs install-scripts notice are upstream or npm-client-side.
+
+### 🚜  Changes
+- derive settings dir from program name, forbid generic skills dir [useReq] *(cli-settings)*
+  - Add DES-021: settings directory MUST equal the distribution program
+  - name mcp-google-map; shared/generic dirs like ~/.config/skills/ are
+  - forbidden
+  - Introduce SETTINGS_PROGRAM_NAME constant as single source of truth
+  - for CLI_SETTINGS_RELATIVE in src/utils/cliSettings.ts
+  - Drop the reference skills settings-path mention from documentation;
+  - runtime path stays ~/.config/mcp-google-map/config.json (DES-018)
+  - Regenerate REFERENCES.md
+- drop GeoScout 6.2 lineage and bind filters to venue-discovery skill [useReq] *(skills)*
+  - Remove all GeoScout 6.2 references: PRJ-014 rewritten, docs/GEOSCOUT.md deleted, README/docs/package.json/manifest/SKILL/NewPlacesService cleaned
+  - Bind filters and raw-payload implementations to the in-project venue-discovery skill and vice-versa (REQ-027, REQ-030, REQ-033, new REQ-109)
+  - Rename tests/geoscoutFilters.unit.test.ts to placesFilters.unit.test.ts (titles only; TST-003 updated); npm test 102/102 green
+- add venue-discovery skill and skills resource framework [useReq] *(skills)*
+  - Add src/resources/skills: manifest.json registry + README.md authoring guide (PRJ-012..014, REQ-097..108)
+  - Add venue-discovery SKILL.md: GeoScout 6.2 translated to English and bound to mcp-google-map; all 18 tools mapped; budget/priceLevels/priceRange rules, grades A-E, categories, hours, geo modes, progressive search, output A-D + DEBUG
+  - REQUIREMENTS.md: skills section; WORKFLOW.md: inert-resources note
+- add setup+snippet commands, typed config, doctor probes, loopback *(cli)*
+  - Requirements: PRJ-003/006/009-011, CTN-005/007-009, DES-014-016, REQ-008/009/070/079/087-096, PKG-003-005/018-022, TST-002/012-016; LIM-003 removed (doctor now enforces engines >= 22).
+  - New: non-interactive setup onboarding, snippet generator, tool/API profiles, typed config resolver with --env-file and secret masking.
+  - Doctor: engines floor 22, masked config diagnostics, per-tool API profiles, selectable --probes (legacy --live preserved).
+  - HTTP: loopback default 127.0.0.1 (migration documented), non-zero exit on failed startup, SIGINT/SIGTERM orderly shutdown; stdio from ready artifact.
+  - Tooling: no implicit script chains, npm run verify pipeline, CI 3-OS matrix with tarball install + no-Google-API smoke; docs aligned with supported CLI/headers.
+  - Tests: 6 new unit suites; 93 unit tests pass; typecheck and build clean.
+
+### 🎯  Cover Requirements
+- add spawn-level env-file/HTTP/shutdown and CI-contract tests *(tests)*
+  - Close verification-coverage gaps of the new contracts without SRS changes:
+  - tests/cliSpawn.unit.test.ts: process-level --env-file tests (missing file non-zero exit with JSON error on the exit-1 path, Node>=24 exit-9 tolerated; existing file loads for both argv forms before doctor), HTTP server startup from an env-file port with loopback endpoint and SIGTERM orderly shutdown (exit 0, 'HTTP server stopped'), and the start-mcp.sh missing-artifact remediation guard (non-win32).
+  - tests/ciContract.unit.test.ts: static regression guard for the CI contract (3-OS matrix, lockfile install, typecheck/test/build, tarball install, doctor smoke with placeholder key, e2e excluded).
+  - src/cli.ts: export extractEnvFileOption for direct unit testing; no behavior change.
+  - WORKFLOW.md unchanged (no runtime-model impact); REFERENCES.md regenerated.
+  - Verification: 102/102 unit tests pass; typecheck and static-check clean.
+
 ## [0.4.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.3.0..v0.4.0) - 2026-10-30
 ### 🚜  Changes
 - enable startup update check by default with opt-out [useReq] *(auto-update)*
@@ -72,7 +127,9 @@
 - \[0.2.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.2.0
 - \[0.3.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.3.0
 - \[0.4.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.4.0
+- \[0.5.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.5.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.2.0..v0.3.0
 [0.4.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.3.0..v0.4.0
+[0.5.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.4.0..v0.5.0
