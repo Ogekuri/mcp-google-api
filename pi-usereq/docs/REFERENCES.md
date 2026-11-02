@@ -66,7 +66,7 @@ import { renderClientSnippet, type SnippetClient, type SnippetOptions } from "./
 
 ## Definitions
 
-### fn `function extractEnvFileOption(argv: readonly string[]): string | undefined` (L41-52)
+### fn `export function extractEnvFileOption(argv: readonly string[]): string | undefined` (L41-52)
 - @brief Extracts the explicit `--env-file <path>` value from a raw argv array.
 - @details Scans for both `--env-file <path>` and `--env-file=<path>` forms
 before any command parsing so the file loads before option defaults are
@@ -243,7 +243,7 @@ JSON stderr error with exit code 1. Complexity O(1).
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`extractEnvFileOption`|fn||41-52|function extractEnvFileOption(argv: readonly string[]): s...|
+|`extractEnvFileOption`|fn||41-52|export function extractEnvFileOption(argv: readonly strin...|
 |`loadEnvironment`|fn||67-80|function loadEnvironment(envFile: string | undefined): void|
 |`ServerStartupOutcome`|iface||88-92|export interface ServerStartupOutcome|
 |`startServer`|fn||109-183|export async function startServer(|

@@ -38,7 +38,7 @@ const __dirname = dirname(__filename);
  * @return {string | undefined} Path value when present; undefined otherwise.
  * @satisfies CTN-009
  */
-function extractEnvFileOption(argv: readonly string[]): string | undefined {
+export function extractEnvFileOption(argv: readonly string[]): string | undefined {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--env-file" && i + 1 < argv.length) {
