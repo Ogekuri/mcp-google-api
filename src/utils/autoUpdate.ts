@@ -69,6 +69,78 @@ export interface AutoUpdateResult {
 }
 
 /**
+ * @brief Discriminated outcome of one registry probe without side effects.
+ * @details Logging-free core result consumed by `checkForUpdates` (legacy
+ * notice contract, TST-011) and by the idle-gated `checkVersionIdle` wrapper
+ * (`src/utils/upgradeManager.ts`) which needs to distinguish "registry
+ * reached, no newer version" from failure paths to pick its idle window.
+ */
+export type LatestVersionProbe =
+  | { status: "disabled" }
+  | { status: "unknown-version" }
+  | { status: "error"; message: string }
+  | { status: "current"; currentVersion: string }
+  | { status: "newer"; currentVersion: string; latestVersion: string };
+
+/**
+ * @brief Probes the npm registry for the latest published package version.
+ * @details Logging-free resolution order: disabled-flag short-circuit (REQ-083,
+ * zero network calls) -> running-version guard (missing `currentVersion` ->
+ * `unknown-version`, zero network calls) -> single
+ * `GET {registry}/{package}/latest` with `timeoutMs` deadline ->
+ * `response.ok` and `payload.version` validation -> `isNewerVersion` gate.
+ * Every failure is returned as `{ status: "error", message }`; never throws.
+ * @param deps {AutoUpdateCheckerDeps} Optional dependency overrides; production defaults when omitted.
+ * @return {Promise<LatestVersionProbe>} Discriminated probe outcome; `message` carries the final diagnostic text without logging.
+ * @satisfies REQ-082, REQ-083
+ * @note Complexity: O(k) in version segments plus one HTTP round-trip bounded by `timeoutMs`.
+ * @see isNewerVersion
+ * @see checkForUpdates
+ */
+export async function probeLatestVersion(
+  deps: AutoUpdateCheckerDeps = {}
+): Promise<LatestVersionProbe> {
+  const env = deps.env ?? process.env;
+  if (isAutoUpdateDisabled(env)) {
+    return { status: "disabled" };
+  }
+  const currentVersion = deps.currentVersion;
+  if (!currentVersion) {
+    return { status: "unknown-version" };
+  }
+  const packageName = deps.packageName ?? DEFAULT_PACKAGE_NAME;
+  const registryBaseUrl = deps.registryBaseUrl ?? DEFAULT_REGISTRY_BASE_URL;
+  const timeoutMs = deps.timeoutMs ?? DEFAULT_UPDATE_CHECK_TIMEOUT_MS;
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  try {
+    const response = await fetchImpl(`${registryBaseUrl}/${packageName}/latest`, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) {
+      return {
+        status: "error",
+        message: `registry responded with HTTP ${response.status}.`,
+      };
+    }
+    const payload = (await response.json()) as { version?: unknown };
+    if (typeof payload?.version !== "string") {
+      return {
+        status: "error",
+        message: "registry response has no version field.",
+      };
+    }
+    if (!isNewerVersion(payload.version, currentVersion)) {
+      return { status: "current", currentVersion };
+    }
+    return { status: "newer", currentVersion, latestVersion: payload.version };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { status: "error", message };
+  }
+}
+
+/**
  * @brief Evaluates the disable flag for the automatic update check.
  * @details Reads `AUTO_UPDATE_DISABLED_ENV` from the given environment map and
  * matches values `1`, `true`, `yes` case-insensitively after trimming; any
@@ -143,50 +215,28 @@ export async function checkForUpdates(
   deps: AutoUpdateCheckerDeps = {}
 ): Promise<AutoUpdateResult | null> {
   const logger = deps.logger ?? Logger;
-  const env = deps.env ?? process.env;
-  try {
-    if (isAutoUpdateDisabled(env)) {
+  const packageName = deps.packageName ?? DEFAULT_PACKAGE_NAME;
+  const probe = await probeLatestVersion(deps);
+  switch (probe.status) {
+    case "disabled":
       return null;
-    }
-    const currentVersion = deps.currentVersion;
-    if (!currentVersion) {
+    case "unknown-version":
       logger.error(
         `⚠️  [${DEFAULT_PACKAGE_NAME}] Automatic update check skipped: running package version is unknown.`
       );
       return null;
-    }
-    const packageName = deps.packageName ?? DEFAULT_PACKAGE_NAME;
-    const registryBaseUrl = deps.registryBaseUrl ?? DEFAULT_REGISTRY_BASE_URL;
-    const timeoutMs = deps.timeoutMs ?? DEFAULT_UPDATE_CHECK_TIMEOUT_MS;
-    const fetchImpl = deps.fetchImpl ?? fetch;
-    const response = await fetchImpl(`${registryBaseUrl}/${packageName}/latest`, {
-      headers: { accept: "application/vnd.npm.install-v1+json" },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!response.ok) {
+    case "error":
       logger.error(
-        `⚠️  [${DEFAULT_PACKAGE_NAME}] Automatic update check failed: registry responded with HTTP ${response.status}.`
+        `⚠️  [${DEFAULT_PACKAGE_NAME}] Automatic update check failed: ${probe.message}`
       );
       return null;
-    }
-    const payload = (await response.json()) as { version?: unknown };
-    if (typeof payload?.version !== "string") {
-      logger.error(
-        `⚠️  [${DEFAULT_PACKAGE_NAME}] Automatic update check failed: registry response has no version field.`
+    case "current":
+      return null;
+    case "newer":
+      logger.log(
+        `⚠️  Update available: ${packageName} ${probe.currentVersion} → ${probe.latestVersion}. ` +
+          `Upgrade with: npm install -g ${packageName}@latest (or run npx -y ${packageName}@latest).`
       );
-      return null;
-    }
-    if (!isNewerVersion(payload.version, currentVersion)) {
-      return null;
-    }
-    logger.log(
-      `⚠️  Update available: ${packageName} ${currentVersion} → ${payload.version}. ` +
-        `Upgrade with: npm install -g ${packageName}@latest (or run npx -y ${packageName}@latest).`
-    );
-    return { currentVersion, latestVersion: payload.version };
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.error(`⚠️  [${DEFAULT_PACKAGE_NAME}] Automatic update check failed: ${message}`);
-    return null;
+      return { currentVersion: probe.currentVersion, latestVersion: probe.latestVersion };
   }
 }

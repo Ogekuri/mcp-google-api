@@ -68,7 +68,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 ### 2.1 Project Functions
 - **PRJ-001**: MUST expose 18 Google Maps MCP tools: maps_geocode, maps_reverse_geocode, maps_search_nearby, maps_search_places, maps_place_details, maps_directions, maps_distance_matrix, maps_elevation, maps_timezone, maps_weather, maps_explore_area, maps_plan_route, maps_compare_places, maps_air_quality, maps_static_map, maps_batch_geocode, maps_search_along_route, maps_local_rank_tracker.
 - **PRJ-002**: MUST serve tool calls over both stdio transport and Streamable HTTP transport at endpoint path `/mcp`.
-- **PRJ-003**: MUST provide a standalone CLI with commands: `doctor`, `exec <tool> [params]`, `batch-geocode`, `setup`, `snippet`, `enable <cli>`, `disable <cli>`, `install`, `uninstall`, `show`, and default server-start command.
+- **PRJ-003**: MUST provide a standalone CLI with commands: `doctor`, `exec <tool> [params]`, `batch-geocode`, `setup`, `snippet`, `enable <cli>`, `disable <cli>`, `install`, `uninstall`, `show`, default server-start, and management flags `--upgrade`, `--uninstall`, `--ver`, `--version`.
 - **PRJ-004**: MUST provide composite tools (explore-area, plan-route, compare-places, search-along-route, local-rank-tracker) that chain geocoding, search, details, and routing calls internally.
 - **PRJ-005**: MUST support per-request and per-session Google Maps API keys so concurrent HTTP clients use isolated credentials.
 - **PRJ-006**: MUST allow restricting exposed tools via the `GOOGLE_MAPS_ENABLED_TOOLS` comma-separated allowlist environment variable resolved through the central typed configuration.
@@ -90,7 +90,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **CTN-005**: MUST run on Node.js `>= 22`, declared in `package.json` `engines` and enforced identically by the `doctor` local check.
 - **CTN-006**: MUST build and run as ECMAScript Modules only (`"type": "module"`, tsup ESM output).
 - **CTN-007**: MUST load `.env` from the current working directory first, then from the package installation directory, unless an explicit `--env-file` is given.
-- **CTN-008**: MUST NOT use any database or file-based persistence; all state is in-memory per process, except user-authorized local configuration files.
+- **CTN-008**: MUST NOT use any database or file-based persistence; all state is in-memory per process, except user-authorized local configuration files and the automatic-update idle cache under `~/.cache/mcp-google-map/`.
 - **CTN-009**: MUST support a global `--env-file <path>` CLI option that loads exactly the given file before command execution and fails when it is missing.
 
 ### 2.3 Packaging and Publication
@@ -143,6 +143,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **DES-021**: MUST derive the enabled-CLI settings directory from the distribution program name `mcp-google-map`; shared or generic directories such as `~/.config/skills/` MUST NOT be used.
 - **DES-019**: MUST apply MCP-server registration through read-modify-write preserving every unrelated configuration entry, with atomic temporary-file replacement.
 - **DES-020**: MUST synchronize packaged skills into CLI skills destinations copying all packaged files with overwrite and pruning stale files inside managed skill directories only.
+- **DES-022**: MUST implement the idle-gated version check and self-upgrade commands in a dedicated module with injectable clock, filesystem, fetch, logger, and child-process dependencies.
 
 ### 3.2 Functions
 
@@ -256,11 +257,22 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-093**: MUST embed literal placeholder values in snippets by default; `--env-key` MUST emit variable references documented as client-specific.
 
 #### Automatic Update Check
-- **REQ-082**: MUST run an automatic update check by default at server startup in stdio and HTTP modes, comparing the running version against the latest `mcp-google-map` version published on the npm registry.
+- **REQ-082**: MUST run an automatic update check by default at server startup in stdio and HTTP modes, comparing the running version against the latest `mcp-google-map` version published on the npm registry, subject to the idle cache gate (REQ-121).
 - **REQ-083**: MUST skip the automatic update check and make no registry network calls when `MCP_AUTO_UPDATE_DISABLED` is set to `1`, `true`, or `yes` case-insensitively.
 - **REQ-084**: MUST report a newer available npm version on stderr only, including current version, latest version, and an upgrade command.
 - **REQ-085**: MUST NOT block server startup on the automatic update check and MUST tolerate registry, network, and malformed-response failures with stderr diagnostics only.
 - **REQ-086**: MUST document `MCP_AUTO_UPDATE_DISABLED` in `.env.example` and `docs/CONFIGURATION.md`, stating that the automatic update check is enabled by default.
+
+#### Self-Upgrade and Version Reporting
+- **REQ-120**: MUST provide top-level `--ver` and `--version` commands that force one online latest-version check bypassing the idle gate and print the installed version to stdout with exit code 0.
+- **REQ-121**: MUST gate the automatic update check with an idle cache file at `~/.cache/mcp-google-map/check_version_idle-time.json`, skipping the registry request while its `idle_time_epoch` is in the future.
+- **REQ-122**: MUST persist cache fields `last_success_epoch`, `last_success_human`, `idle_time_epoch`, and `idle_time_human` (ISO-8601 UTC) after each executed check, tolerating missing or malformed cache content.
+- **REQ-123**: MUST set the idle window to 3600 seconds when a newer version is found and 86400 seconds otherwise.
+- **REQ-124**: MUST report each executed check on stderr only: `Available Version: <latest> | Installed Version: <current>` plus an upgrade command when newer, a no-newer-version notice when current, and an error notice on failure.
+- **REQ-125**: MUST implement `--upgrade` to run `npm install -g mcp-google-map@latest` as a child process with inherited stdio, propagating its exit code.
+- **REQ-126**: MUST, after a successful `--upgrade` with at least one enabled CLI, run the upgraded package's `install` child command refreshing skills and MCP registrations.
+- **REQ-127**: MUST implement `--uninstall` to run `npm uninstall -g mcp-google-map` as a child process with inherited stdio, propagating its exit code.
+- **REQ-128**: MUST print the manual package-manager command and return exit code 1 when a management child process fails to spawn.
 
 #### Skill Resources
 - **REQ-097**: Each skill MUST provide a `SKILL.md` with YAML front matter `name` (1-64 lowercase ASCII letters, digits, hyphens, matching the directory name) and non-empty `description`.

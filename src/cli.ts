@@ -12,7 +12,7 @@ import { fileURLToPath } from "url";
 import { dirname } from "path";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { createInterface } from "readline";
-import { checkForUpdates } from "./utils/autoUpdate.js";
+import { checkVersionIdle, parseManagementCommand, runManagementCommand } from "./utils/upgradeManager.js";
 import {
   NODE_ENGINE_FLOOR,
   applyExplicitEnvFile,
@@ -1022,491 +1022,509 @@ if (isRunDirectly || isMainModule) {
     packageVersion = "0.0.0";
   }
 
-  yargs(hideBin(process.argv))
-    .command(
-      "doctor",
-      "Check standalone CLI readiness without starting an MCP server",
-      (yargs) =>
-        yargs
-          .option("live", {
-            type: "boolean",
-            default: false,
-            description: "Make billable test requests to Geocoding, Places (New), and Routes APIs",
-          })
-          .option("probes", {
-            type: "string",
-            description: "Comma-separated subset of live probes: geocoding, places-new, routes (default: all three)",
-          })
-          .option("apikey", {
-            alias: "k",
-            type: "string",
-            description: "Google Maps API key (prefer GOOGLE_MAPS_API_KEY to avoid shell history exposure)",
-            default: process.env.GOOGLE_MAPS_API_KEY,
-          })
-          .example([
-            ["$0 doctor", "Check local runtime and API key configuration without network calls"],
-            ["$0 doctor --live", "Also verify three Google Maps APIs with billable requests"],
-            ["$0 doctor --live --probes geocoding,routes", "Probe only the selected APIs"],
-          ]),
-      async (argv) => {
-        const parsedProbes = parseDoctorProbes(argv.probes as string | undefined);
-        if (parsedProbes.error) {
-          process.stderr.write(JSON.stringify({ error: parsedProbes.error }, null, 2) + "\n");
-          process.exitCode = 1;
-          return;
-        }
-        const report = await runDoctor(packageVersion, argv.apikey as string | undefined, argv.live as boolean, undefined, {
-          probes: parsedProbes.probes,
-          config: resolveRuntimeConfig(process.env, { envFile: extractEnvFileOption(process.argv) }),
-        });
-        process.stdout.write(JSON.stringify(report, null, 2) + "\n");
-        process.exitCode = report.success ? 0 : 1;
-      }
-    )
-    .command(
-      "setup",
-      "Non-interactive onboarding: verify local readiness, optionally scaffold .env",
-      (yargs) =>
-        yargs
-          .option("write-env", {
-            type: "boolean",
-            default: false,
-            description: "Create .env from .env.example in --env-dir when it does not exist (never overwrites)",
-          })
-          .option("env-dir", {
-            type: "string",
-            default: process.cwd(),
-            description: "Directory where .env is looked up / created",
-          })
-          .example([
-            ["$0 setup", "Check readiness without writing anything"],
-            ["$0 setup --write-env", "Also scaffold .env from the package template"],
-          ]),
-      async (argv) => {
-        const report = await runSetup({
-          packageDir: resolve(__dirname, ".."),
-          targetDir: argv.envDir as string,
-          writeEnv: argv.writeEnv as boolean,
-        });
-        process.stdout.write(JSON.stringify(report, null, 2) + "\n");
-        process.exitCode = report.success ? 0 : 1;
-      }
-    )
-    .command(
-      "snippet",
-      "Print an MCP client registration snippet (JSON on stdout; never writes files)",
-      (yargs) =>
-        yargs
-          .option("client", {
-            type: "string",
-            choices: ["generic", "claude", "cursor", "pi"],
-            default: "generic",
-            description: "Target client (selects the documented target file)",
-          })
-          .option("transport", {
-            type: "string",
-            choices: ["stdio", "http"],
-            default: "stdio",
-            description: "MCP transport of the snippet",
-          })
-          .option("launcher", {
-            type: "string",
-            choices: ["npx", "node", "bin"],
-            default: "npx",
-            description: "stdio launcher command",
-          })
-          .option("command", {
-            type: "string",
-            description: "Absolute path to dist/cli.js (required for --launcher node)",
-          })
-          .option("host", {
-            type: "string",
-            default: "127.0.0.1",
-            description: "Host used in the URL (transport http)",
-          })
-          .option("port", {
-            type: "number",
-            default: 3000,
-            description: "Port used in the URL (transport http)",
-          })
-          .option("env-key", {
-            type: "string",
-            description: 'Emit a ${NAME} variable reference instead of a literal placeholder (expansion is client-specific)',
-          })
-          .option("name", {
-            type: "string",
-            default: "mcp-google-map",
-            description: "Server name inside mcpServers",
-          })
-          .example([
-            ["$0 snippet --client claude", "stdio snippet using the npx launcher"],
-            ["$0 snippet --client pi --launcher node --command /abs/path/dist/cli.js", "stdio snippet with an explicit artifact"],
-            ["$0 snippet --transport http --port 3100", "HTTP URL snippet"],
-          ]),
-      (argv) => {
-        process.exitCode = runSnippetCommand({
-          client: argv.client as SnippetClient,
-          transport: argv.transport as "stdio" | "http",
-          launcher: argv.launcher as "npx" | "node" | "bin",
-          commandPath: argv.command as string | undefined,
-          host: argv.host as string,
-          port: argv.port as number,
-          envKey: argv.envKey as string | undefined,
-          serverName: argv.name as string,
-        });
-      }
-    )
-    .command(
-      "enable <cli>",
-      "Enable MCP-server and skill installation for a supported CLI",
-      (yargs) =>
-        yargs
-          .positional("cli", {
-            type: "string",
-            describe: `CLI name: ${supportedCliNames()}`,
-          })
-          .option("home", {
-            type: "string",
-            description: "Home-directory override for the settings file (default: user home)",
-          })
-          .example([["$0 enable pi", "Enable pi for install/uninstall/show"]]),
-      (argv) => {
-        process.exitCode = runEnableDisableCliCommand(argv.cli as string, true, {
-          home: argv.home as string | undefined,
-        });
-      }
-    )
-    .command(
-      "disable <cli>",
-      "Disable MCP-server and skill installation for a supported CLI",
-      (yargs) =>
-        yargs
-          .positional("cli", {
-            type: "string",
-            describe: `CLI name: ${supportedCliNames()}`,
-          })
-          .option("home", {
-            type: "string",
-            description: "Home-directory override for the settings file (default: user home)",
-          })
-          .example([["$0 disable claude", "Disable claude for install/uninstall/show"]]),
-      (argv) => {
-        process.exitCode = runEnableDisableCliCommand(argv.cli as string, false, {
-          home: argv.home as string | undefined,
-        });
-      }
-    )
-    .command(
-      "install",
-      "Register the mcp-google-map stdio server and install packaged skills for every enabled CLI",
-      (yargs) =>
-        yargs
-          .option("home", {
-            type: "string",
-            description: "Home-directory override for CLI configuration paths (default: user home)",
-          })
-          .option("apikey", {
-            alias: "k",
-            type: "string",
-            description: "Google Maps API key embedded in the registered entry (prefer GOOGLE_MAPS_API_KEY)",
-            default: resolveRuntimeConfig(process.env, { envFile: extractEnvFileOption(process.argv) }).apiKey,
-          })
-          .example([["$0 install", "Register the server and skills in every enabled CLI"]]),
-      (argv) => {
-        process.exitCode = runInstallUninstallCommand("install", {
-          home: argv.home as string | undefined,
-          apiKey: argv.apikey as string | undefined,
-          resourcesRoot: resolveSkillsResourcesRoot(resolve(__dirname, "..")),
-        });
-      }
-    )
-    .command(
-      "uninstall",
-      "Remove the mcp-google-map server entry and managed skills from every enabled CLI",
-      (yargs) =>
-        yargs
-          .option("home", {
-            type: "string",
-            description: "Home-directory override for CLI configuration paths (default: user home)",
-          })
-          .example([["$0 uninstall", "Reciprocal removal of install for every enabled CLI"]]),
-      (argv) => {
-        process.exitCode = runInstallUninstallCommand("uninstall", {
-          home: argv.home as string | undefined,
-          resourcesRoot: resolveSkillsResourcesRoot(resolve(__dirname, "..")),
-        });
-      }
-    )
-    .command(
-      "show",
-      "Show CLI configuration and installation status tables (human-readable)",
-      (yargs) =>
-        yargs
-          .option("home", {
-            type: "string",
-            description: "Home-directory override for CLI configuration paths (default: user home)",
-          })
-          .example([["$0 show", "Print CLI Configuration and Installation Status tables"]]),
-      (argv) => {
-        process.exitCode = runShowCommand({
-          home: argv.home as string | undefined,
-          resourcesRoot: resolveSkillsResourcesRoot(resolve(__dirname, "..")),
-        });
-      }
-    )
-    .command(
-      "exec <tool> [params]",
-      "Execute a tool directly and output JSON",
-      (yargs) => {
-        return yargs
-          .positional("tool", {
-            type: "string",
-            describe: `Tool name: ${EXEC_TOOLS.join(", ")}`,
-          })
-          .positional("params", {
-            type: "string",
-            describe: "JSON parameters string",
-          })
-          .option("apikey", {
-            alias: "k",
-            type: "string",
-            description: "Google Maps API key",
-            default: process.env.GOOGLE_MAPS_API_KEY,
-          })
-          .example([
-            ['$0 exec geocode \'{"address":"Tokyo Tower"}\'', "Geocode an address"],
-            [
-              '$0 exec search-nearby \'{"center":{"value":"35.68,139.74","isCoordinates":true},"keyword":"restaurant"}\'',
-              "Search nearby",
-            ],
-            ['$0 exec search-places \'{"query":"ramen in Tokyo"}\'', "Text search"],
-          ]);
-      },
-      async (argv) => {
-        if (!argv.apikey) {
-          process.stderr.write(
-            JSON.stringify(
-              {
-                error: "GOOGLE_MAPS_API_KEY not set. Use --apikey or set GOOGLE_MAPS_API_KEY environment variable.",
-              },
-              null,
-              2
-            ) + "\n"
-          );
-          process.exitCode = 1;
-          return;
-        }
-        try {
-          const params = argv.params ? JSON.parse(argv.params as string) : {};
-          process.exitCode = await runExecCommand(argv.tool as string, params, argv.apikey as string);
-        } catch (error: any) {
-          process.stderr.write(JSON.stringify({ error: error.message }, null, 2) + "\n");
-          process.exitCode = 1;
-        }
-      }
-    )
-    .command(
-      "batch-geocode",
-      "Geocode multiple addresses from a file (one address per line)",
-      (yargs) => {
-        return yargs
-          .option("input", {
-            alias: "i",
-            type: "string",
-            describe: "Input file path (one address per line). Use - for stdin.",
-            demandOption: true,
-          })
-          .option("output", {
-            alias: "o",
-            type: "string",
-            describe: "Output file path (JSON). Defaults to stdout.",
-          })
-          .option("concurrency", {
-            alias: "c",
-            type: "number",
-            describe: "Max parallel requests",
-            default: 20,
-          })
-          .option("apikey", {
-            alias: "k",
-            type: "string",
-            description: "Google Maps API key",
-            default: process.env.GOOGLE_MAPS_API_KEY,
-          })
-          .example([
-            ["$0 batch-geocode -i addresses.txt", "Geocode to stdout"],
-            ["$0 batch-geocode -i addresses.txt -o results.json", "Geocode to file"],
-            ["cat addresses.txt | $0 batch-geocode -i -", "Geocode from stdin"],
-          ]);
-      },
-      async (argv) => {
-        if (!argv.apikey) {
-          console.error("Error: GOOGLE_MAPS_API_KEY not set. Use --apikey or set env var.");
-          process.exit(1);
-        }
-
-        // Read addresses
-        let lines: string[];
-        if (argv.input === "-") {
-          // Read from stdin
-          const rl = createInterface({ input: process.stdin });
-          lines = [];
-          for await (const line of rl) {
-            const trimmed = line.trim();
-            if (trimmed) lines.push(trimmed);
+  // Top-level management commands (--ver/--version/--upgrade/--uninstall) are
+  // dispatched before yargs because they are flags, not subcommands. The
+  // forced idle-bypassing version check and the child-process upgrade flows
+  // run exclusively here (REQ-120, REQ-125, REQ-126, REQ-127).
+  const managementCommand = parseManagementCommand(hideBin(process.argv));
+  if (managementCommand !== undefined) {
+    void runManagementCommand(managementCommand, { currentVersion: packageVersion })
+      .then((code) => {
+        process.exitCode = code;
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        process.stderr.write(JSON.stringify({ error: message }, null, 2) + "\n");
+        process.exitCode = 1;
+      });
+  } else {
+    yargs(hideBin(process.argv))
+      .command(
+        "doctor",
+        "Check standalone CLI readiness without starting an MCP server",
+        (yargs) =>
+          yargs
+            .option("live", {
+              type: "boolean",
+              default: false,
+              description: "Make billable test requests to Geocoding, Places (New), and Routes APIs",
+            })
+            .option("probes", {
+              type: "string",
+              description: "Comma-separated subset of live probes: geocoding, places-new, routes (default: all three)",
+            })
+            .option("apikey", {
+              alias: "k",
+              type: "string",
+              description: "Google Maps API key (prefer GOOGLE_MAPS_API_KEY to avoid shell history exposure)",
+              default: process.env.GOOGLE_MAPS_API_KEY,
+            })
+            .example([
+              ["$0 doctor", "Check local runtime and API key configuration without network calls"],
+              ["$0 doctor --live", "Also verify three Google Maps APIs with billable requests"],
+              ["$0 doctor --live --probes geocoding,routes", "Probe only the selected APIs"],
+            ]),
+        async (argv) => {
+          const parsedProbes = parseDoctorProbes(argv.probes as string | undefined);
+          if (parsedProbes.error) {
+            process.stderr.write(JSON.stringify({ error: parsedProbes.error }, null, 2) + "\n");
+            process.exitCode = 1;
+            return;
           }
-        } else {
-          if (!existsSync(argv.input as string)) {
-            console.error(`Error: File not found: ${argv.input}`);
+          const report = await runDoctor(packageVersion, argv.apikey as string | undefined, argv.live as boolean, undefined, {
+            probes: parsedProbes.probes,
+            config: resolveRuntimeConfig(process.env, { envFile: extractEnvFileOption(process.argv) }),
+          });
+          process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+          process.exitCode = report.success ? 0 : 1;
+        }
+      )
+      .command(
+        "setup",
+        "Non-interactive onboarding: verify local readiness, optionally scaffold .env",
+        (yargs) =>
+          yargs
+            .option("write-env", {
+              type: "boolean",
+              default: false,
+              description: "Create .env from .env.example in --env-dir when it does not exist (never overwrites)",
+            })
+            .option("env-dir", {
+              type: "string",
+              default: process.cwd(),
+              description: "Directory where .env is looked up / created",
+            })
+            .example([
+              ["$0 setup", "Check readiness without writing anything"],
+              ["$0 setup --write-env", "Also scaffold .env from the package template"],
+            ]),
+        async (argv) => {
+          const report = await runSetup({
+            packageDir: resolve(__dirname, ".."),
+            targetDir: argv.envDir as string,
+            writeEnv: argv.writeEnv as boolean,
+          });
+          process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+          process.exitCode = report.success ? 0 : 1;
+        }
+      )
+      .command(
+        "snippet",
+        "Print an MCP client registration snippet (JSON on stdout; never writes files)",
+        (yargs) =>
+          yargs
+            .option("client", {
+              type: "string",
+              choices: ["generic", "claude", "cursor", "pi"],
+              default: "generic",
+              description: "Target client (selects the documented target file)",
+            })
+            .option("transport", {
+              type: "string",
+              choices: ["stdio", "http"],
+              default: "stdio",
+              description: "MCP transport of the snippet",
+            })
+            .option("launcher", {
+              type: "string",
+              choices: ["npx", "node", "bin"],
+              default: "npx",
+              description: "stdio launcher command",
+            })
+            .option("command", {
+              type: "string",
+              description: "Absolute path to dist/cli.js (required for --launcher node)",
+            })
+            .option("host", {
+              type: "string",
+              default: "127.0.0.1",
+              description: "Host used in the URL (transport http)",
+            })
+            .option("port", {
+              type: "number",
+              default: 3000,
+              description: "Port used in the URL (transport http)",
+            })
+            .option("env-key", {
+              type: "string",
+              description: 'Emit a ${NAME} variable reference instead of a literal placeholder (expansion is client-specific)',
+            })
+            .option("name", {
+              type: "string",
+              default: "mcp-google-map",
+              description: "Server name inside mcpServers",
+            })
+            .example([
+              ["$0 snippet --client claude", "stdio snippet using the npx launcher"],
+              ["$0 snippet --client pi --launcher node --command /abs/path/dist/cli.js", "stdio snippet with an explicit artifact"],
+              ["$0 snippet --transport http --port 3100", "HTTP URL snippet"],
+            ]),
+        (argv) => {
+          process.exitCode = runSnippetCommand({
+            client: argv.client as SnippetClient,
+            transport: argv.transport as "stdio" | "http",
+            launcher: argv.launcher as "npx" | "node" | "bin",
+            commandPath: argv.command as string | undefined,
+            host: argv.host as string,
+            port: argv.port as number,
+            envKey: argv.envKey as string | undefined,
+            serverName: argv.name as string,
+          });
+        }
+      )
+      .command(
+        "enable <cli>",
+        "Enable MCP-server and skill installation for a supported CLI",
+        (yargs) =>
+          yargs
+            .positional("cli", {
+              type: "string",
+              describe: `CLI name: ${supportedCliNames()}`,
+            })
+            .option("home", {
+              type: "string",
+              description: "Home-directory override for the settings file (default: user home)",
+            })
+            .example([["$0 enable pi", "Enable pi for install/uninstall/show"]]),
+        (argv) => {
+          process.exitCode = runEnableDisableCliCommand(argv.cli as string, true, {
+            home: argv.home as string | undefined,
+          });
+        }
+      )
+      .command(
+        "disable <cli>",
+        "Disable MCP-server and skill installation for a supported CLI",
+        (yargs) =>
+          yargs
+            .positional("cli", {
+              type: "string",
+              describe: `CLI name: ${supportedCliNames()}`,
+            })
+            .option("home", {
+              type: "string",
+              description: "Home-directory override for the settings file (default: user home)",
+            })
+            .example([["$0 disable claude", "Disable claude for install/uninstall/show"]]),
+        (argv) => {
+          process.exitCode = runEnableDisableCliCommand(argv.cli as string, false, {
+            home: argv.home as string | undefined,
+          });
+        }
+      )
+      .command(
+        "install",
+        "Register the mcp-google-map stdio server and install packaged skills for every enabled CLI",
+        (yargs) =>
+          yargs
+            .option("home", {
+              type: "string",
+              description: "Home-directory override for CLI configuration paths (default: user home)",
+            })
+            .option("apikey", {
+              alias: "k",
+              type: "string",
+              description: "Google Maps API key embedded in the registered entry (prefer GOOGLE_MAPS_API_KEY)",
+              default: resolveRuntimeConfig(process.env, { envFile: extractEnvFileOption(process.argv) }).apiKey,
+            })
+            .example([["$0 install", "Register the server and skills in every enabled CLI"]]),
+        (argv) => {
+          process.exitCode = runInstallUninstallCommand("install", {
+            home: argv.home as string | undefined,
+            apiKey: argv.apikey as string | undefined,
+            resourcesRoot: resolveSkillsResourcesRoot(resolve(__dirname, "..")),
+          });
+        }
+      )
+      .command(
+        "uninstall",
+        "Remove the mcp-google-map server entry and managed skills from every enabled CLI",
+        (yargs) =>
+          yargs
+            .option("home", {
+              type: "string",
+              description: "Home-directory override for CLI configuration paths (default: user home)",
+            })
+            .example([["$0 uninstall", "Reciprocal removal of install for every enabled CLI"]]),
+        (argv) => {
+          process.exitCode = runInstallUninstallCommand("uninstall", {
+            home: argv.home as string | undefined,
+            resourcesRoot: resolveSkillsResourcesRoot(resolve(__dirname, "..")),
+          });
+        }
+      )
+      .command(
+        "show",
+        "Show CLI configuration and installation status tables (human-readable)",
+        (yargs) =>
+          yargs
+            .option("home", {
+              type: "string",
+              description: "Home-directory override for CLI configuration paths (default: user home)",
+            })
+            .example([["$0 show", "Print CLI Configuration and Installation Status tables"]]),
+        (argv) => {
+          process.exitCode = runShowCommand({
+            home: argv.home as string | undefined,
+            resourcesRoot: resolveSkillsResourcesRoot(resolve(__dirname, "..")),
+          });
+        }
+      )
+      .command(
+        "exec <tool> [params]",
+        "Execute a tool directly and output JSON",
+        (yargs) => {
+          return yargs
+            .positional("tool", {
+              type: "string",
+              describe: `Tool name: ${EXEC_TOOLS.join(", ")}`,
+            })
+            .positional("params", {
+              type: "string",
+              describe: "JSON parameters string",
+            })
+            .option("apikey", {
+              alias: "k",
+              type: "string",
+              description: "Google Maps API key",
+              default: process.env.GOOGLE_MAPS_API_KEY,
+            })
+            .example([
+              ['$0 exec geocode \'{"address":"Tokyo Tower"}\'', "Geocode an address"],
+              [
+                '$0 exec search-nearby \'{"center":{"value":"35.68,139.74","isCoordinates":true},"keyword":"restaurant"}\'',
+                "Search nearby",
+              ],
+              ['$0 exec search-places \'{"query":"ramen in Tokyo"}\'', "Text search"],
+            ]);
+        },
+        async (argv) => {
+          if (!argv.apikey) {
+            process.stderr.write(
+              JSON.stringify(
+                {
+                  error: "GOOGLE_MAPS_API_KEY not set. Use --apikey or set GOOGLE_MAPS_API_KEY environment variable.",
+                },
+                null,
+                2
+              ) + "\n"
+            );
+            process.exitCode = 1;
+            return;
+          }
+          try {
+            const params = argv.params ? JSON.parse(argv.params as string) : {};
+            process.exitCode = await runExecCommand(argv.tool as string, params, argv.apikey as string);
+          } catch (error: any) {
+            process.stderr.write(JSON.stringify({ error: error.message }, null, 2) + "\n");
+            process.exitCode = 1;
+          }
+        }
+      )
+      .command(
+        "batch-geocode",
+        "Geocode multiple addresses from a file (one address per line)",
+        (yargs) => {
+          return yargs
+            .option("input", {
+              alias: "i",
+              type: "string",
+              describe: "Input file path (one address per line). Use - for stdin.",
+              demandOption: true,
+            })
+            .option("output", {
+              alias: "o",
+              type: "string",
+              describe: "Output file path (JSON). Defaults to stdout.",
+            })
+            .option("concurrency", {
+              alias: "c",
+              type: "number",
+              describe: "Max parallel requests",
+              default: 20,
+            })
+            .option("apikey", {
+              alias: "k",
+              type: "string",
+              description: "Google Maps API key",
+              default: process.env.GOOGLE_MAPS_API_KEY,
+            })
+            .example([
+              ["$0 batch-geocode -i addresses.txt", "Geocode to stdout"],
+              ["$0 batch-geocode -i addresses.txt -o results.json", "Geocode to file"],
+              ["cat addresses.txt | $0 batch-geocode -i -", "Geocode from stdin"],
+            ]);
+        },
+        async (argv) => {
+          if (!argv.apikey) {
+            console.error("Error: GOOGLE_MAPS_API_KEY not set. Use --apikey or set env var.");
             process.exit(1);
           }
-          lines = readFileSync(argv.input as string, "utf-8")
-            .split("\n")
-            .map((l) => l.trim())
-            .filter((l) => l.length > 0);
-        }
 
-        if (lines.length === 0) {
-          console.error("Error: No addresses found in input.");
-          process.exit(1);
-        }
-
-        const searcher = new PlacesSearcher(argv.apikey as string);
-        const concurrency = Math.min(Math.max(argv.concurrency as number, 1), 50);
-        const results: any[] = [];
-        let completed = 0;
-
-        // Process with concurrency limit
-        const semaphore = async (tasks: (() => Promise<void>)[], limit: number) => {
-          const executing: Promise<void>[] = [];
-          for (const task of tasks) {
-            const p = task().then(() => {
-              executing.splice(executing.indexOf(p), 1);
-            });
-            executing.push(p);
-            if (executing.length >= limit) {
-              await Promise.race(executing);
+          // Read addresses
+          let lines: string[];
+          if (argv.input === "-") {
+            // Read from stdin
+            const rl = createInterface({ input: process.stdin });
+            lines = [];
+            for await (const line of rl) {
+              const trimmed = line.trim();
+              if (trimmed) lines.push(trimmed);
             }
-          }
-          await Promise.all(executing);
-        };
-
-        const tasks = lines.map((address, index) => async () => {
-          try {
-            const result = await searcher.geocode(address);
-            results[index] = { address, ...result };
-          } catch (error: any) {
-            results[index] = { address, success: false, error: error.message };
-          }
-          completed++;
-          if (!argv.output) return; // Don't log progress when outputting to stdout
-          process.stderr.write(`\r  ${completed}/${lines.length} geocoded`);
-        });
-
-        await semaphore(tasks, concurrency);
-
-        if (argv.output) {
-          process.stderr.write("\n");
-        }
-
-        // Summary
-        const succeeded = results.filter((r) => r.success).length;
-        const failed = results.filter((r) => !r.success).length;
-        const summary = { total: lines.length, succeeded, failed, results };
-
-        const json = JSON.stringify(summary, null, 2);
-
-        if (argv.output) {
-          writeFileSync(argv.output as string, json, "utf-8");
-          console.error(`Done: ${succeeded}/${lines.length} succeeded. Output: ${argv.output}`);
-        } else {
-          console.log(json);
-        }
-
-        process.exit(failed > 0 ? 1 : 0);
-      }
-    )
-    .command(
-      "$0",
-      "Start the MCP server (HTTP by default, --stdio for stdio mode)",
-      (yargs) => {
-        return yargs
-          .option("port", {
-            alias: "p",
-            type: "number",
-            description: "Port to run the MCP server on",
-            default: process.env.MCP_SERVER_PORT ? parseInt(process.env.MCP_SERVER_PORT) : 3000,
-          })
-          .option("host", {
-            type: "string",
-            description: "Hostname to bind the server to (default 127.0.0.1 loopback; 0.0.0.0 for all interfaces)",
-            default: process.env.MCP_SERVER_HOST || "127.0.0.1",
-          })
-          .option("apikey", {
-            alias: "k",
-            type: "string",
-            description: "Google Maps API key",
-            default: process.env.GOOGLE_MAPS_API_KEY,
-          })
-          .option("stdio", {
-            type: "boolean",
-            description: "Use stdio transport instead of HTTP",
-            default: false,
-          })
-          .example([
-            ["$0", "Start HTTP server with default settings"],
-            ['$0 --port 3000 --apikey "your_api_key"', "Start HTTP with custom port and API key"],
-            ["$0 --host 0.0.0.0 --port 3000", "Start HTTP accessible from all interfaces"],
-            ["$0 --stdio", "Start in stdio mode (for Claude Desktop, Cursor, etc.)"],
-          ]);
-      },
-      async (argv) => {
-        if (argv.apikey) {
-          process.env.GOOGLE_MAPS_API_KEY = argv.apikey as string;
-        }
-
-        // Automatic update check (enabled by default). Fire-and-forget so it
-        // never blocks startup; failures are logged to stderr only.
-        void checkForUpdates({ currentVersion: packageVersion }).catch(() => undefined);
-
-        const tools = filterTools(serverConfigs[0].tools);
-
-        if (argv.stdio) {
-          // stdio mode — all logs go to stderr, stdout reserved for JSON-RPC
-          const server = new BaseMcpServer(serverConfigs[0].name, tools);
-          await server.startStdio();
-        } else {
-          // HTTP mode
-          Logger.log("🗺️  Google Maps MCP Server");
-          Logger.log("   A Model Context Protocol server for Google Maps services");
-          Logger.log("");
-
-          if (!argv.apikey) {
-            Logger.log("⚠️  Google Maps API Key not found!");
-            Logger.log("   Please provide --apikey parameter or set GOOGLE_MAPS_API_KEY in your .env file");
-            Logger.log("");
-          }
-
-          startServer(argv.port as number, argv.apikey as string, argv.host as string)
-            .then((outcome) => {
-              if (outcome.started === 0) {
-                process.exit(1);
-              }
-            })
-            .catch((error) => {
-              Logger.error("❌ Failed to start server:", error);
+          } else {
+            if (!existsSync(argv.input as string)) {
+              console.error(`Error: File not found: ${argv.input}`);
               process.exit(1);
-            });
+            }
+            lines = readFileSync(argv.input as string, "utf-8")
+              .split("\n")
+              .map((l) => l.trim())
+              .filter((l) => l.length > 0);
+          }
+
+          if (lines.length === 0) {
+            console.error("Error: No addresses found in input.");
+            process.exit(1);
+          }
+
+          const searcher = new PlacesSearcher(argv.apikey as string);
+          const concurrency = Math.min(Math.max(argv.concurrency as number, 1), 50);
+          const results: any[] = [];
+          let completed = 0;
+
+          // Process with concurrency limit
+          const semaphore = async (tasks: (() => Promise<void>)[], limit: number) => {
+            const executing: Promise<void>[] = [];
+            for (const task of tasks) {
+              const p = task().then(() => {
+                executing.splice(executing.indexOf(p), 1);
+              });
+              executing.push(p);
+              if (executing.length >= limit) {
+                await Promise.race(executing);
+              }
+            }
+            await Promise.all(executing);
+          };
+
+          const tasks = lines.map((address, index) => async () => {
+            try {
+              const result = await searcher.geocode(address);
+              results[index] = { address, ...result };
+            } catch (error: any) {
+              results[index] = { address, success: false, error: error.message };
+            }
+            completed++;
+            if (!argv.output) return; // Don't log progress when outputting to stdout
+            process.stderr.write(`\r  ${completed}/${lines.length} geocoded`);
+          });
+
+          await semaphore(tasks, concurrency);
+
+          if (argv.output) {
+            process.stderr.write("\n");
+          }
+
+          // Summary
+          const succeeded = results.filter((r) => r.success).length;
+          const failed = results.filter((r) => !r.success).length;
+          const summary = { total: lines.length, succeeded, failed, results };
+
+          const json = JSON.stringify(summary, null, 2);
+
+          if (argv.output) {
+            writeFileSync(argv.output as string, json, "utf-8");
+            console.error(`Done: ${succeeded}/${lines.length} succeeded. Output: ${argv.output}`);
+          } else {
+            console.log(json);
+          }
+
+          process.exit(failed > 0 ? 1 : 0);
         }
-      }
-    )
-    .version(packageVersion)
-    .alias("version", "v")
-    .option("env-file", {
-      type: "string",
-      global: true,
-      description: "Load environment variables from this exact file (error if missing; no implicit .env fallback)",
-    })
-    .help()
-    .parse();
+      )
+      .command(
+        "$0",
+        "Start the MCP server (HTTP by default, --stdio for stdio mode)",
+        (yargs) => {
+          return yargs
+            .option("port", {
+              alias: "p",
+              type: "number",
+              description: "Port to run the MCP server on",
+              default: process.env.MCP_SERVER_PORT ? parseInt(process.env.MCP_SERVER_PORT) : 3000,
+            })
+            .option("host", {
+              type: "string",
+              description: "Hostname to bind the server to (default 127.0.0.1 loopback; 0.0.0.0 for all interfaces)",
+              default: process.env.MCP_SERVER_HOST || "127.0.0.1",
+            })
+            .option("apikey", {
+              alias: "k",
+              type: "string",
+              description: "Google Maps API key",
+              default: process.env.GOOGLE_MAPS_API_KEY,
+            })
+            .option("stdio", {
+              type: "boolean",
+              description: "Use stdio transport instead of HTTP",
+              default: false,
+            })
+            .example([
+              ["$0", "Start HTTP server with default settings"],
+              ['$0 --port 3000 --apikey "your_api_key"', "Start HTTP with custom port and API key"],
+              ["$0 --host 0.0.0.0 --port 3000", "Start HTTP accessible from all interfaces"],
+              ["$0 --stdio", "Start in stdio mode (for Claude Desktop, Cursor, etc.)"],
+            ]);
+        },
+        async (argv) => {
+          if (argv.apikey) {
+            process.env.GOOGLE_MAPS_API_KEY = argv.apikey as string;
+          }
+
+          // Automatic update check (enabled by default), idle-gated to keep it
+          // non-invasive: at most one registry request per idle window.
+          // Fire-and-forget so it never blocks startup; diagnostics on stderr.
+          void checkVersionIdle({ currentVersion: packageVersion }).catch(() => undefined);
+
+          const tools = filterTools(serverConfigs[0].tools);
+
+          if (argv.stdio) {
+            // stdio mode — all logs go to stderr, stdout reserved for JSON-RPC
+            const server = new BaseMcpServer(serverConfigs[0].name, tools);
+            await server.startStdio();
+          } else {
+            // HTTP mode
+            Logger.log("🗺️  Google Maps MCP Server");
+            Logger.log("   A Model Context Protocol server for Google Maps services");
+            Logger.log("");
+
+            if (!argv.apikey) {
+              Logger.log("⚠️  Google Maps API Key not found!");
+              Logger.log("   Please provide --apikey parameter or set GOOGLE_MAPS_API_KEY in your .env file");
+              Logger.log("");
+            }
+
+            startServer(argv.port as number, argv.apikey as string, argv.host as string)
+              .then((outcome) => {
+                if (outcome.started === 0) {
+                  process.exit(1);
+                }
+              })
+              .catch((error) => {
+                Logger.error("❌ Failed to start server:", error);
+                process.exit(1);
+              });
+          }
+        }
+      )
+      .version(packageVersion)
+      .alias("version", "v")
+      .option("env-file", {
+        type: "string",
+        global: true,
+        description: "Load environment variables from this exact file (error if missing; no implicit .env fallback)",
+      })
+      .help()
+      .parse();
+  }
 }
