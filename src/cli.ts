@@ -24,6 +24,15 @@ import {
 } from "./utils/configResolver.js";
 import { describeToolsProfile } from "./utils/toolProfiles.js";
 import { renderClientSnippet, type SnippetClient, type SnippetOptions } from "./utils/clientSnippets.js";
+import { loadCliSettings, saveCliSettings } from "./utils/cliSettings.js";
+import { resolveCliTarget, supportedCliNames } from "./utils/cliTargets.js";
+import {
+  installEnabledCliResources,
+  resolveSkillsResourcesRoot,
+  uninstallEnabledCliResources,
+  type CliOperationResult,
+} from "./utils/cliInstaller.js";
+import { buildCliShowReport } from "./utils/cliShow.js";
 
 // Get the directory of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -862,6 +871,131 @@ export function runSnippetCommand(
   }
 }
 
+// --------------- CLI Configuration Management ---------------
+
+/**
+ * @brief Enables or disables one supported CLI in the persisted settings.
+ * @details Resolves the CLI adapter case-insensitively; unsupported names
+ * exit 2 with a JSON stderr error listing supported names (REQ-110).
+ * Idempotent: enabling an enabled CLI and disabling a disabled CLI succeed
+ * without rewriting the settings file (REQ-111). Success prints a JSON
+ * result on stdout (PRJ-008).
+ * @param name {string} CLI name from the command line.
+ * @param enable {boolean} True to enable; false to disable.
+ * @param options {object} `{ home?, streams? }`; streams default to process streams.
+ * @return {number} Exit code: 0 on success, 2 for an unsupported CLI.
+ * @see loadCliSettings
+ * @see saveCliSettings
+ * @satisfies REQ-110, REQ-111
+ */
+export function runEnableDisableCliCommand(
+  name: string,
+  enable: boolean,
+  options: { home?: string; streams?: ExecStreams } = {}
+): number {
+  const streams = options.streams ?? { stdout: process.stdout, stderr: process.stderr };
+  const target = resolveCliTarget(name);
+  if (target === undefined) {
+    streams.stderr.write(
+      JSON.stringify({ error: `Unsupported CLI: ${name}. Supported: ${supportedCliNames()}.` }, null, 2) + "\n"
+    );
+    return 2;
+  }
+  const settings = loadCliSettings(options.home);
+  const already = settings.enabled.includes(target.id);
+  if (enable === already) {
+    streams.stdout.write(
+      JSON.stringify({ cli: target.id, enabled: enable, message: `${target.id} is already ${enable ? "enabled" : "disabled"}.` }, null, 2) + "\n"
+    );
+    return 0;
+  }
+  settings.enabled = enable
+    ? [...settings.enabled, target.id]
+    : settings.enabled.filter((item) => item !== target.id);
+  saveCliSettings(settings, options.home);
+  streams.stdout.write(
+    JSON.stringify({ cli: target.id, enabled: enable, message: `${enable ? "Enabled" : "Disabled"} ${target.id}.` }, null, 2) + "\n"
+  );
+  return 0;
+}
+
+/**
+ * @brief Shared handler for the `install` and `uninstall` commands.
+ * @details Runs the requested operation over every enabled CLI, prints the
+ * aggregate JSON result on stdout, and exits 1 when any per-CLI failure was
+ * collected (REQ-116). With zero enabled CLIs prints the enable hint and
+ * exits 0 (REQ-119). Diagnostics ride in the JSON `errors` array so stdout
+ * stays the single machine-readable channel (PRJ-008).
+ * @param operation {"install" | "uninstall"} Requested reciprocal operation.
+ * @param options {object} `{ home?, apiKey?, resourcesRoot, streams? }`.
+ * @return {number} Exit code: 0 on success or zero enabled CLIs, 1 on failures.
+ * @see installEnabledCliResources
+ * @see uninstallEnabledCliResources
+ * @satisfies REQ-114, REQ-115, REQ-116, REQ-119
+ */
+export function runInstallUninstallCommand(
+  operation: "install" | "uninstall",
+  options: { home?: string; apiKey?: string; resourcesRoot: string; streams?: ExecStreams }
+): number {
+  const streams = options.streams ?? { stdout: process.stdout, stderr: process.stderr };
+  if (loadCliSettings(options.home).enabled.length === 0) {
+    streams.stdout.write(
+      JSON.stringify(
+        {
+          success: true,
+          message: "No CLI enabled. Use 'mcp-google-map enable <cli name>' first.",
+          summaries: [],
+          errors: [],
+        },
+        null,
+        2
+      ) + "\n"
+    );
+    return 0;
+  }
+  let result: CliOperationResult;
+  try {
+    result =
+      operation === "install"
+        ? installEnabledCliResources({ home: options.home, apiKey: options.apiKey, resourcesRoot: options.resourcesRoot })
+        : uninstallEnabledCliResources({ home: options.home, resourcesRoot: options.resourcesRoot });
+  } catch (error: unknown) {
+    streams.stderr.write(
+      JSON.stringify({ success: false, errors: [error instanceof Error ? error.message : String(error)] }, null, 2) + "\n"
+    );
+    return 1;
+  }
+  streams.stdout.write(
+    JSON.stringify({ success: result.errors.length === 0, operation, summaries: result.summaries, errors: result.errors }, null, 2) + "\n"
+  );
+  return result.errors.length > 0 ? 1 : 0;
+}
+
+/**
+ * @brief Prints the CLI Configuration and Installation Status tables.
+ * @details Delegates rendering to `buildCliShowReport` and writes the report
+ * text to stdout (human-readable exception to PRJ-008). Manifest or render
+ * failures surface as a JSON stderr error with exit code 1.
+ * @param options {object} `{ home?, resourcesRoot, streams? }`.
+ * @return {number} Exit code: 0 on success, 1 on a report failure.
+ * @see buildCliShowReport
+ * @satisfies REQ-117, REQ-118, REQ-119
+ */
+export function runShowCommand(
+  options: { home?: string; resourcesRoot: string; streams?: ExecStreams }
+): number {
+  const streams = options.streams ?? { stdout: process.stdout, stderr: process.stderr };
+  try {
+    streams.stdout.write(buildCliShowReport(options) + "\n");
+    return 0;
+  } catch (error: unknown) {
+    streams.stderr.write(
+      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2) + "\n"
+    );
+    return 1;
+  }
+}
+
 // --------------- Entry Point ---------------
 
 // Check if this script is being run directly
@@ -1019,6 +1153,104 @@ if (isRunDirectly || isMainModule) {
           port: argv.port as number,
           envKey: argv.envKey as string | undefined,
           serverName: argv.name as string,
+        });
+      }
+    )
+    .command(
+      "enable <cli>",
+      "Enable MCP-server and skill installation for a supported CLI",
+      (yargs) =>
+        yargs
+          .positional("cli", {
+            type: "string",
+            describe: `CLI name: ${supportedCliNames()}`,
+          })
+          .option("home", {
+            type: "string",
+            description: "Home-directory override for the settings file (default: user home)",
+          })
+          .example([["$0 enable pi", "Enable pi for install/uninstall/show"]]),
+      (argv) => {
+        process.exitCode = runEnableDisableCliCommand(argv.cli as string, true, {
+          home: argv.home as string | undefined,
+        });
+      }
+    )
+    .command(
+      "disable <cli>",
+      "Disable MCP-server and skill installation for a supported CLI",
+      (yargs) =>
+        yargs
+          .positional("cli", {
+            type: "string",
+            describe: `CLI name: ${supportedCliNames()}`,
+          })
+          .option("home", {
+            type: "string",
+            description: "Home-directory override for the settings file (default: user home)",
+          })
+          .example([["$0 disable claude", "Disable claude for install/uninstall/show"]]),
+      (argv) => {
+        process.exitCode = runEnableDisableCliCommand(argv.cli as string, false, {
+          home: argv.home as string | undefined,
+        });
+      }
+    )
+    .command(
+      "install",
+      "Register the mcp-google-map stdio server and install packaged skills for every enabled CLI",
+      (yargs) =>
+        yargs
+          .option("home", {
+            type: "string",
+            description: "Home-directory override for CLI configuration paths (default: user home)",
+          })
+          .option("apikey", {
+            alias: "k",
+            type: "string",
+            description: "Google Maps API key embedded in the registered entry (prefer GOOGLE_MAPS_API_KEY)",
+            default: resolveRuntimeConfig(process.env, { envFile: extractEnvFileOption(process.argv) }).apiKey,
+          })
+          .example([["$0 install", "Register the server and skills in every enabled CLI"]]),
+      (argv) => {
+        process.exitCode = runInstallUninstallCommand("install", {
+          home: argv.home as string | undefined,
+          apiKey: argv.apikey as string | undefined,
+          resourcesRoot: resolveSkillsResourcesRoot(resolve(__dirname, "..")),
+        });
+      }
+    )
+    .command(
+      "uninstall",
+      "Remove the mcp-google-map server entry and managed skills from every enabled CLI",
+      (yargs) =>
+        yargs
+          .option("home", {
+            type: "string",
+            description: "Home-directory override for CLI configuration paths (default: user home)",
+          })
+          .example([["$0 uninstall", "Reciprocal removal of install for every enabled CLI"]]),
+      (argv) => {
+        process.exitCode = runInstallUninstallCommand("uninstall", {
+          home: argv.home as string | undefined,
+          resourcesRoot: resolveSkillsResourcesRoot(resolve(__dirname, "..")),
+        });
+      }
+    )
+    .command(
+      "show",
+      "Show CLI configuration and installation status tables (human-readable)",
+      (yargs) =>
+        yargs
+          .option("home", {
+            type: "string",
+            description: "Home-directory override for CLI configuration paths (default: user home)",
+          })
+          .example([["$0 show", "Print CLI Configuration and Installation Status tables"]]),
+      (argv) => {
+        process.exitCode = runShowCommand({
+          home: argv.home as string | undefined,
+          resourcesRoot: resolveSkillsResourcesRoot(resolve(__dirname, "..")),
         });
       }
     )

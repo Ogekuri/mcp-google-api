@@ -163,6 +163,10 @@ mcp-google-map doctor --live --apikey "AIza..."         # also probes Geocoding,
 mcp-google-map doctor --live --probes geocoding,routes  # probe only the selected APIs
 mcp-google-map exec geocode '{"address":"Tokyo Tower"}' # one tool call from the terminal
 mcp-google-map batch-geocode -i addresses.txt -o results.json
+mcp-google-map enable pi claude                  # enable MCP registration + skills for specific CLIs
+mcp-google-map install                           # register the stdio server and install skills in every enabled CLI
+mcp-google-map uninstall                         # reciprocal removal of install in every enabled CLI
+mcp-google-map show                              # CLI Configuration and Installation Status tables
 mcp-google-map --env-file /path/to/.env doctor          # load an explicit environment file
 mcp-google-map snippet --client cursor                  # print an MCP client registration snippet (no files written)
 ```
@@ -173,6 +177,9 @@ mcp-google-map snippet --client cursor                  # print an MCP client re
 - `setup` is non-interactive: no prompts, no Google API calls, and no writes unless `--write-env` is passed; `--write-env` creates `.env` in `--env-dir` (default: current directory) only when it does not exist and never overwrites it.
 - `snippet` prints a valid `mcpServers` JSON registration to stdout (guidance notes on stderr) and never writes or edits configuration files; by default it embeds a literal placeholder, and `--env-key NAME` emits a `${NAME}` reference whose expansion is client-specific.
 - `--env-file <path>` loads exactly the given environment file for any command and exits 1 with a JSON error when the file is missing (no implicit `.env` fallback).
+- `enable <cli>` / `disable <cli>` manage the persisted enabled-CLI set at `~/.config/mcp-google-map/config.json`; accepted names (case-insensitive): `pi`, `openclaw`, `codex`, `antigravity`, `claude`; unsupported names exit 2 listing the supported ones.
+- `install` registers for every enabled CLI the stdio server entry `mcp-google-map` (`npx -y mcp-google-map --stdio`, embedding the resolved `GOOGLE_MAPS_API_KEY` when set) and installs every bundled skill; `uninstall` is the reciprocal removal. Per-CLI targets: pi `~/.pi/agent/mcp.json` + `~/.pi/agent/skills`, openclaw `~/.openclaw/openclaw.json` + `~/.openclaw/workspace/skills`, codex `~/.codex/config.toml` (`mcp_servers` table) + `~/.codex/skills`, antigravity `~/.gemini/settings.json` + `~/.gemini/config/skills`, claude `~/.claude.json` + `~/.claude/skills`. Existing unrelated configuration entries are always preserved.
+- `show` prints two human-readable tables: CLI Configuration (CLI, Enabled, MCP Config Path, Skills Config Path for all five CLIs) and Installation Status (Type, Name, CLI, Enabled, Installed with OK/MISSING/STALE per enabled CLI).
 - HTTP mode starts even without an API key and logs a warning; stdio mode and the CLI commands require a key (`--apikey` or `GOOGLE_MAPS_API_KEY`). When no HTTP instance can start (invalid or taken port), the process exits non-zero.
 
 ## Registering in an MCP client

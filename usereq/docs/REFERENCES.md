@@ -36,12 +36,16 @@
         ├── apiKeyManager.ts
         ├── autoUpdate.ts
         ├── clientSnippets.ts
+        ├── cliInstaller.ts
+        ├── cliSettings.ts
+        ├── cliShow.ts
+        ├── cliTargets.ts
         ├── configResolver.ts
         ├── requestContext.ts
         └── toolProfiles.ts
 ```
 
-# cli.ts | TypeScript | 1280L | 32 symbols | 16 imports | 42 comments
+# cli.ts | TypeScript | 1512L | 35 symbols | 20 imports | 46 comments
 > Path: `src/cli.ts`
 
 ## Imports
@@ -62,11 +66,15 @@ import { checkForUpdates } from "./utils/autoUpdate.js";
 import {
 import { describeToolsProfile } from "./utils/toolProfiles.js";
 import { renderClientSnippet, type SnippetClient, type SnippetOptions } from "./utils/clientSnippets.js";
+import { loadCliSettings, saveCliSettings } from "./utils/cliSettings.js";
+import { resolveCliTarget, supportedCliNames } from "./utils/cliTargets.js";
+import {
+import { buildCliShowReport } from "./utils/cliShow.js";
 ```
 
 ## Definitions
 
-### fn `export function extractEnvFileOption(argv: readonly string[]): string | undefined` (L41-52)
+### fn `export function extractEnvFileOption(argv: readonly string[]): string | undefined` (L50-61)
 - @brief Extracts the explicit `--env-file <path>` value from a raw argv array.
 - @details Scans for both `--env-file <path>` and `--env-file=<path>` forms
 before any command parsing so the file loads before option defaults are
@@ -75,7 +83,7 @@ captured. First match wins. Complexity O(n) in argv length; pure.
 - @return {string | undefined} Path value when present; undefined otherwise.
 - @satisfies CTN-009
 
-### fn `function loadEnvironment(envFile: string | undefined): void` (L67-80)
+### fn `function loadEnvironment(envFile: string | undefined): void` (L76-89)
 - @brief Loads environment files for the current CLI invocation.
 - @details Explicit mode (`envFile` set): loads exactly that file via
 `applyExplicitEnvFile` and exits 1 with a JSON stderr error when missing —
@@ -88,13 +96,13 @@ overrides already-set variables). Complexity O(file count).
 - @see applyExplicitEnvFile
 - @satisfies CTN-007, CTN-009
 
-### iface `export interface ServerStartupOutcome` (L88-92)
+### iface `export interface ServerStartupOutcome` (L97-101)
 - @brief Aggregated HTTP startup result across all configured server instances.
 - @details `started`/`failed` count per instance; `servers` holds only the
 instances that are listening, so a zero-length array with `started === 0`
 is the reliable-failure signal consumed by the default command (REQ-095).
 
-### fn `export async function startServer(` (L109-183)
+### fn `export async function startServer(` (L118-192)
 - @brief Starts every configured HTTP MCP server instance and reports the outcome.
 - @details Applies flag overrides to the environment, validates each instance
 port (integer 1-65535), skips invalid instances with remediation guidance
@@ -109,9 +117,9 @@ and returns the aggregate outcome. Default bind host is loopback
 - @see installShutdownHandlers
 - @satisfies REQ-008, REQ-009, REQ-096
 
-- type `export type ShutdownExitHook = (code: number) => void;` (L186)
+- type `export type ShutdownExitHook = (code: number) => void;` (L195)
 - @brief Exit hook signature used by the shutdown handler. */
-### fn `export function createShutdownHandler(` (L200-214)
+### fn `export function createShutdownHandler(` (L209-223)
 - @brief Builds a one-shot orderly shutdown handler for HTTP server instances.
 - @details On first invocation it stops every given server via
 `stopHttpServer()` (transport close + socket close, errors tolerated) and
@@ -123,7 +131,7 @@ signals never double-stop. Complexity O(servers).
 - @see stopHttpServer
 - @satisfies REQ-096
 
-### fn `export function installShutdownHandlers(servers: readonly BaseMcpServer[]): void` (L226-230)
+### fn `export function installShutdownHandlers(servers: readonly BaseMcpServer[]): void` (L235-239)
 - @brief Registers SIGINT/SIGTERM handlers that orderly-stop the given servers.
 - @details Wraps `createShutdownHandler` and attaches it to both signals so
 Ctrl-C and terminate requests close all HTTP sessions and the listening
@@ -133,32 +141,32 @@ socket before process exit (REQ-096). Complexity O(1).
 - @see createShutdownHandler
 - @satisfies REQ-096
 
-- type `type ExecFailureResponse = {` (L255)
-### iface `interface ExecOutput` (L260-262)
+- type `type ExecFailureResponse = {` (L264)
+### iface `interface ExecOutput` (L269-271)
 
-### iface `interface ExecStreams` (L264-267)
+### iface `interface ExecStreams` (L273-276)
 
-- type `type ExecToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L269)
-- type `export type DoctorCheck = {` (L271)
-- type `export type DoctorReport = {` (L277)
-- type `type DoctorToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L284)
-### fn `function isExecFailureResponse(result: unknown): result is ExecFailureResponse` (L286-293)
+- type `type ExecToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L278)
+- type `export type DoctorCheck = {` (L280)
+- type `export type DoctorReport = {` (L286)
+- type `type DoctorToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L293)
+### fn `function isExecFailureResponse(result: unknown): result is ExecFailureResponse` (L295-302)
 
-### fn `function getExecFailureMessage(toolName: string, result: ExecFailureResponse): string` (L295-303)
+### fn `function getExecFailureMessage(toolName: string, result: ExecFailureResponse): string` (L304-312)
 
-### fn `export async function execTool(toolName: string, params: any, apiKey: string): Promise<any>` (L305-439)
+### fn `export async function execTool(toolName: string, params: any, apiKey: string): Promise<any>` (L314-448)
 
-### fn `export async function runExecCommand(` (L449-454)
+### fn `export async function runExecCommand(` (L458-463)
 
-- type `export type DoctorProbeId = "geocoding" | "places-new" | "routes";` (L474)
+- type `export type DoctorProbeId = "geocoding" | "places-new" | "routes";` (L483)
 - @brief Selectable live-probe identifier used by `doctor --live --probes`. */
-### iface `export interface DoctorLiveProbe` (L477-482)
+### iface `export interface DoctorLiveProbe` (L486-491)
 - @brief Static definition of one billable live probe executed by doctor. */
 
-### iface `export interface DoctorProbesParseResult` (L514-517)
+### iface `export interface DoctorProbesParseResult` (L523-526)
 - @brief Parsed `--probes` CLI value: either valid probe ids or an error. */
 
-### fn `export function parseDoctorProbes(raw: string | undefined): DoctorProbesParseResult` (L529-551)
+### fn `export function parseDoctorProbes(raw: string | undefined): DoctorProbesParseResult` (L538-560)
 - @brief Parses the raw `--probes` CLI string into validated probe ids.
 - @details `undefined` input -> `{ probes: undefined }` (probe all three,
 legacy `--live` behavior). Splits on commas, trims, lowercases, maps through
@@ -168,13 +176,13 @@ with a remediation error. Complexity O(n) in items; pure.
 - @return {DoctorProbesParseResult} Validated ids, or `error` describing the invalid input.
 - @satisfies REQ-091
 
-### iface `export interface DoctorOptions` (L559-564)
+### iface `export interface DoctorOptions` (L568-573)
 - @brief Injectable doctor dependencies for deterministic testing.
 - @details `nodeVersion` overrides `process.versions.node`; `config` overrides
 environment-derived runtime configuration; `allToolNames` overrides the
 registered tool-name registry used by the profile check.
 
-### fn `export async function runDoctor(` (L588-593)
+### fn `export async function runDoctor(` (L597-602)
 - @brief Runs the readiness self-check decoupled from server startup.
 - @details Local checks (zero network calls): Node major >=
 `NODE_ENGINE_FLOOR` (22, aligned with `package.json` `engines`, REQ-070),
@@ -196,22 +204,22 @@ check fails; the caller maps it to the exit code.
 - @see describeToolsProfile
 - @satisfies REQ-070, REQ-071, REQ-072, REQ-089, REQ-090, REQ-091
 
-### iface `export interface SetupCheck` (L699-703)
+### iface `export interface SetupCheck` (L708-712)
 - @brief One named onboarding check result (`pass`, `fail`, or `skip`). */
 
-### iface `export interface SetupReport` (L706-710)
+### iface `export interface SetupReport` (L715-719)
 - @brief JSON-serializable outcome of the `setup` command. */
 
-### iface `export interface SetupFs` (L713-717)
+### iface `export interface SetupFs` (L722-726)
 - @brief Injectable filesystem surface used by `runSetup` (tests pass fakes). */
 
-### iface `export interface SetupDeps` (L720-724)
+### iface `export interface SetupDeps` (L729-733)
 - @brief Injectable dependencies for deterministic `runSetup` testing. */
 
-### iface `export interface SetupOptions` (L727-731)
+### iface `export interface SetupOptions` (L736-740)
 - @brief Inputs controlling `runSetup` behavior. */
 
-### fn `export async function runSetup(options: SetupOptions, deps: SetupDeps = {}): Promise<SetupReport>` (L748-830)
+### fn `export async function runSetup(options: SetupOptions, deps: SetupDeps = {}): Promise<SetupReport>` (L757-839)
 - @brief Runs the non-interactive onboarding self-check with optional `.env` scaffolding.
 - @details Zero prompts, zero Google API calls, zero writes unless `writeEnv`
 is true (REQ-087). Checks: Node major >= `NODE_ENGINE_FLOOR` (22);
@@ -226,7 +234,7 @@ state; API key presence from the resolved configuration (value hidden).
 - @see resolveRuntimeConfig
 - @satisfies PRJ-011, REQ-087, REQ-088
 
-### fn `export function runSnippetCommand(` (L846-848)
+### fn `export function runSnippetCommand(` (L855-857)
 - @brief Renders a client registration snippet and routes output per PRJ-008.
 - @details Delegates JSON construction to `renderClientSnippet`, writes the
 snippet JSON to `stdout` and each guidance note to `stderr` so stdout stays
@@ -238,43 +246,85 @@ JSON stderr error with exit code 1. Complexity O(1).
 - @see renderClientSnippet
 - @satisfies PRJ-010, REQ-092, REQ-093
 
-### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1148-1160)
+### fn `export function runEnableDisableCliCommand(` (L891-894)
+- @brief Enables or disables one supported CLI in the persisted settings.
+- @details Resolves the CLI adapter case-insensitively; unsupported names
+exit 2 with a JSON stderr error listing supported names (REQ-110).
+Idempotent: enabling an enabled CLI and disabling a disabled CLI succeed
+without rewriting the settings file (REQ-111). Success prints a JSON
+result on stdout (PRJ-008).
+- @param name {string} CLI name from the command line.
+- @param enable {boolean} True to enable; false to disable.
+- @param options {object} `{ home?, streams? }`; streams default to process streams.
+- @return {number} Exit code: 0 on success, 2 for an unsupported CLI.
+- @see loadCliSettings
+- @see saveCliSettings
+- @satisfies REQ-110, REQ-111
+
+### fn `export function runInstallUninstallCommand(` (L936-938)
+- @brief Shared handler for the `install` and `uninstall` commands.
+- @details Runs the requested operation over every enabled CLI, prints the
+aggregate JSON result on stdout, and exits 1 when any per-CLI failure was
+collected (REQ-116). With zero enabled CLIs prints the enable hint and
+exits 0 (REQ-119). Diagnostics ride in the JSON `errors` array so stdout
+stays the single machine-readable channel (PRJ-008).
+- @param operation {"install" | "uninstall"} Requested reciprocal operation.
+- @param options {object} `{ home?, apiKey?, resourcesRoot, streams? }`.
+- @return {number} Exit code: 0 on success or zero enabled CLIs, 1 on failures.
+- @see installEnabledCliResources
+- @see uninstallEnabledCliResources
+- @satisfies REQ-114, REQ-115, REQ-116, REQ-119
+
+### fn `export function runShowCommand(` (L984-985)
+- @brief Prints the CLI Configuration and Installation Status tables.
+- @details Delegates rendering to `buildCliShowReport` and writes the report
+text to stdout (human-readable exception to PRJ-008). Manifest or render
+failures surface as a JSON stderr error with exit code 1.
+- @param options {object} `{ home?, resourcesRoot, streams? }`.
+- @return {number} Exit code: 0 on success, 1 on a report failure.
+- @see buildCliShowReport
+- @satisfies REQ-117, REQ-118, REQ-119
+
+### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1380-1392)
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`extractEnvFileOption`|fn||41-52|export function extractEnvFileOption(argv: readonly strin...|
-|`loadEnvironment`|fn||67-80|function loadEnvironment(envFile: string | undefined): void|
-|`ServerStartupOutcome`|iface||88-92|export interface ServerStartupOutcome|
-|`startServer`|fn||109-183|export async function startServer(|
-|`ShutdownExitHook`|type||186||
-|`createShutdownHandler`|fn||200-214|export function createShutdownHandler(|
-|`installShutdownHandlers`|fn||226-230|export function installShutdownHandlers(servers: readonly...|
-|`ExecFailureResponse`|type||255||
-|`ExecOutput`|iface||260-262|interface ExecOutput|
-|`ExecStreams`|iface||264-267|interface ExecStreams|
-|`ExecToolRunner`|type||269||
-|`DoctorCheck`|type||271||
-|`DoctorReport`|type||277||
-|`DoctorToolRunner`|type||284||
-|`isExecFailureResponse`|fn||286-293|function isExecFailureResponse(result: unknown): result i...|
-|`getExecFailureMessage`|fn||295-303|function getExecFailureMessage(toolName: string, result: ...|
-|`execTool`|fn||305-439|export async function execTool(toolName: string, params: ...|
-|`runExecCommand`|fn||449-454|export async function runExecCommand(|
-|`DoctorProbeId`|type||474||
-|`DoctorLiveProbe`|iface||477-482|export interface DoctorLiveProbe|
-|`DoctorProbesParseResult`|iface||514-517|export interface DoctorProbesParseResult|
-|`parseDoctorProbes`|fn||529-551|export function parseDoctorProbes(raw: string | undefined...|
-|`DoctorOptions`|iface||559-564|export interface DoctorOptions|
-|`runDoctor`|fn||588-593|export async function runDoctor(|
-|`SetupCheck`|iface||699-703|export interface SetupCheck|
-|`SetupReport`|iface||706-710|export interface SetupReport|
-|`SetupFs`|iface||713-717|export interface SetupFs|
-|`SetupDeps`|iface||720-724|export interface SetupDeps|
-|`SetupOptions`|iface||727-731|export interface SetupOptions|
-|`runSetup`|fn||748-830|export async function runSetup(options: SetupOptions, dep...|
-|`runSnippetCommand`|fn||846-848|export function runSnippetCommand(|
-|`semaphore`|fn||1148-1160|const semaphore = async (tasks: (() => Promise<void>)[], ...|
+|`extractEnvFileOption`|fn||50-61|export function extractEnvFileOption(argv: readonly strin...|
+|`loadEnvironment`|fn||76-89|function loadEnvironment(envFile: string | undefined): void|
+|`ServerStartupOutcome`|iface||97-101|export interface ServerStartupOutcome|
+|`startServer`|fn||118-192|export async function startServer(|
+|`ShutdownExitHook`|type||195||
+|`createShutdownHandler`|fn||209-223|export function createShutdownHandler(|
+|`installShutdownHandlers`|fn||235-239|export function installShutdownHandlers(servers: readonly...|
+|`ExecFailureResponse`|type||264||
+|`ExecOutput`|iface||269-271|interface ExecOutput|
+|`ExecStreams`|iface||273-276|interface ExecStreams|
+|`ExecToolRunner`|type||278||
+|`DoctorCheck`|type||280||
+|`DoctorReport`|type||286||
+|`DoctorToolRunner`|type||293||
+|`isExecFailureResponse`|fn||295-302|function isExecFailureResponse(result: unknown): result i...|
+|`getExecFailureMessage`|fn||304-312|function getExecFailureMessage(toolName: string, result: ...|
+|`execTool`|fn||314-448|export async function execTool(toolName: string, params: ...|
+|`runExecCommand`|fn||458-463|export async function runExecCommand(|
+|`DoctorProbeId`|type||483||
+|`DoctorLiveProbe`|iface||486-491|export interface DoctorLiveProbe|
+|`DoctorProbesParseResult`|iface||523-526|export interface DoctorProbesParseResult|
+|`parseDoctorProbes`|fn||538-560|export function parseDoctorProbes(raw: string | undefined...|
+|`DoctorOptions`|iface||568-573|export interface DoctorOptions|
+|`runDoctor`|fn||597-602|export async function runDoctor(|
+|`SetupCheck`|iface||708-712|export interface SetupCheck|
+|`SetupReport`|iface||715-719|export interface SetupReport|
+|`SetupFs`|iface||722-726|export interface SetupFs|
+|`SetupDeps`|iface||729-733|export interface SetupDeps|
+|`SetupOptions`|iface||736-740|export interface SetupOptions|
+|`runSetup`|fn||757-839|export async function runSetup(options: SetupOptions, dep...|
+|`runSnippetCommand`|fn||855-857|export function runSnippetCommand(|
+|`runEnableDisableCliCommand`|fn||891-894|export function runEnableDisableCliCommand(|
+|`runInstallUninstallCommand`|fn||936-938|export function runInstallUninstallCommand(|
+|`runShowCommand`|fn||984-985|export function runShowCommand(|
+|`semaphore`|fn||1380-1392|const semaphore = async (tasks: (() => Promise<void>)[], ...|
 
 
 ---
@@ -1066,6 +1116,507 @@ returns null, logs to stderr only, and never throws (REQ-085).
 |`isNewerVersion`|fn||100-123|export function isNewerVersion(candidate: string, current...|
 |`toSegments`|fn||101-113|const toSegments = (version: string): number[] =>|
 |`checkForUpdates`|fn||142-143|export async function checkForUpdates(|
+
+
+---
+
+# cliInstaller.ts | TypeScript | 210L | 8 symbols | 4 imports | 9 comments
+> Path: `src/utils/cliInstaller.ts`
+- @brief Orchestrate MCP-server registration and skill installation for enabled CLIs.
+- @details Loads the enabled-CLI settings, reads the packaged skills
+manifest, and for each enabled CLI registers the stdio `mcp-google-map`
+entry in that CLI's MCP configuration plus synchronizes every manifest
+skill into that CLI's skills directory. Uninstallation is the exact
+reciprocal operation. Per-CLI failures are collected without stopping the
+remaining CLIs.
+- @satisfies PRJ-015, DES-020, REQ-114, REQ-115, REQ-116
+
+## Imports
+```
+import { existsSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { loadCliSettings, MCP_SERVER_NAME } from "./cliSettings.js";
+import {
+```
+
+## Definitions
+
+### iface `export interface ManifestSkill` (L28-34)
+- @brief One manifest skill entry from `src/resources/skills/manifest.json`.
+- @details `id` names the packaged `<id>/` directory holding `SKILL.md`.
+
+### iface `export interface CliOperationSummary` (L41-45)
+- @brief Per-CLI outcome of one install or uninstall run.
+- @details `server` counts the MCP registration (0 or 1); `skills` counts
+processed manifest skills for that CLI.
+
+### iface `export interface CliOperationResult` (L51-54)
+- @brief Aggregate outcome of one install or uninstall run.
+- @details Both lists are empty when no CLI is enabled (REQ-116, REQ-119).
+
+### fn `export function buildServerRegistration(apiKey: string | undefined):` (L65-75)
+- @brief Build the stdio MCP-server registration entry.
+- @details Launcher `npx -y mcp-google-map --stdio`; `env` embeds
+`GOOGLE_MAPS_API_KEY` only when resolved at install time, matching the
+prebuilt-package-first Quick Start.
+- @param apiKey {string | undefined} Resolved Google Maps API key.
+- @return {object} Registration entry consumed by every supported CLI.
+- @satisfies REQ-114
+
+### fn `export function resolveSkillsResourcesRoot(packageRoot: string): string` (L86-92)
+- @brief Resolve the packaged skills root for the running installation.
+- @details Checks `<packageRoot>/src/resources/skills` — the layout used
+both by from-source runs and by the published npm package, which ships the
+same subtree (PKG-024).
+- @param packageRoot {string} Package installation root.
+- @return {string} Absolute skills resources root.
+- @throws {Error} When the skills root directory is missing.
+
+### fn `export function loadSkillsManifest(resourcesRoot: string): ManifestSkill[]` (L101-132)
+- @brief Load and validate the packaged skills manifest.
+- @param resourcesRoot {string} Skills resources root directory.
+- @return {ManifestSkill[]} Manifest entries in file order.
+- @throws {Error} When the manifest is missing, malformed, or lists a missing
+`SKILL.md` path.
+
+### fn `export function installEnabledCliResources(options:` (L145-172)
+- @brief Install the MCP server entry and every manifest skill per enabled CLI.
+- @details For each enabled CLI in settings order: registers the stdio entry
+via `applyServerRegistration`, then synchronizes each manifest skill
+directory `<resourcesRoot>/<skill-id>` into `<skillsDir>/<skill-id>`.
+Failures are collected per CLI and remaining CLIs still run.
+- @param options {object} `{ home?, apiKey, resourcesRoot }`.
+- @return {CliOperationResult} Per-CLI summaries and failure diagnostics.
+- @throws {Error} When the skills manifest cannot be loaded (all CLIs fail).
+- @satisfies REQ-114, REQ-116
+
+### fn `export function uninstallEnabledCliResources(options:` (L185-210)
+- @brief Remove the MCP server entry and managed skills per enabled CLI.
+- @details Reciprocal of `installEnabledCliResources`: removes the managed
+server entry and deletes each manifest skill directory. Missing entries
+count as removed without failure; per-CLI failures are collected and
+remaining CLIs still run.
+- @param options {object} `{ home?, resourcesRoot }`.
+- @return {CliOperationResult} Per-CLI summaries and failure diagnostics.
+- @throws {Error} When the skills manifest cannot be loaded (all CLIs fail).
+- @satisfies REQ-115, REQ-116
+
+## Symbol Index
+|Symbol|Kind|Vis|Lines|Sig|
+|---|---|---|---|---|
+|`ManifestSkill`|iface||28-34|export interface ManifestSkill|
+|`CliOperationSummary`|iface||41-45|export interface CliOperationSummary|
+|`CliOperationResult`|iface||51-54|export interface CliOperationResult|
+|`buildServerRegistration`|fn||65-75|export function buildServerRegistration(apiKey: string | ...|
+|`resolveSkillsResourcesRoot`|fn||86-92|export function resolveSkillsResourcesRoot(packageRoot: s...|
+|`loadSkillsManifest`|fn||101-132|export function loadSkillsManifest(resourcesRoot: string)...|
+|`installEnabledCliResources`|fn||145-172|export function installEnabledCliResources(options:|
+|`uninstallEnabledCliResources`|fn||185-210|export function uninstallEnabledCliResources(options:|
+
+
+---
+
+# cliSettings.ts | TypeScript | 110L | 5 symbols | 2 imports | 8 comments
+> Path: `src/utils/cliSettings.ts`
+- @brief Persist the enabled-CLI set for the CLI configuration-management commands.
+- @details Stores `{"enabled": ["<cli>", ...]}` at
+`<home>/.config/mcp-google-map/config.json`. Loading tolerates missing,
+unreadable, non-object, or malformed content by returning normalized
+defaults; saving serializes with two-space indentation plus a trailing
+newline, writes a sibling temporary file, and replaces the target
+atomically. Adopted from the reference `skills` settings model
+(`$HOME/.config/skills/config.json`) so both tools share one UX.
+- @satisfies DES-018
+
+## Imports
+```
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+```
+
+## Definitions
+
+### iface `export interface CliSettings` (L35-37)
+- @brief User settings shape consumed by enable/disable/install/uninstall/show.
+- @details `enabled` lists canonical CLI names in persistence order.
+
+### fn `export function resolveCliSettingsPath(home?: string): string` (L45-48)
+- @brief Resolve the user settings file path for a home root.
+- @param home {string | undefined} Home-directory override; defaults to `os.homedir()`.
+- @return {string} Absolute settings file path.
+- @satisfies DES-018
+
+### fn `function uniqueStrings(value: unknown): string[]` (L55-64)
+- @brief Normalize an arbitrary parsed value into unique non-empty strings.
+- @param value {unknown} Candidate JSON value.
+- @return {string[]} Unique strings in first-seen order; empty for non-lists.
+
+### fn `export function loadCliSettings(home?: string): CliSettings` (L74-84)
+- @brief Load the user settings with normalized defaults.
+- @details Reads JSON from `resolveCliSettingsPath`; missing, unreadable,
+malformed, or non-object content yields `{ enabled: [] }`. Never throws.
+- @param home {string | undefined} Home-directory override.
+- @return {CliSettings} Normalized settings object.
+- @satisfies DES-018
+
+### fn `export function saveCliSettings(settings: CliSettings, home?: string): string` (L99-110)
+- @brief Persist settings to the user settings file atomically.
+- @details Creates parent directories, serializes with two-space indentation
+and a trailing newline, writes `<file>.tmp`, then renames over the target
+so readers never observe a partial file.
+- @param settings {CliSettings} Settings object to persist.
+- @param home {string | undefined} Home-directory override.
+- @return {string} Written settings file path.
+- @throws {Error} With descriptive message when directory creation, writing,
+or replacement fails; the temporary file is best-effort removed.
+- @satisfies DES-018
+- @post The settings file contains the serialized `settings` object.
+
+## Symbol Index
+|Symbol|Kind|Vis|Lines|Sig|
+|---|---|---|---|---|
+|`CliSettings`|iface||35-37|export interface CliSettings|
+|`resolveCliSettingsPath`|fn||45-48|export function resolveCliSettingsPath(home?: string): st...|
+|`uniqueStrings`|fn||55-64|function uniqueStrings(value: unknown): string[]|
+|`loadCliSettings`|fn||74-84|export function loadCliSettings(home?: string): CliSettings|
+|`saveCliSettings`|fn||99-110|export function saveCliSettings(settings: CliSettings, ho...|
+
+
+---
+
+# cliShow.ts | TypeScript | 183L | 6 symbols | 5 imports | 10 comments
+> Path: `src/utils/cliShow.ts`
+- @brief Render the CLI Configuration and Installation Status report tables.
+- @details Builds the human-readable `show` output: a CLI Configuration
+table covering every supported CLI (enabled state, MCP configuration
+path, skills destination path) and an Installation Status table listing
+the managed MCP server and every manifest skill per enabled CLI with
+OK / MISSING / STALE detection.
+- @satisfies REQ-117, REQ-118, REQ-119
+
+## Imports
+```
+import { join } from "node:path";
+import { relative, resolve } from "node:path";
+import { loadCliSettings, MCP_SERVER_NAME } from "./cliSettings.js";
+import { CLI_TARGETS, compareSkillTree, isServerRegistered, type CliTargetId } from "./cliTargets.js";
+import { loadSkillsManifest } from "./cliInstaller.js";
+```
+
+## Definitions
+
+### fn `function wrapCell(text: string, width: number): string[]` (L42-67)
+- @brief Wrap one cell value into fixed-width lines on word boundaries.
+- @details Collapses whitespace, splits overlong tokens into `width`-sized
+chunks, and greedily packs words without exceeding `width`.
+- @param text {string} Cell value to wrap.
+- @param width {number} Maximum line width in characters; MUST be positive.
+- @return {string[]} Rendered lines; `[""]` for an empty value.
+
+### fn `export function renderAsciiTable(headers: string[], rows: string[][], maxWidth = MAX_CELL_WIDTH): string` (L79-101)
+- @brief Render an ASCII grid table with aligned and wrapped cells.
+- @details Column widths are the longest cell capped by `maxWidth`; every
+row is emitted between `+---+` borders and multi-line cells are padded to
+the row height.
+- @param headers {string[]} Column header labels.
+- @param rows {string[][]} Row cell values.
+- @param maxWidth {number} Maximum column width in characters.
+- @return {string} Rendered table text without trailing newline.
+
+### fn `const renderRow = (cells: string[]): string[] =>` (L85-94)
+
+### fn `function buildCliRows(home?: string): string[][]` (L111-123)
+- @brief Build the CLI Configuration table rows.
+- @details One row per supported CLI in registry order: enabled yes/no,
+home-relative MCP configuration path, and home-relative skills directory.
+- @param home {string | undefined} Home-directory override.
+- @return {string[][]} `(CLI, Enabled, MCP Config Path, Skills Config Path)` rows.
+- @satisfies REQ-117
+
+### fn `function buildInstallRows(home: string | undefined, resourcesRoot: string): string[][]` (L135-160)
+- @brief Build the Installation Status table rows.
+- @details Emits rows only for enabled CLIs: one `Server` row for the
+managed `mcp-google-map` entry plus one `Skill` row per manifest skill,
+each with OK / MISSING / STALE detection.
+- @param home {string | undefined} Home-directory override.
+- @param resourcesRoot {string} Packaged skills resources root.
+- @return {string[][]} `(Type, Name, CLI, Enabled, Installed)` rows.
+- @satisfies REQ-118
+
+### fn `export function buildCliShowReport(options: { home?: string; resourcesRoot: string }): string` (L173-181)
+- @brief Build the complete `show` report text.
+- @details Renders the CLI Configuration table (always, REQ-119) and the
+Installation Status table (empty when no CLI is enabled), in this order,
+separated by a blank line. Manifest load failures propagate so the command
+handler reports a JSON error.
+- @param options {object} `{ home?, resourcesRoot }`.
+- @return {string} Report text with two titled tables.
+- @throws {Error} When the skills manifest cannot be loaded.
+- @satisfies REQ-117, REQ-118, REQ-119
+
+## Symbol Index
+|Symbol|Kind|Vis|Lines|Sig|
+|---|---|---|---|---|
+|`wrapCell`|fn||42-67|function wrapCell(text: string, width: number): string[]|
+|`renderAsciiTable`|fn||79-101|export function renderAsciiTable(headers: string[], rows:...|
+|`renderRow`|fn||85-94|const renderRow = (cells: string[]): string[] =>|
+|`buildCliRows`|fn||111-123|function buildCliRows(home?: string): string[][]|
+|`buildInstallRows`|fn||135-160|function buildInstallRows(home: string | undefined, resou...|
+|`buildCliShowReport`|fn||173-181|export function buildCliShowReport(options: { home?: stri...|
+
+
+---
+
+# cliTargets.ts | TypeScript | 528L | 27 symbols | 2 imports | 33 comments
+> Path: `src/utils/cliTargets.ts`
+- @brief Provide per-CLI MCP-configuration and skills-destination adapters.
+- @details Defines one adapter for each supported CLI agent (`pi`,
+`openclaw`, `codex`, `antigravity`, `claude`) resolving the MCP
+configuration file and the skills destination directory from an injectable
+home root. MCP registration applies read-modify-write: JSON targets merge
+the `mcpServers["mcp-google-map"]` entry preserving every unrelated key;
+the TOML target (codex) appends or removes the `[mcp_servers.<name>]`
+table without touching other tables. Skill synchronization copies packaged
+skill directories with overwrite and prunes stale files inside managed
+skill directories only, preserving unmanaged destination entries. Paths
+adopted from the reference `skills` installer targets.
+- @satisfies DES-017, DES-019, DES-020, REQ-110, REQ-112, REQ-113
+
+## Imports
+```
+import {
+import { join, relative, resolve } from "node:path";
+```
+
+## Definitions
+
+- type `export type CliTargetId = "pi" | "openclaw" | "codex" | "antigravity" | "claude";` (L34)
+- @brief Canonical identifiers of the supported CLI agents.
+- @details Registry order: pi, openclaw, codex, antigravity, claude.
+### iface `export interface McpServerRegistration` (L40-44)
+- @brief MCP-server registration entry written into CLI configurations.
+- @details stdio launcher shape consumed by every supported CLI agent.
+
+- type `export type CliConfigFormat = "json" | "toml";` (L51)
+- @brief Configuration format of one CLI's MCP configuration file.
+- @details `json` targets expose a `mcpServers` object map; `toml` targets
+expose `mcp_servers` tables (codex `config.toml`).
+### iface `export interface CliTarget` (L58-63)
+- @brief Adapter describing one supported CLI installation target.
+- @details Pure path/format descriptor; all operations are module functions
+parameterized by the adapter so each CLI stays data-driven.
+
+### fn `function homeRoot(home?: string): string` (L66-68)
+- @brief Resolve the effective home root. */
+
+### fn `export function resolveCliTarget(name: string): CliTarget | undefined` (L133-135)
+- @brief Resolve a CLI adapter by user-supplied name.
+- @details Trims surrounding whitespace and lowercases before the registry
+lookup, matching `pi`, `openclaw`, `codex`, `antigravity`, `claude`
+case-insensitively.
+- @param name {string} CLI name from the command line.
+- @return {CliTarget | undefined} Matching adapter; undefined when unsupported.
+- @satisfies REQ-110
+
+### fn `export function supportedCliNames(): string` (L142-144)
+- @brief Comma-separated list of supported CLI names for diagnostics.
+- @return {string} Ordered `pi, openclaw, codex, antigravity, claude`.
+- @satisfies REQ-110
+
+### fn `function readJsonConfig(configPath: string): Record<string, unknown>` (L154-161)
+- @brief Read and parse a JSON MCP configuration file.
+- @details Missing files yield `{}`; malformed JSON throws so the caller can
+fail that CLI without ever overwriting the user's file.
+- @param configPath {string} Target configuration file path.
+- @return {Record<string, unknown>} Parsed JSON object.
+- @throws {Error} When the file exists but is not valid JSON.
+
+### fn `function writeJsonConfig(configPath: string, value: Record<string, unknown>): void` (L173-178)
+- @brief Serialize and atomically write a JSON object to a file.
+- @details Two-space indentation, trailing newline, sibling `.tmp` write
+followed by rename; parent directories are created on demand.
+- @param configPath {string} Target file path.
+- @param value {Record<string, unknown>} Object to serialize.
+- @return {void}
+- @throws {Error} When serialization, writing, or renaming fails.
+- @satisfies DES-019
+
+### fn `export function writeJsonMcpServerEntry(` (L192-205)
+- @brief Register an MCP-server entry in a JSON `mcpServers` configuration.
+- @details Read-modify-write: parses the file (missing files start as `{}`),
+upserts `mcpServers.<serverName>` leaving every unrelated key untouched,
+and replaces the file atomically.
+- @param configPath {string} JSON configuration file path.
+- @param serverName {string} Server key inside `mcpServers`.
+- @param entry {McpServerRegistration} Registration entry to upsert.
+- @return {void}
+- @throws {Error} When the existing file is malformed or the write fails.
+- @satisfies DES-019, REQ-112
+
+### fn `export function removeJsonMcpServerEntry(configPath: string, serverName: string): boolean` (L218-232)
+- @brief Remove an MCP-server entry from a JSON `mcpServers` configuration.
+- @details Deletes `mcpServers.<serverName>` when present and rewrites the
+file atomically; an empty `mcpServers` object is kept to minimize
+disruption. Missing files are a successful no-op.
+- @param configPath {string} JSON configuration file path.
+- @param serverName {string} Server key inside `mcpServers`.
+- @return {boolean} True when an entry was removed; false when absent.
+- @throws {Error} When the existing file is malformed or the write fails.
+- @satisfies DES-019, REQ-115
+
+### fn `export function readJsonMcpServerEntry(` (L240-254)
+- @brief Read one MCP-server entry from a JSON configuration.
+- @param configPath {string} JSON configuration file path.
+- @param serverName {string} Server key inside `mcpServers`.
+- @return {McpServerRegistration | undefined} Entry when registered; undefined otherwise.
+
+### fn `function tomlString(value: string): string` (L262-264)
+- @brief Escape a value as a TOML basic string.
+- @details Escapes backslash and double-quote characters.
+- @param value {string} Raw string value.
+- @return {string} Quoted TOML basic string.
+
+### fn `function tomlSectionHeader(serverName: string): string` (L271-273)
+- @brief Header line of one managed server's TOML table.
+- @param serverName {string} Server key inside `mcp_servers`.
+- @return {string} Exact `[mcp_servers.<serverName>]` header line.
+
+### fn `function removeTomlSection(content: string, serverName: string): string` (L284-309)
+- @brief Remove one managed server's TOML table from raw content.
+- @details Deletes the `[mcp_servers.<name>]` header line plus its body up to
+the next top-level `[` table header or EOF, collapsing the resulting
+duplicate blank separators. Other tables are preserved byte-for-byte.
+- @param content {string} Raw TOML document content.
+- @param serverName {string} Server key inside `mcp_servers`.
+- @return {string} Content with the managed table removed.
+
+### fn `function hasTomlSection(content: string, serverName: string): boolean` (L317-319)
+- @brief Detect one managed server's TOML table in raw content.
+- @param content {string} Raw TOML document content.
+- @param serverName {string} Server key inside `mcp_servers`.
+- @return {boolean} True when the `[mcp_servers.<name>]` header line exists.
+
+### fn `function registrationToTomlLines(entry: McpServerRegistration): string[]` (L326-336)
+- @brief Serialize a registration entry as TOML table lines.
+- @param entry {McpServerRegistration} Registration entry.
+- @return {string[]} `command`, optional `args`, and optional `env` lines.
+
+### fn `export function writeTomlMcpServerSection(` (L350-363)
+- @brief Register an MCP-server table in a TOML configuration file.
+- @details Reads the file (missing files start empty), removes any existing
+managed table, then appends the fresh `[mcp_servers.<name>]` table. Other
+tables are preserved; the write is atomic via sibling `.tmp` + rename.
+- @param configPath {string} TOML configuration file path.
+- @param serverName {string} Server key inside `mcp_servers`.
+- @param entry {McpServerRegistration} Registration entry to write.
+- @return {void}
+- @throws {Error} When reading or writing fails.
+- @satisfies DES-019, REQ-112
+
+### fn `export function removeTomlMcpServerSection(configPath: string, serverName: string): boolean` (L375-384)
+- @brief Remove an MCP-server table from a TOML configuration file.
+- @details Missing files and absent tables are successful no-ops; otherwise
+the managed table is removed and the file is rewritten atomically.
+- @param configPath {string} TOML configuration file path.
+- @param serverName {string} Server key inside `mcp_servers`.
+- @return {boolean} True when a table was removed; false when absent.
+- @throws {Error} When reading or writing fails.
+- @satisfies DES-019, REQ-115
+
+### fn `export function hasTomlMcpServerSection(configPath: string, serverName: string): boolean` (L392-395)
+- @brief Detect one managed server's TOML table in a configuration file.
+- @param configPath {string} TOML configuration file path.
+- @param serverName {string} Server key inside `mcp_servers`.
+- @return {boolean} True when the managed table header exists.
+
+### fn `function listFilesRecursive(root: string): string[]` (L402-417)
+- @brief Recursively list relative file paths under a directory.
+- @param root {string} Directory to scan.
+- @return {string[]} POSIX-style relative file paths; empty when the directory is absent.
+
+### fn `const walk = (dir: string): void =>` (L405-414)
+
+### fn `export function syncSkillTree(source: string, destination: string): void` (L433-443)
+- @brief Synchronize one packaged skill directory into a destination.
+- @details Creates the destination, recursively copies every packaged file
+with overwrite, then deletes destination files and directories absent from
+the package — strictly inside the managed skill directory, so sibling
+unmanaged skills are never touched. Pruning runs deepest-first.
+- @param source {string} Packaged skill directory containing `SKILL.md`.
+- @param destination {string} Target `<skillsDir>/<skill-id>` path.
+- @return {void}
+- @throws {Error} When copying or pruning fails.
+- @satisfies DES-020
+- @pre `source` MUST exist.
+- @post `destination` mirrors exactly the packaged skill tree.
+
+### fn `export function removeSkillDir(skillDir: string): void` (L454-456)
+- @brief Remove one managed skill directory from a skills destination.
+- @details Missing directories are successful no-ops; nothing outside the
+named directory is touched and no directory is created.
+- @param skillDir {string} Managed `<skillsDir>/<skill-id>` path.
+- @return {void}
+- @throws {Error} When recursive deletion fails.
+- @satisfies DES-020, REQ-115
+
+### fn `export function compareSkillTree(source: string, destination: string): "OK" | "MISSING" | "STALE"` (L468-480)
+- @brief Compare one packaged skill directory with its installed copy.
+- @details Every packaged regular file must exist in the destination with
+identical bytes; extra destination files are ignored (staleness is judged
+only on packaged content).
+- @param source {string} Packaged skill directory.
+- @param destination {string} Installed skill directory.
+- @return {string} `OK` when all packaged files match, `MISSING` when the
+package or destination is absent, `STALE` on byte mismatch.
+
+### fn `export function isServerRegistered(target: CliTarget, serverName: string, home?: string): boolean` (L489-495)
+- @brief Detect whether a CLI has the managed server entry registered.
+- @param target {CliTarget} CLI adapter.
+- @param serverName {string} Managed server key.
+- @param home {string | undefined} Home-directory override.
+- @return {boolean} True when the entry/table is present and parseable.
+
+### fn `export function applyServerRegistration(` (L508-528)
+- @brief Write or remove the managed server entry for one CLI target.
+- @param target {CliTarget} CLI adapter.
+- @param serverName {string} Managed server key.
+- @param entry {McpServerRegistration | undefined} Entry to register;
+undefined removes the entry.
+- @param home {string | undefined} Home-directory override.
+- @return {void}
+- @throws {Error} When the configuration read-modify-write fails.
+- @satisfies DES-019, REQ-112, REQ-115
+
+## Symbol Index
+|Symbol|Kind|Vis|Lines|Sig|
+|---|---|---|---|---|
+|`CliTargetId`|type||34||
+|`McpServerRegistration`|iface||40-44|export interface McpServerRegistration|
+|`CliConfigFormat`|type||51||
+|`CliTarget`|iface||58-63|export interface CliTarget|
+|`homeRoot`|fn||66-68|function homeRoot(home?: string): string|
+|`resolveCliTarget`|fn||133-135|export function resolveCliTarget(name: string): CliTarget...|
+|`supportedCliNames`|fn||142-144|export function supportedCliNames(): string|
+|`readJsonConfig`|fn||154-161|function readJsonConfig(configPath: string): Record<strin...|
+|`writeJsonConfig`|fn||173-178|function writeJsonConfig(configPath: string, value: Recor...|
+|`writeJsonMcpServerEntry`|fn||192-205|export function writeJsonMcpServerEntry(|
+|`removeJsonMcpServerEntry`|fn||218-232|export function removeJsonMcpServerEntry(configPath: stri...|
+|`readJsonMcpServerEntry`|fn||240-254|export function readJsonMcpServerEntry(|
+|`tomlString`|fn||262-264|function tomlString(value: string): string|
+|`tomlSectionHeader`|fn||271-273|function tomlSectionHeader(serverName: string): string|
+|`removeTomlSection`|fn||284-309|function removeTomlSection(content: string, serverName: s...|
+|`hasTomlSection`|fn||317-319|function hasTomlSection(content: string, serverName: stri...|
+|`registrationToTomlLines`|fn||326-336|function registrationToTomlLines(entry: McpServerRegistra...|
+|`writeTomlMcpServerSection`|fn||350-363|export function writeTomlMcpServerSection(|
+|`removeTomlMcpServerSection`|fn||375-384|export function removeTomlMcpServerSection(configPath: st...|
+|`hasTomlMcpServerSection`|fn||392-395|export function hasTomlMcpServerSection(configPath: strin...|
+|`listFilesRecursive`|fn||402-417|function listFilesRecursive(root: string): string[]|
+|`walk`|fn||405-414|const walk = (dir: string): void =>|
+|`syncSkillTree`|fn||433-443|export function syncSkillTree(source: string, destination...|
+|`removeSkillDir`|fn||454-456|export function removeSkillDir(skillDir: string): void|
+|`compareSkillTree`|fn||468-480|export function compareSkillTree(source: string, destinat...|
+|`isServerRegistered`|fn||489-495|export function isServerRegistered(target: CliTarget, ser...|
+|`applyServerRegistration`|fn||508-528|export function applyServerRegistration(|
 
 
 ---

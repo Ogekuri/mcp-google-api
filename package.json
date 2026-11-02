@@ -9,6 +9,7 @@
   },
   "files": [
     "dist",
+    "src/resources/skills",
     "README.md",
     "docs",
     ".env.example"

@@ -16,7 +16,7 @@ This document MUST follow these authoring rules (LLM-first, normative SRS):
   - Do NOT add YAML front matter or in-document revision history; use git history / CHANGELOG.md for change tracking.
 
 ### 1.2 Project Scope
-`mcp-google-map` (v0.0.0, GPL-3.0) is a Model Context Protocol (MCP) server exposing 18 Google Maps tools (geocoding, Places API (New), Routes, Weather, Air Quality, Time Zone, Elevation, Static Maps) to AI agents over stdio or Streamable HTTP, plus a standalone CLI (`doctor`, `exec`, `batch-geocode`, `setup`, `snippet`). Boundaries: read-only Google API queries only; no persistence, no caching layer, no user management, no write operations.
+`mcp-google-map` (v0.0.0, GPL-3.0) is a Model Context Protocol (MCP) server exposing 18 Google Maps tools (geocoding, Places API (New), Routes, Weather, Air Quality, Time Zone, Elevation, Static Maps) to AI agents over stdio or Streamable HTTP, plus a standalone CLI (`doctor`, `exec`, `batch-geocode`, `setup`, `snippet`, `enable`, `disable`, `install`, `uninstall`, `show`). Boundaries: read-only Google API queries only; no persistence, no caching layer, no user management, no write operations.
 
 Project file/folder structure (evidence: repository tree):
 
@@ -68,12 +68,13 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 ### 2.1 Project Functions
 - **PRJ-001**: MUST expose 18 Google Maps MCP tools: maps_geocode, maps_reverse_geocode, maps_search_nearby, maps_search_places, maps_place_details, maps_directions, maps_distance_matrix, maps_elevation, maps_timezone, maps_weather, maps_explore_area, maps_plan_route, maps_compare_places, maps_air_quality, maps_static_map, maps_batch_geocode, maps_search_along_route, maps_local_rank_tracker.
 - **PRJ-002**: MUST serve tool calls over both stdio transport and Streamable HTTP transport at endpoint path `/mcp`.
-- **PRJ-003**: MUST provide a standalone CLI with commands: `doctor`, `exec <tool> [params]`, `batch-geocode`, `setup`, `snippet`, and default server-start command.
+- **PRJ-003**: MUST provide a standalone CLI with commands: `doctor`, `exec <tool> [params]`, `batch-geocode`, `setup`, `snippet`, `enable <cli>`, `disable <cli>`, `install`, `uninstall`, `show`, and default server-start command.
 - **PRJ-004**: MUST provide composite tools (explore-area, plan-route, compare-places, search-along-route, local-rank-tracker) that chain geocoding, search, details, and routing calls internally.
 - **PRJ-005**: MUST support per-request and per-session Google Maps API keys so concurrent HTTP clients use isolated credentials.
 - **PRJ-006**: MUST allow restricting exposed tools via the `GOOGLE_MAPS_ENABLED_TOOLS` comma-separated allowlist environment variable resolved through the central typed configuration.
 - **PRJ-007**: MUST provide CLI batch geocoding of address files or stdin with bounded concurrency and JSON summary output.
-- **PRJ-008**: MUST report machine-readable JSON results on stdout and diagnostics on stderr in all CLI modes.
+- **PRJ-008**: MUST report machine-readable JSON results on stdout and diagnostics on stderr in all CLI modes except the human-readable `show` report tables.
+- **PRJ-015**: MUST provide CLI commands `enable <cli>`, `disable <cli>`, `install`, `uninstall`, and `show` managing MCP-server registration and packaged skill installation across supported CLI agents.
 - **PRJ-009**: MUST provide machine-readable tool/API dependency profiles covering all 18 tools, including the tool dependencies of composite tools.
 - **PRJ-010**: MUST provide a `snippet` CLI command that prints valid MCP-client registration snippets without modifying any client configuration file.
 - **PRJ-011**: MUST provide a non-interactive `setup` CLI command that verifies local readiness without prompts or Google API calls.
@@ -115,6 +116,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-020**: MUST document developer setup using lockfile-based `npm ci` and cross-platform npm commands in `README.md`.
 - **PKG-021**: MUST install the packed tarball into a temporary CI environment and run the installed `doctor` local smoke check without Google API calls.
 - **PKG-022**: MUST keep every documented example consistent with supported CLI flags, headers, and transports.
+- **PKG-023**: MUST document `enable`, `disable`, `install`, `uninstall`, and `show` commands with supported CLI targets in README.md.
+- **PKG-024**: MUST ship `src/resources/skills` inside the published npm package so `install` and `show` resolve manifest skills from installed packages.
 
 ## 3. Requirements
 
@@ -135,6 +138,10 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **DES-014**: MUST implement doctor self-checks decoupled from server startup with injectable tool runner, Node version, and configuration dependencies for testing (`runDoctor`, `src/cli.ts`).
 - **DES-015**: MUST resolve runtime configuration (API key, host, port, enabled tools, update flag, env file) in one typed resolver consumed by every CLI command.
 - **DES-016**: MUST mask secret values via a single masking helper in every diagnostic, doctor, and setup report.
+- **DES-017**: MUST implement per-CLI target adapters for pi, openclaw, codex, antigravity, and claude resolving each MCP configuration file and skills destination directory from an injectable home root.
+- **DES-018**: MUST persist the enabled-CLI set as `{ "enabled": [<cli>...] }` JSON at `~/.config/mcp-google-map/config.json`, tolerating missing or malformed content and writing atomically.
+- **DES-019**: MUST apply MCP-server registration through read-modify-write preserving every unrelated configuration entry, with atomic temporary-file replacement.
+- **DES-020**: MUST synchronize packaged skills into CLI skills destinations copying all packaged files with overwrite and pruning stale files inside managed skill directories only.
 
 ### 3.2 Functions
 
@@ -268,6 +275,18 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-107**: The `venue-discovery` skill MUST instruct `includeRaw: true` for auditable `raw_place`/`raw` payload capture and MUST document that `pageToken` is forwarded but has no server-side effect.
 - **REQ-108**: The `venue-discovery` skill MUST retain a binding anti-fabrication regression case where a high-rating over-budget venue is excluded.
 - **REQ-109**: The `venue-discovery` skill MUST obtain its economic and quality filtering via REQ-027 and its audit payloads via REQ-030 and REQ-033.
+
+#### CLI Configuration Management
+- **REQ-110**: MUST resolve CLI names pi, openclaw, codex, antigravity, claude case-insensitively; unsupported names MUST fail listing supported names.
+- **REQ-111**: `enable <cli>` MUST add and `disable <cli>` MUST remove the resolved CLI name in the persisted enabled set; both MUST be idempotent.
+- **REQ-112**: MUST resolve MCP configuration files: pi `~/.pi/agent/mcp.json`, openclaw `~/.openclaw/openclaw.json`, codex `~/.codex/config.toml` (`mcp_servers` table), antigravity `~/.gemini/settings.json`, claude `~/.claude.json` (JSON `mcpServers` map).
+- **REQ-113**: MUST resolve skills directories: pi `~/.pi/agent/skills`, openclaw `~/.openclaw/workspace/skills`, codex `~/.codex/skills`, antigravity `~/.gemini/config/skills`, claude `~/.claude/skills`.
+- **REQ-114**: `install` MUST register per enabled CLI the stdio entry `mcp-google-map` launching `npx -y mcp-google-map --stdio`, embedding the resolved `GOOGLE_MAPS_API_KEY` when set, and install every manifest skill.
+- **REQ-115**: `uninstall` MUST remove per enabled CLI the `mcp-google-map` MCP entry and managed skill directories; absent entries MUST count as removed without failure.
+- **REQ-116**: `install` and `uninstall` MUST process enabled CLIs only, report per-CLI counts, continue on per-CLI failures, and exit 1 when any failure occurs.
+- **REQ-117**: `show` MUST print a CLI Configuration table with columns CLI, Enabled, MCP Config Path, Skills Config Path covering all five supported CLIs in registry order.
+- **REQ-118**: `show` MUST print an Installation Status table with columns Type, Name, CLI, Enabled, Installed listing the server and each manifest skill per enabled CLI with OK, MISSING, or STALE status.
+- **REQ-119**: `install` and `uninstall` with zero enabled CLIs MUST print the enable hint and exit 0; `show` MUST always print the CLI Configuration table.
 
 ### 3.3 Known Limitations (True State)
 - **LIM-001**: `maps_search_nearby` may return fewer than 20 results when client-side `openNow`/`minRating` filters discard matches post-query.

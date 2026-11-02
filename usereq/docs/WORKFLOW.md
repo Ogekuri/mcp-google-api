@@ -3,7 +3,7 @@
 ## Execution Units Index
 | ID | Type | Parent | Role | Entrypoint(s) | Defining File(s) |
 |---|---|---|---|---|---|
-| PROC:main | process | - | Single Node.js ESM process hosting all runtime modes: MCP HTTP server, MCP stdio server, `exec` CLI, `doctor` CLI, `batch-geocode` CLI, `setup` CLI, `snippet` CLI | `yargs.parse()` command dispatch; `startServer(...)`; `runExecCommand(...)`; `runDoctor(...)`; `runSetup(...)`; `runSnippetCommand(...)`; `batch-geocode` command handler; `BaseMcpServer.startStdio()` | `src/cli.ts`, `src/core/BaseMcpServer.ts` |
+| PROC:main | process | - | Single Node.js ESM process hosting all runtime modes: MCP HTTP server, MCP stdio server, `exec` CLI, `doctor` CLI, `batch-geocode` CLI, `setup` CLI, `snippet` CLI, `enable`/`disable` CLI, `install`/`uninstall` CLI, `show` CLI | `yargs.parse()` command dispatch; `startServer(...)`; `runExecCommand(...)`; `runDoctor(...)`; `runSetup(...)`; `runSnippetCommand(...)`; `runEnableDisableCliCommand(...)`; `runInstallUninstallCommand(...)`; `runShowCommand(...)`; `batch-geocode` command handler; `BaseMcpServer.startStdio()` | `src/cli.ts`, `src/core/BaseMcpServer.ts` |
 
 - Threads: no explicit threads detected for `PROC:main` — `src/` contains no `worker_threads`, `cluster`, or `child_process` usage. All concurrency is event-loop based (`Promise.all`, `Promise.race`, async/await); Node.js libuv pool usage is an implicit runtime detail, not created by `src/` code.
 
@@ -19,8 +19,11 @@
   - `exec <tool> [params]` handler → `runExecCommand(...)`.
   - `doctor` handler → `runDoctor(...)`.
   - `batch-geocode` handler → inline semaphore pipeline.
+  - `enable <cli>` / `disable <cli>` handlers → `runEnableDisableCliCommand(...)`.
+  - `install` / `uninstall` handlers → `runInstallUninstallCommand(...)`.
+  - `show` handler → `runShowCommand(...)`.
 - Lifecycle / trigger:
-  - Start: `node dist/cli.js [command] [options]`; module scope loads `.env` (cwd first, then package dir) and registers four yargs commands.
+  - Start: `node dist/cli.js [command] [options]`; module scope loads `.env` (cwd first, then package dir) and registers the yargs commands (doctor, setup, snippet, enable, disable, install, uninstall, show, exec, batch-geocode, default server-start).
   - Server modes: HTTP mode persists via `app.listen(port, host)`; stdio mode persists via `StdioServerTransport` holding the stdin stream open. No signal handlers are registered in `src/`; server modes stop only when the transport closes or the process is killed. `BaseMcpServer.stopHttpServer()` is the internal HTTP stop path but is not wired to any entrypoint in `src/`.
   - CLI modes: run handler to completion; exit code set via `process.exitCode` (exec, doctor) or `process.exit(...)` (batch-geocode).
   - Loops/blocks: event loop blocks on stdin (stdio mode) or on the listening HTTP socket (HTTP mode); tool calls await outbound HTTPS requests; per-session state kept in `BaseMcpServer.sessions` (in-memory).
@@ -251,11 +254,55 @@
       - `renderClientSnippet(options)`: stdio entry (launchers `npx`/`node`/`bin`; literal placeholder default, `${NAME}` reference with `--env-key`) or HTTP `{ url }` entry; target-file notes per client [`src/utils/clientSnippets.ts`]
       - external: `JSON.stringify`, process streams
 
+  TRACE-K: CLI configuration-management modes (enable/disable/install/uninstall/show) [`src/cli.ts`]
+  - `enable <cli>` / `disable <cli>` handlers: resolve the CLI adapter and update the persisted enabled set; idempotent; unsupported names exit 2 listing supported names
+    - `runEnableDisableCliCommand(name, enable, { home?, streams? })`: adapter lookup, settings update, JSON result on stdout [`src/cli.ts`]
+      - `resolveCliTarget(name)`: trim + lowercase registry lookup [`src/utils/cliTargets.ts`]
+        - `CLI_TARGETS`: per-CLI adapters pi, openclaw, codex, antigravity, claude; MCP config file (JSON `mcpServers` or codex TOML `mcp_servers`) + skills destination per CLI
+        - `supportedCliNames()`: ordered supported-name listing for diagnostics
+      - `loadCliSettings(home)` / `saveCliSettings(settings, home)`: read and atomically persist `{ enabled: [...] }` at `~/.config/mcp-google-map/config.json` [`src/utils/cliSettings.ts`]
+        - `resolveCliSettingsPath(home)`: `<home>/.config/mcp-google-map/config.json`
+        - external: `readFileSync`/`writeFileSync`/`renameSync` (atomic `.tmp` replace)
+  - `install` / `uninstall` handlers: register or remove the stdio `mcp-google-map` entry and synchronize managed skills for every enabled CLI
+    - `runInstallUninstallCommand(operation, { home?, apiKey?, resourcesRoot, streams? })`: zero-enabled hint (exit 0), operation dispatch, aggregate JSON on stdout, exit 1 on any per-CLI failure [`src/cli.ts`]
+      - `installEnabledCliResources({ home, apiKey, resourcesRoot })` / `uninstallEnabledCliResources({ home, resourcesRoot })`: per-enabled-CLI loop, per-CLI error collection, remaining CLIs still run [`src/utils/cliInstaller.ts`]
+        - `loadCliSettings(home)`: enabled set (as TRACE-K enable path)
+        - `loadSkillsManifest(resourcesRoot)`: validated `manifest.json` entries [`src/utils/cliInstaller.ts`]
+          - `resolveSkillsResourcesRoot(packageRoot)`: `<packageRoot>/src/resources/skills` existence check
+          - external: `readFileSync`, `existsSync`
+        - `buildServerRegistration(apiKey)`: `{ command: "npx", args: ["-y", "mcp-google-map", "--stdio"], env: { GOOGLE_MAPS_API_KEY? } }`
+        - `applyServerRegistration(target, serverName, entry | undefined, home)`: format-dispatched write/remove [`src/utils/cliTargets.ts`]
+          - `writeJsonMcpServerEntry(configPath, name, entry)` / `removeJsonMcpServerEntry(configPath, name)`: read-modify-write of the `mcpServers` map preserving unrelated keys; atomic `.tmp` + rename [`src/utils/cliTargets.ts`]
+            - `readJsonConfig(path)` / `writeJsonConfig(path, value)`: tolerant read (missing -> `{}`; malformed -> throw) and atomic write
+            - `readJsonMcpServerEntry(path, name)`: entry presence read for status checks
+          - `writeTomlMcpServerSection(path, name, entry)` / `removeTomlMcpServerSection(path, name)`: codex `config.toml` `[mcp_servers.<name>]` table append/remove preserving other tables; atomic `.tmp` + rename [`src/utils/cliTargets.ts`]
+            - `removeTomlSection(content, name)` / `hasTomlSection(content, name)`: line-oriented managed-table splice and detection
+            - `registrationToTomlLines(entry)`: `command`/`args`/`env` table body serialization
+          - `isServerRegistered(target, name, home)`: entry presence per format
+        - `syncSkillTree(source, destination)` per manifest skill (install): copy with overwrite + prune stale files strictly inside the managed skill directory [`src/utils/cliTargets.ts`]
+          - `listFilesRecursive(root)`: relative file enumeration
+          - external: `cpSync`, `mkdirSync`, `rmSync`
+        - `removeSkillDir(skillDir)` per manifest skill (uninstall): managed-directory recursive delete [`src/utils/cliTargets.ts`]
+          - external: `rmSync`
+  - `show` handler: prints the human-readable CLI Configuration and Installation Status tables (exception to the PRJ-008 JSON rule)
+    - `runShowCommand({ home?, resourcesRoot, streams? })`: report to stdout; JSON stderr error + exit 1 on manifest failure [`src/cli.ts`]
+      - `buildCliShowReport({ home, resourcesRoot })`: two titled tables joined by a blank line [`src/utils/cliShow.ts`]
+        - `renderAsciiTable(headers, rows)`: wrapped fixed-width ASCII grid [`src/utils/cliShow.ts`]
+          - `wrapCell(text, width)`: word-boundary cell wrapping
+        - `buildCliRows(home)`: one row per supported CLI in registry order (enabled yes/no, home-relative MCP config path, home-relative skills path)
+          - `loadCliSettings(home)` (as TRACE-K enable path) [`src/utils/cliSettings.ts`]
+          - `CLI_TARGETS` path resolvers [`src/utils/cliTargets.ts`]
+        - `buildInstallRows(home, resourcesRoot)`: per enabled CLI one `Server` row plus one `Skill` row per manifest skill with OK/MISSING/STALE status
+          - `loadSkillsManifest(resourcesRoot)` (as TRACE-K install path) [`src/utils/cliInstaller.ts`]
+          - `isServerRegistered(target, name, home)`: server entry detection [`src/utils/cliTargets.ts`]
+          - `compareSkillTree(source, destination)`: packaged-vs-installed byte comparison [`src/utils/cliTargets.ts`]
+            - `listFilesRecursive(root)` [`src/utils/cliTargets.ts`]
+
 - External Boundaries:
   - stdio: stdin/stdout JSON-RPC framing (stdio-server mode); stdout guard installed in `connect(...)`.
   - network (inbound): Express HTTP listener on `http://{host}:{port}/mcp` (POST/GET/DELETE; SSE for GET).
   - network (outbound): `https://routes.googleapis.com` (computeRoutes, computeRouteMatrix), `https://registry.npmjs.org` (automatic update check, fire-and-forget, disabled by `MCP_AUTO_UPDATE_DISABLED`), `https://places.googleapis.com/v1/places:searchText`, `@googlemaps/places` `PlacesClient` (searchNearby, searchText, getPlace, getPhotoMedia), `@googlemaps/google-maps-services-js` `Client` (geocode, reverseGeocode, timezone, elevation), `https://weather.googleapis.com`, `https://airquality.googleapis.com`, `https://maps.googleapis.com/maps/api/staticmap`.
-  - filesystem: `.env` loads (dotenv; explicit `--env-file` loads exactly the given file), `package.json` version read (doctor/setup), setup `.env` scaffolding, batch-geocode input/output files.
+  - filesystem: `.env` loads (dotenv; explicit `--env-file` loads exactly the given file), `package.json` version read (doctor/setup), setup `.env` scaffolding, batch-geocode input/output files, CLI configuration-management read-modify-write (enable set at `~/.config/mcp-google-map/config.json`; per-CLI MCP configurations `~/.pi/agent/mcp.json`, `~/.openclaw/openclaw.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`, `~/.claude.json`; per-CLI skills directories `~/.pi/agent/skills`, `~/.openclaw/workspace/skills`, `~/.codex/skills`, `~/.gemini/config/skills`, `~/.claude/skills`; packaged skills tree `src/resources/skills`).
   - OS/runtime: `process.env` reads/writes, `process.exit`/`process.exitCode`, `process.stdout`/`process.stderr`, `randomUUID` (node:crypto), `AsyncLocalStorage` (node:async_hooks), `Date`/`Math` local-time computations.
 
 ## Communication Edges
@@ -266,5 +313,6 @@
 | EDGE-03 | external MCP client process → `PROC:main` | HTTP POST/GET/DELETE (Express) + SSE | `http://{host}:{port}/mcp` | JSON-RPC 2.0 body; headers `mcp-session-id`, `X-Google-Maps-API-Key`, `Authorization: Bearer`; 400 + JSON-RPC error `-32000` on invalid session | `src/core/BaseMcpServer.ts` |
 | EDGE-04 | `PROC:main` → external MCP client process | HTTP response / SSE stream | `/mcp` | JSON-RPC responses; SSE event stream on GET; per-session isolation keyed by `mcp-session-id` | `src/core/BaseMcpServer.ts` |
 | EDGE-05 | `PROC:main` request-handling path → `PROC:main` tool-ACTION path (intra-process) | `AsyncLocalStorage` context store | in-process `RequestContext { apiKey?, sessionId? }` | per-request API key + session id; read by `getCurrentApiKey()` inside every tool ACTION | `src/utils/requestContext.ts`, `src/core/BaseMcpServer.ts`, `src/tools/maps/*.ts` |
-| EDGE-06 | `PROC:main` request-handling path → invoking shell / CI consumer (external) | process stdout/stderr | stdout / stderr | CLI JSON outputs: doctor `DoctorReport { success, version, live, checks[] }`; setup `SetupReport { success, created, checks[] }`; snippet registration JSON (stdout) + `[snippet]` notes (stderr); exec result JSON or `{ error }`; batch summary `{ total, succeeded, failed, results }`; `[INFO]`/`[ERROR]` diagnostics via `Logger` | `src/cli.ts`, `src/index.ts` |
+| EDGE-06 | `PROC:main` request-handling path → invoking shell / CI consumer (external) | process stdout/stderr | stdout / stderr | CLI JSON outputs: doctor `DoctorReport { success, version, live, checks[] }`; setup `SetupReport { success, created, checks[] }`; snippet registration JSON (stdout) + `[snippet]` notes (stderr); exec result JSON or `{ error }`; batch summary `{ total, succeeded, failed, results }`; enable/disable result `{ cli, enabled, message }`; install/uninstall aggregate `{ success, operation, summaries[], errors[] }`; human-readable `show` CLI Configuration + Installation Status tables (exception to PRJ-008); `[INFO]`/`[ERROR]` diagnostics via `Logger` | `src/cli.ts`, `src/index.ts` |
 | EDGE-07 | `PROC:main` startup path → external npm registry | HTTPS GET, fire-and-forget (not awaited; bounded by `AbortSignal.timeout(2000)`) | `https://registry.npmjs.org/mcp-google-map/latest` | Request: no body; Response: JSON `{ version }`; check skipped entirely when `MCP_AUTO_UPDATE_DISABLED` is `1`/`true`/`yes`; newer version reported on stderr only | `src/utils/autoUpdate.ts`, `src/cli.ts` |
+| EDGE-08 | `PROC:main` CLI configuration-management path (TRACE-K) → external CLI agent configuration files (not modeled; owned by external CLI processes) | filesystem read-modify-write (atomic `.tmp` + rename; JSON `mcpServers` upsert/remove; codex TOML `[mcp_servers.<name>]` append/remove; skill-tree copy/prune/delete) | `~/.config/mcp-google-map/config.json`; `~/.pi/agent/mcp.json`, `~/.openclaw/openclaw.json`, `~/.codex/config.toml`, `~/.gemini/settings.json`, `~/.claude.json`; skills directories `~/.pi/agent/skills`, `~/.openclaw/workspace/skills`, `~/.codex/skills`, `~/.gemini/config/skills`, `~/.claude/skills` | Settings `{ enabled: [<cli>...] }`; server entry `{ command: "npx", args: ["-y", "mcp-google-map", "--stdio"], env: { GOOGLE_MAPS_API_KEY? } }`; managed skill trees mirroring `src/resources/skills/<skill-id>/`; unrelated entries preserved byte-for-byte | `src/utils/cliSettings.ts`, `src/utils/cliTargets.ts`, `src/utils/cliInstaller.ts`, `src/utils/cliShow.ts`, `src/cli.ts` |
