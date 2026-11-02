@@ -38,6 +38,8 @@ mcp-google-map/
 │   │   └── toolclass.ts         # Legacy GoogleMapsTools client (other Maps APIs)
 │   ├── tools/
 │   │   └── maps/                # 18 MCP tool modules (NAME/DESCRIPTION/SCHEMA/ACTION)
+│   ├── resources/
+│   │   └── skills/              # LLM agent skills: manifest.json, README.md, <skill-id>/SKILL.md
 │   └── utils/
 │       ├── apiKeyManager.ts     # ApiKeyManager singleton (key resolution priority)
 │       ├── autoUpdate.ts        # npm registry update check (stderr-only)
@@ -75,6 +77,9 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PRJ-009**: MUST provide machine-readable tool/API dependency profiles covering all 18 tools, including the tool dependencies of composite tools.
 - **PRJ-010**: MUST provide a `snippet` CLI command that prints valid MCP-client registration snippets without modifying any client configuration file.
 - **PRJ-011**: MUST provide a non-interactive `setup` CLI command that verifies local readiness without prompts or Google API calls.
+- **PRJ-012**: MUST ship LLM agent skills as self-contained English `SKILL.md` resources under `src/resources/skills/<skill-id>/`, exactly one skill per directory.
+- **PRJ-013**: MUST maintain `src/resources/skills/manifest.json` indexing every skill (id, name, version, language, path, description) plus `src/resources/skills/README.md` authoring conventions enabling new skills without source-code changes.
+- **PRJ-014**: MUST ship the `venue-discovery` skill, adapted from GeoScout 6.2 and translated to English, dedicated to discovering bars, pastry shops, restaurants, cafes, and bakeries.
 
 ### 2.2 Project Constraints
 - **CTN-001**: MUST declare all tools read-only, non-destructive, idempotent, and open-world via MCP tool annotations (evidence: `MAPS_TOOL_ANNOTATIONS`, `src/config.ts`).
@@ -248,6 +253,20 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-084**: MUST report a newer available npm version on stderr only, including current version, latest version, and an upgrade command.
 - **REQ-085**: MUST NOT block server startup on the automatic update check and MUST tolerate registry, network, and malformed-response failures with stderr diagnostics only.
 - **REQ-086**: MUST document `MCP_AUTO_UPDATE_DISABLED` in `.env.example` and `docs/CONFIGURATION.md`, stating that the automatic update check is enabled by default.
+
+#### Skill Resources
+- **REQ-097**: Each skill MUST provide a `SKILL.md` with YAML front matter `name` (1-64 lowercase ASCII letters, digits, hyphens, matching the directory name) and non-empty `description`.
+- **REQ-098**: Each `SKILL.md` MUST be written in English, be self-contained, and reference only mcp-google-map tool names defined by PRJ-001.
+- **REQ-099**: Adding a skill MUST require only a new `src/resources/skills/<skill-id>/SKILL.md` directory plus one synchronized `manifest.json` entry.
+- **REQ-100**: The `venue-discovery` skill MUST mandate that every Google Maps data value originates from an executed mcp-google-map tool call and MUST forbid presenting fabricated, simulated, or reconstructed data as API-verified.
+- **REQ-101**: The `venue-discovery` skill MUST assign a defined workflow role to each of the 18 mcp-google-map tools across discovery, enrichment, routing, context, composite, and audit support.
+- **REQ-102**: The `venue-discovery` skill MUST define default meal budgets (breakfast EUR 10, lunch EUR 30, dinner EUR 40), user-amount precedence, cumulative `priceLevels` mapping, and numeric `price_range.endPrice` priority over `price_level`.
+- **REQ-103**: The `venue-discovery` skill MUST define five quality grades A-E from `rating` and `user_ratings_total` thresholds plus per-grade `minRating` mapping (4.5 for A-B, 4.0 for C-E).
+- **REQ-104**: The `venue-discovery` skill MUST classify venues by `primary_type`/`types` preserving raw values and MUST verify meal-window compatibility through `regular_opening_hours`/`current_opening_hours`.
+- **REQ-105**: The `venue-discovery` skill MUST define geographic modes (3 km, 10 km, 20 km) and progressive grade search A through E stopping at five fully validated venues.
+- **REQ-106**: The `venue-discovery` skill MUST define output sections: search summary, validated venues, notes and limitations, and a debug JSON array logging every executed tool call with raw payloads separated from interpretations.
+- **REQ-107**: The `venue-discovery` skill MUST instruct `includeRaw: true` for auditable `raw_place`/`raw` payload capture and MUST document that `pageToken` is forwarded but has no server-side effect.
+- **REQ-108**: The `venue-discovery` skill MUST retain a binding anti-fabrication regression case where a high-rating over-budget venue is excluded.
 
 ### 3.3 Known Limitations (True State)
 - **LIM-001**: `maps_search_nearby` may return fewer than 20 results when client-side `openNow`/`minRating` filters discard matches post-query.
