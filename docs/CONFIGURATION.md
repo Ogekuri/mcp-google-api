@@ -17,11 +17,11 @@ Ottieni una chiave da <https://console.cloud.google.com/apis/credentials> e abil
 
 Non richieste da questo server: **Maps Grounding Lite** (solo MCP hosted Google) e **Geolocation API** (nessun tool la usa). L'elenco completo con priorità è in [README.md](../README.md#api-google-cloud-richieste).
 
-La chiave può essere fornita in tre modi (priorità decrescente):
+The API key can be supplied as follows (decreasing per-request priority on the HTTP transport):
 
-1. flag CLI `--apikey "AIza..."`
-2. header HTTP `X-Goog-Api-Key` (o `x-api-key`) sul trasporto HTTP — **per richiesta**, utile in multi-sessione
-3. variabile d'ambiente `GOOGLE_MAPS_API_KEY` (o riga in `.env`)
+1. HTTP header `X-Google-Maps-API-Key` — per request, useful in multi-session setups
+2. HTTP header `Authorization: Bearer <key>` — per request
+3. CLI flag `--apikey "AIza..."` or environment variable `GOOGLE_MAPS_API_KEY` (or a line in `.env`) — process default
 
 ## Variabili d'ambiente
 
@@ -31,9 +31,11 @@ Definite in `.env` (copia da `.env.example`):
 | --- | --- | --- |
 | `GOOGLE_MAPS_API_KEY` | — | **Obbligatoria.** Chiave Google Maps |
 | `MCP_SERVER_PORT` | `3000` | Porta del trasporto HTTP |
-| `MCP_SERVER_HOST` | `0.0.0.0` | Interfaccia di bind HTTP (usare `127.0.0.1` per esposizione solo locale) |
+| `MCP_SERVER_HOST` | `127.0.0.1` | HTTP bind address. Default migrated from `0.0.0.0` to loopback `127.0.0.1`; set `0.0.0.0` to expose on all interfaces |
 | `GOOGLE_MAPS_ENABLED_TOOLS` | `*` | Allowlist separata da virgole dei tool esposti (riduce il contesto per l'LLM). Esempio: `maps_search_places,maps_place_details,maps_geocode` |
 | `MCP_AUTO_UPDATE_DISABLED` | unset (check enabled by default) | Set `1`, `true`, or `yes` to disable the automatic update check performed at server startup; any other value keeps it enabled |
+
+Any command also accepts `--env-file <path>`: it loads exactly that file (exit 1 with a JSON error when missing) and replaces the implicit `.env` discovery chain for that invocation.
 
 ## Trasporti
 
@@ -53,7 +55,7 @@ MCP_SERVER_PORT=8123 scripts/start-http.sh  # porta personalizzata
 scripts/start-http.sh --port 8123 --host 0.0.0.0
 ```
 
-Ogni sessione MCP (`mcp-session-id`) può ricevere una API key propria via header `X-Goog-Api-Key`: le chiamate dei tool usano la chiave della sessione, non quella globale.
+Each MCP session (`mcp-session-id`) can carry its own API key via the `X-Google-Maps-API-Key` or `Authorization: Bearer` headers: tool calls use the session key, not the global default. The server binds to `127.0.0.1` by default (migration from `0.0.0.0`); `SIGINT`/`SIGTERM` close all sessions and the listening socket before exit; startup exits non-zero when no instance can listen.
 
 ## Registrazione nei client MCP
 
@@ -94,10 +96,15 @@ openclaw mcp set maps '{"command":"node","args":["/percorso/assoluto/a/mcp-googl
 ## Comandi CLI
 
 ```bash
-node dist/cli.js --stdio                                # server stdio
-node dist/cli.js --port 3000 --host 127.0.0.1           # server HTTP
-node dist/cli.js exec search-places --query "pizzeria Torino"   # chiama un tool da terminale
-node dist/cli.js doctor --live --apikey "AIza..."       # diagnostica ambiente + chiamate reali
+node dist/cli.js --stdio                                          # stdio server
+node dist/cli.js --port 3000 --host 127.0.0.1                     # HTTP server (loopback default)
+node dist/cli.js setup --write-env                                # onboarding: checks + .env scaffold (no network)
+node dist/cli.js exec search-places '{"query":"pizzeria Torino"}' # one tool call (params is a JSON string)
+node dist/cli.js doctor                                           # local diagnostics (no network)
+node dist/cli.js doctor --live --apikey "AIza..."                 # + real probes (all three APIs)
+node dist/cli.js doctor --live --probes geocoding,routes          # + selected probes only
+node dist/cli.js --env-file /path/to/.env doctor                  # explicit environment file
+node dist/cli.js snippet --client pi                              # registration snippet (stdout JSON, no files written)
 ```
 
 ## Diagnostica
@@ -106,4 +113,4 @@ node dist/cli.js doctor --live --apikey "AIza..."       # diagnostica ambiente +
 node dist/cli.js doctor
 ```
 
-Verifica versione Node, presenza della API key e (con `--live`) effettua chiamate reali ai servizi Google.
+Verifica versione Node, presenza della API key e (con `--live`) effettua chiamate reali ai servizi Google. The Node floor is `>= 22`, aligned with `package.json` `engines`; the local report also prints the effective configuration (masked key, per-field sources) and the Google APIs required by each enabled tool.

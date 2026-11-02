@@ -35,10 +35,13 @@
     └── utils
         ├── apiKeyManager.ts
         ├── autoUpdate.ts
-        └── requestContext.ts
+        ├── clientSnippets.ts
+        ├── configResolver.ts
+        ├── requestContext.ts
+        └── toolProfiles.ts
 ```
 
-# cli.ts | TypeScript | 707L | 14 symbols | 13 imports | 17 comments
+# cli.ts | TypeScript | 1280L | 32 symbols | 16 imports | 42 comments
 > Path: `src/cli.ts`
 
 ## Imports
@@ -56,59 +59,232 @@ import { dirname } from "path";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { createInterface } from "readline";
 import { checkForUpdates } from "./utils/autoUpdate.js";
+import {
+import { describeToolsProfile } from "./utils/toolProfiles.js";
+import { renderClientSnippet, type SnippetClient, type SnippetOptions } from "./utils/clientSnippets.js";
 ```
 
 ## Definitions
 
-### fn `export async function startServer(port?: number, apiKey?: string, host?: string): Promise<void>` (L26-79)
+### fn `function extractEnvFileOption(argv: readonly string[]): string | undefined` (L41-52)
+- @brief Extracts the explicit `--env-file <path>` value from a raw argv array.
+- @details Scans for both `--env-file <path>` and `--env-file=<path>` forms
+before any command parsing so the file loads before option defaults are
+captured. First match wins. Complexity O(n) in argv length; pure.
+- @param argv {readonly string[]} Raw process argument vector.
+- @return {string | undefined} Path value when present; undefined otherwise.
+- @satisfies CTN-009
 
-- type `type ExecFailureResponse = {` (L104)
-### iface `interface ExecOutput` (L109-111)
+### fn `function loadEnvironment(envFile: string | undefined): void` (L67-80)
+- @brief Loads environment files for the current CLI invocation.
+- @details Explicit mode (`envFile` set): loads exactly that file via
+`applyExplicitEnvFile` and exits 1 with a JSON stderr error when missing —
+no implicit fallback. Implicit mode: loads `.env` from the current working
+directory first, then from the package installation directory (dotenv never
+overrides already-set variables). Complexity O(file count).
+- @param envFile {string | undefined} Explicit `--env-file` value; undefined selects implicit discovery.
+- @return {void}
+- @throws {never} Terminates the process via `process.exit(1)` on a missing explicit file.
+- @see applyExplicitEnvFile
+- @satisfies CTN-007, CTN-009
 
-### iface `interface ExecStreams` (L113-116)
+### iface `export interface ServerStartupOutcome` (L88-92)
+- @brief Aggregated HTTP startup result across all configured server instances.
+- @details `started`/`failed` count per instance; `servers` holds only the
+instances that are listening, so a zero-length array with `started === 0`
+is the reliable-failure signal consumed by the default command (REQ-095).
 
-- type `type ExecToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L118)
-- type `export type DoctorCheck = {` (L120)
-- type `export type DoctorReport = {` (L126)
-- type `type DoctorToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L133)
-### fn `function isExecFailureResponse(result: unknown): result is ExecFailureResponse` (L135-142)
+### fn `export async function startServer(` (L109-183)
+- @brief Starts every configured HTTP MCP server instance and reports the outcome.
+- @details Applies flag overrides to the environment, validates each instance
+port (integer 1-65535), skips invalid instances with remediation guidance
+while marking them failed (REQ-009), awaits `startHttpServer` so listen
+errors are caught, installs SIGINT/SIGTERM handlers on success (REQ-096),
+and returns the aggregate outcome. Default bind host is loopback
+`127.0.0.1` (REQ-008). Complexity O(instances).
+- @param port {number | undefined} `--port` override written to `MCP_SERVER_PORT`.
+- @param apiKey {string | undefined} `--apikey` override written to `GOOGLE_MAPS_API_KEY`.
+- @param host {string | undefined} `--host` override written to `MCP_SERVER_HOST`.
+- @return {Promise<ServerStartupOutcome>} Per-run counts plus listening servers.
+- @see installShutdownHandlers
+- @satisfies REQ-008, REQ-009, REQ-096
 
-### fn `function getExecFailureMessage(toolName: string, result: ExecFailureResponse): string` (L144-152)
+- type `export type ShutdownExitHook = (code: number) => void;` (L186)
+- @brief Exit hook signature used by the shutdown handler. */
+### fn `export function createShutdownHandler(` (L200-214)
+- @brief Builds a one-shot orderly shutdown handler for HTTP server instances.
+- @details On first invocation it stops every given server via
+`stopHttpServer()` (transport close + socket close, errors tolerated) and
+then calls `exitHook(0)`; subsequent invocations are no-ops, so repeated
+signals never double-stop. Complexity O(servers).
+- @param servers {readonly BaseMcpServer[]} Listening server instances.
+- @param exitHook {ShutdownExitHook} Terminal action; defaults to `process.exit`.
+- @return {(signal: string) => Promise<void>} Reusable async signal handler.
+- @see stopHttpServer
+- @satisfies REQ-096
 
-### fn `export async function execTool(toolName: string, params: any, apiKey: string): Promise<any>` (L154-288)
+### fn `export function installShutdownHandlers(servers: readonly BaseMcpServer[]): void` (L226-230)
+- @brief Registers SIGINT/SIGTERM handlers that orderly-stop the given servers.
+- @details Wraps `createShutdownHandler` and attaches it to both signals so
+Ctrl-C and terminate requests close all HTTP sessions and the listening
+socket before process exit (REQ-096). Complexity O(1).
+- @param servers {readonly BaseMcpServer[]} Listening server instances.
+- @return {void}
+- @see createShutdownHandler
+- @satisfies REQ-096
 
-### fn `export async function runExecCommand(` (L298-303)
+- type `type ExecFailureResponse = {` (L255)
+### iface `interface ExecOutput` (L260-262)
 
-### fn `export async function runDoctor(` (L327-412)
+### iface `interface ExecStreams` (L264-267)
 
-### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L586-598)
+- type `type ExecToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L269)
+- type `export type DoctorCheck = {` (L271)
+- type `export type DoctorReport = {` (L277)
+- type `type DoctorToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L284)
+### fn `function isExecFailureResponse(result: unknown): result is ExecFailureResponse` (L286-293)
+
+### fn `function getExecFailureMessage(toolName: string, result: ExecFailureResponse): string` (L295-303)
+
+### fn `export async function execTool(toolName: string, params: any, apiKey: string): Promise<any>` (L305-439)
+
+### fn `export async function runExecCommand(` (L449-454)
+
+- type `export type DoctorProbeId = "geocoding" | "places-new" | "routes";` (L474)
+- @brief Selectable live-probe identifier used by `doctor --live --probes`. */
+### iface `export interface DoctorLiveProbe` (L477-482)
+- @brief Static definition of one billable live probe executed by doctor. */
+
+### iface `export interface DoctorProbesParseResult` (L514-517)
+- @brief Parsed `--probes` CLI value: either valid probe ids or an error. */
+
+### fn `export function parseDoctorProbes(raw: string | undefined): DoctorProbesParseResult` (L529-551)
+- @brief Parses the raw `--probes` CLI string into validated probe ids.
+- @details `undefined` input -> `{ probes: undefined }` (probe all three,
+legacy `--live` behavior). Splits on commas, trims, lowercases, maps through
+`DOCTOR_PROBE_ALIASES`, dedupes, and rejects unknown names or an empty list
+with a remediation error. Complexity O(n) in items; pure.
+- @param raw {string | undefined} Raw option value from argv.
+- @return {DoctorProbesParseResult} Validated ids, or `error` describing the invalid input.
+- @satisfies REQ-091
+
+### iface `export interface DoctorOptions` (L559-564)
+- @brief Injectable doctor dependencies for deterministic testing.
+- @details `nodeVersion` overrides `process.versions.node`; `config` overrides
+environment-derived runtime configuration; `allToolNames` overrides the
+registered tool-name registry used by the profile check.
+
+### fn `export async function runDoctor(` (L588-593)
+- @brief Runs the readiness self-check decoupled from server startup.
+- @details Local checks (zero network calls): Node major >=
+`NODE_ENGINE_FLOOR` (22, aligned with `package.json` `engines`, REQ-070),
+non-zero package version, API key presence (value hidden), effective
+configuration diagnostics with masked secrets and per-field sources
+(REQ-089, zero-match allowlist reported as fail), explicit env-file status,
+and the per-tool Google API profile of the effective tool set (REQ-090).
+Live branch: without `options.probes` runs all three probes (legacy
+`--live`, REQ-072); with `options.probes` runs only the selected subset
+(REQ-091); each probe fails independently. `success` is false when any
+check fails; the caller maps it to the exit code.
+- @param packageVersion {string} Installed package version ("0.0.0" = unknown).
+- @param apiKey {string | undefined} Resolved API key; never printed.
+- @param live {boolean} True to run billable live probes.
+- @param runner {DoctorToolRunner} Injectable tool runner; defaults to `execTool`.
+- @param options {DoctorOptions} Injectable Node version, config, tool registry, and probe subset.
+- @return {Promise<DoctorReport>} JSON-serializable report with `checks` and aggregate `success`.
+- @see resolveRuntimeConfig
+- @see describeToolsProfile
+- @satisfies REQ-070, REQ-071, REQ-072, REQ-089, REQ-090, REQ-091
+
+### iface `export interface SetupCheck` (L699-703)
+- @brief One named onboarding check result (`pass`, `fail`, or `skip`). */
+
+### iface `export interface SetupReport` (L706-710)
+- @brief JSON-serializable outcome of the `setup` command. */
+
+### iface `export interface SetupFs` (L713-717)
+- @brief Injectable filesystem surface used by `runSetup` (tests pass fakes). */
+
+### iface `export interface SetupDeps` (L720-724)
+- @brief Injectable dependencies for deterministic `runSetup` testing. */
+
+### iface `export interface SetupOptions` (L727-731)
+- @brief Inputs controlling `runSetup` behavior. */
+
+### fn `export async function runSetup(options: SetupOptions, deps: SetupDeps = {}): Promise<SetupReport>` (L748-830)
+- @brief Runs the non-interactive onboarding self-check with optional `.env` scaffolding.
+- @details Zero prompts, zero Google API calls, zero writes unless `writeEnv`
+is true (REQ-087). Checks: Node major >= `NODE_ENGINE_FLOOR` (22);
+`.env.example` presence in `packageDir`; `.env` handling in `targetDir` —
+with `writeEnv` the file is created from the template only when absent and
+is never overwritten (REQ-088), without it the check reports the current
+state; API key presence from the resolved configuration (value hidden).
+`success` is false only when a check fails. Complexity O(1) filesystem ops.
+- @param options {SetupOptions} Directories and the explicit write authorization flag.
+- @param deps {SetupDeps} Injectable Node version, config, and fs surface.
+- @return {Promise<SetupReport>} Report with `created` flag and named checks.
+- @see resolveRuntimeConfig
+- @satisfies PRJ-011, REQ-087, REQ-088
+
+### fn `export function runSnippetCommand(` (L846-848)
+- @brief Renders a client registration snippet and routes output per PRJ-008.
+- @details Delegates JSON construction to `renderClientSnippet`, writes the
+snippet JSON to `stdout` and each guidance note to `stderr` so stdout stays
+pure JSON; never writes or edits any file. Rendering errors surface as a
+JSON stderr error with exit code 1. Complexity O(1).
+- @param options {SnippetOptions} Rendering options forwarded to `renderClientSnippet`.
+- @param streams {ExecStreams} Injectable stdout/stderr sinks; defaults to process streams.
+- @return {number} Exit code: 0 on success, 1 on a rendering error.
+- @see renderClientSnippet
+- @satisfies PRJ-010, REQ-092, REQ-093
+
+### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1148-1160)
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`startServer`|fn||26-79|export async function startServer(port?: number, apiKey?:...|
-|`ExecFailureResponse`|type||104||
-|`ExecOutput`|iface||109-111|interface ExecOutput|
-|`ExecStreams`|iface||113-116|interface ExecStreams|
-|`ExecToolRunner`|type||118||
-|`DoctorCheck`|type||120||
-|`DoctorReport`|type||126||
-|`DoctorToolRunner`|type||133||
-|`isExecFailureResponse`|fn||135-142|function isExecFailureResponse(result: unknown): result i...|
-|`getExecFailureMessage`|fn||144-152|function getExecFailureMessage(toolName: string, result: ...|
-|`execTool`|fn||154-288|export async function execTool(toolName: string, params: ...|
-|`runExecCommand`|fn||298-303|export async function runExecCommand(|
-|`runDoctor`|fn||327-412|export async function runDoctor(|
-|`semaphore`|fn||586-598|const semaphore = async (tasks: (() => Promise<void>)[], ...|
+|`extractEnvFileOption`|fn||41-52|function extractEnvFileOption(argv: readonly string[]): s...|
+|`loadEnvironment`|fn||67-80|function loadEnvironment(envFile: string | undefined): void|
+|`ServerStartupOutcome`|iface||88-92|export interface ServerStartupOutcome|
+|`startServer`|fn||109-183|export async function startServer(|
+|`ShutdownExitHook`|type||186||
+|`createShutdownHandler`|fn||200-214|export function createShutdownHandler(|
+|`installShutdownHandlers`|fn||226-230|export function installShutdownHandlers(servers: readonly...|
+|`ExecFailureResponse`|type||255||
+|`ExecOutput`|iface||260-262|interface ExecOutput|
+|`ExecStreams`|iface||264-267|interface ExecStreams|
+|`ExecToolRunner`|type||269||
+|`DoctorCheck`|type||271||
+|`DoctorReport`|type||277||
+|`DoctorToolRunner`|type||284||
+|`isExecFailureResponse`|fn||286-293|function isExecFailureResponse(result: unknown): result i...|
+|`getExecFailureMessage`|fn||295-303|function getExecFailureMessage(toolName: string, result: ...|
+|`execTool`|fn||305-439|export async function execTool(toolName: string, params: ...|
+|`runExecCommand`|fn||449-454|export async function runExecCommand(|
+|`DoctorProbeId`|type||474||
+|`DoctorLiveProbe`|iface||477-482|export interface DoctorLiveProbe|
+|`DoctorProbesParseResult`|iface||514-517|export interface DoctorProbesParseResult|
+|`parseDoctorProbes`|fn||529-551|export function parseDoctorProbes(raw: string | undefined...|
+|`DoctorOptions`|iface||559-564|export interface DoctorOptions|
+|`runDoctor`|fn||588-593|export async function runDoctor(|
+|`SetupCheck`|iface||699-703|export interface SetupCheck|
+|`SetupReport`|iface||706-710|export interface SetupReport|
+|`SetupFs`|iface||713-717|export interface SetupFs|
+|`SetupDeps`|iface||720-724|export interface SetupDeps|
+|`SetupOptions`|iface||727-731|export interface SetupOptions|
+|`runSetup`|fn||748-830|export async function runSetup(options: SetupOptions, dep...|
+|`runSnippetCommand`|fn||846-848|export function runSnippetCommand(|
+|`semaphore`|fn||1148-1160|const semaphore = async (tasks: (() => Promise<void>)[], ...|
 
 
 ---
 
-# config.ts | TypeScript | 194L | 2 symbols | 20 imports | 2 comments
+# config.ts | TypeScript | 204L | 2 symbols | 21 imports | 3 comments
 > Path: `src/config.ts`
 
 ## Imports
 ```
+import { resolveEnabledToolNames } from "./utils/configResolver.js";
 import { Logger } from "./index.js";
 import { ToolConfig } from "./core/BaseMcpServer.js";
 import { SearchNearby, SearchNearbyParams } from "./tools/maps/searchNearby.js";
@@ -133,20 +309,29 @@ import { LocalRankTracker, LocalRankTrackerParams } from "./tools/maps/localRank
 
 ## Definitions
 
-### iface `interface ServerInstanceConfig` (L32-36)
+### iface `interface ServerInstanceConfig` (L33-37)
 
-### fn `export function filterTools(tools: ToolConfig[]): ToolConfig[]` (L173-192)
+### fn `export function filterTools(tools: ToolConfig[]): ToolConfig[]` (L185-202)
+- @brief Applies the `GOOGLE_MAPS_ENABLED_TOOLS` allowlist to a tool registry.
+- @details Delegates allowlist semantics to `resolveEnabledToolNames` (unset,
+empty, or `*` -> full set; >=1 match -> subset; 0 matches -> full set plus
+stderr error). Logs the active-count line only when a strict subset is
+selected, preserving legacy output. Complexity O(n + m).
+- @param tools {ToolConfig[]} Full tool registry.
+- @return {ToolConfig[]} Effective tool list (never empty for a non-empty input).
+- @see resolveEnabledToolNames
+- @satisfies PRJ-006, REQ-010, REQ-011, REQ-012
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`ServerInstanceConfig`|iface||32-36|interface ServerInstanceConfig|
-|`filterTools`|fn||173-192|export function filterTools(tools: ToolConfig[]): ToolCon...|
+|`ServerInstanceConfig`|iface||33-37|interface ServerInstanceConfig|
+|`filterTools`|fn||185-202|export function filterTools(tools: ToolConfig[]): ToolCon...|
 
 
 ---
 
-# BaseMcpServer.ts | TypeScript | 225L | 4 symbols | 12 imports | 23 comments
+# BaseMcpServer.ts | TypeScript | 245L | 4 symbols | 12 imports | 22 comments
 > Path: `src/core/BaseMcpServer.ts`
 
 ## Imports
@@ -171,16 +356,16 @@ import { runWithContext } from "../utils/requestContext.js";
 
 ### iface `export interface SessionContext` (L25-28)
 
-### class `export class BaseMcpServer` (L30-226)
-- fn `const handleSessionRequest = async (req: Request, res: Response) =>` (L149-169)
+### class `export class BaseMcpServer` (L30-246)
+- fn `const handleSessionRequest = async (req: Request, res: Response) =>` (L162-182)
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
 |`ToolConfig`|iface||17-23|export interface ToolConfig|
 |`SessionContext`|iface||25-28|export interface SessionContext|
-|`BaseMcpServer`|class||30-226|export class BaseMcpServer|
-|`BaseMcpServer.handleSessionRequest`|fn||149-169|const handleSessionRequest = async (req: Request, res: Re...|
+|`BaseMcpServer`|class||30-246|export class BaseMcpServer|
+|`BaseMcpServer.handleSessionRequest`|fn||162-182|const handleSessionRequest = async (req: Request, res: Re...|
 
 
 ---
@@ -885,6 +1070,196 @@ returns null, logs to stderr only, and never throws (REQ-085).
 
 ---
 
+# clientSnippets.ts | TypeScript | 120L | 6 symbols | 0 imports | 10 comments
+> Path: `src/utils/clientSnippets.ts`
+
+## Definitions
+
+- type `export type SnippetClient = "generic" | "claude" | "cursor" | "pi";` (L10)
+- @brief Supported MCP client targets; selects the documented target file. */
+- type `export type SnippetTransport = "stdio" | "http";` (L13)
+- @brief Supported MCP transports for the generated registration entry. */
+- type `export type SnippetLauncher = "npx" | "node" | "bin";` (L16)
+- @brief stdio launcher strategy: `npx` one-shot, `node` with a script path, or the installed `bin`. */
+### iface `export interface SnippetOptions` (L23-32)
+- @brief Options controlling snippet rendering.
+- @details All fields optional; defaults: client `generic`, transport `stdio`,
+launcher `npx`, serverName `mcp-google-map`, HTTP host `127.0.0.1`, port 3000.
+
+### iface `export interface SnippetResult` (L40-43)
+- @brief Rendered snippet plus stderr guidance notes.
+- @details `json` is a complete pretty-printed `mcpServers` registration
+object (parses with `JSON.parse`); `notes` are human guidance lines the CLI
+prints on stderr so stdout stays pure JSON (PRJ-008).
+
+### fn `export function renderClientSnippet(options: SnippetOptions = {}): SnippetResult` (L78-120)
+- @brief Renders a valid MCP-client registration snippet without writing files.
+- @details stdio transport: launcher `npx` -> `npx -y mcp-google-map --stdio`;
+`bin` -> installed `mcp-google-map --stdio`; `node` -> `node <commandPath>
+--stdio` and throws when `commandPath` is missing. HTTP transport: emits
+`{ url: "http://<host>:<port>/mcp" }`. The `env` block embeds
+`API_KEY_PLACEHOLDER` by default; a provided `envKey` switches the value to
+the literal `${<envKey>}` and adds a note that variable expansion is
+client-specific (REQ-093). Pure: no filesystem or network access; output is
+JSON.stringify'd with 2-space indent. Complexity O(1).
+- @param options {SnippetOptions} Rendering options; defaults apply when omitted.
+- @return {SnippetResult} Pretty-printed JSON snippet plus stderr notes.
+- @throws {Error} When launcher is `node` and `commandPath` is missing.
+- @satisfies PRJ-010, REQ-092, REQ-093
+
+## Symbol Index
+|Symbol|Kind|Vis|Lines|Sig|
+|---|---|---|---|---|
+|`SnippetClient`|type||10||
+|`SnippetTransport`|type||13||
+|`SnippetLauncher`|type||16||
+|`SnippetOptions`|iface||23-32|export interface SnippetOptions|
+|`SnippetResult`|iface||40-43|export interface SnippetResult|
+|`renderClientSnippet`|fn||78-120|export function renderClientSnippet(options: SnippetOptio...|
+
+
+---
+
+# configResolver.ts | TypeScript | 302L | 14 symbols | 3 imports | 17 comments
+> Path: `src/utils/configResolver.ts`
+
+## Imports
+```
+import { config as dotenvConfig } from "dotenv";
+import { existsSync } from "fs";
+import { isAutoUpdateDisabled } from "./autoUpdate.js";
+```
+
+## Definitions
+
+### iface `export interface RuntimeConfigOverrides` (L36-41)
+- @brief Higher-priority values that override environment-derived configuration.
+- @details Flags parsed from CLI arguments; every field optional. `flag`
+source wins over `environment` which wins over `default`.
+
+- type `export type RuntimeConfigSource = "flag" | "environment" | "default";` (L44)
+- @brief Origin tag attached to each resolved configuration field. */
+### iface `export interface ResolvedRuntimeConfig` (L53-65)
+- @brief Typed snapshot of every runtime configuration field with per-field source.
+- @details Produced exclusively by `resolveRuntimeConfig`; consumed by all CLI
+commands and `doctor` diagnostics (DES-015). `port` is undefined when the
+configured value cannot be parsed to an integer; `portRaw` preserves the
+original string for remediation messages.
+
+### fn `export function resolveRuntimeConfig(` (L83-85)
+- @brief Resolves runtime configuration from an environment map plus flag overrides.
+- @details Priority per field: overrides (`flag`) > environment map
+(`environment`) > built-in default (`default`). Port parsing: flag port used
+as-is; environment string parsed with `Number` and left undefined when not a
+finite integer (raw preserved in `portRaw`). `enabledToolsRaw` keeps the
+trimmed `GOOGLE_MAPS_ENABLED_TOOLS` string; empty string normalizes to
+undefined. `autoUpdateDisabled` delegates to `isAutoUpdateDisabled`. Pure:
+reads inputs only, mutates nothing. Complexity O(1).
+- @param env {Record<string, string | undefined>} Environment map; defaults to `process.env`.
+- @param overrides {RuntimeConfigOverrides} Flag-derived overrides; defaults to none.
+- @return {ResolvedRuntimeConfig} Fully typed configuration with per-field sources.
+- @see isAutoUpdateDisabled
+- @see validateHttpEndpoint
+- @satisfies DES-015
+
+### fn `export function maskSecret(value: string | undefined): string` (L134-142)
+- @brief Masks a secret value for safe inclusion in reports and diagnostics.
+- @details `undefined`/empty -> `unset`; length <= 8 -> `****`; otherwise first
+four characters + `****` + last four characters. The raw secret never
+appears in the output. Pure; complexity O(n) in value length.
+- @param value {string | undefined} Secret to mask (e.g. Google Maps API key).
+- @return {string} Masked representation safe for stderr/stdout reports.
+- @satisfies DES-016, REQ-089
+
+### iface `export interface ConfigDiagnostics` (L150-157)
+- @brief Per-field effective-value diagnostic structure with masked secrets.
+- @details Every field carries its resolved value (masked when secret) and its
+`RuntimeConfigSource`; produced by `describeRuntimeConfig` and embedded in
+`doctor` local reports.
+
+### fn `export function describeRuntimeConfig(config: ResolvedRuntimeConfig): ConfigDiagnostics` (L168-181)
+- @brief Builds a serializable diagnostic view of a resolved configuration.
+- @details Maps `ResolvedRuntimeConfig` to `ConfigDiagnostics`, masking the API
+key via `maskSecret` so the result is safe to print. Complexity O(1); pure.
+- @param config {ResolvedRuntimeConfig} Configuration produced by `resolveRuntimeConfig`.
+- @return {ConfigDiagnostics} Masked, source-annotated diagnostics.
+- @see maskSecret
+- @satisfies REQ-089, DES-016
+
+### fn `export function formatConfigDiagnostics(diagnostics: ConfigDiagnostics): string` (L192-200)
+- @brief Formats config diagnostics as one compact human-readable line.
+- @details Joins `key=value (source)` fragments; the API key is pre-masked by
+`describeRuntimeConfig`. Used as `doctor` check detail text. Complexity O(1).
+- @param diagnostics {ConfigDiagnostics} Output of `describeRuntimeConfig`.
+- @return {string} Single-line `;`-separated diagnostic string.
+- @see describeRuntimeConfig
+- @satisfies REQ-089
+
+### iface `export interface HttpEndpointValidation` (L207-210)
+- @brief Outcome of HTTP endpoint validation over a resolved configuration.
+- @details `valid` is false when `errors` is non-empty; each error is a
+remediation-oriented message.
+
+### fn `export function validateHttpEndpoint(config: ResolvedRuntimeConfig): HttpEndpointValidation` (L221-230)
+- @brief Validates the HTTP bind endpoint of a resolved configuration.
+- @details Rules: port must be defined, an integer in 1..65535; host must be a
+non-empty string. Returns every violated rule as a remediation message.
+Pure; complexity O(1).
+- @param config {ResolvedRuntimeConfig} Configuration to validate.
+- @return {HttpEndpointValidation} `valid` plus per-rule error messages.
+- @satisfies REQ-009
+
+### iface `export interface ExplicitEnvFileResult` (L236-239)
+- @brief Result of loading an explicit `--env-file` file.
+- @details `ok` false carries an `error` message suitable for CLI JSON errors.
+
+### fn `export function applyExplicitEnvFile(path: string): ExplicitEnvFileResult` (L250-256)
+- @brief Loads exactly one explicit environment file via dotenv.
+- @details Checks existence first (dotenv silently ignores missing files) and
+returns `{ ok: false, error }` when absent; otherwise loads the file without
+overriding already-set process variables. Complexity O(file size).
+- @param path {string} Absolute or relative path to the environment file.
+- @return {ExplicitEnvFileResult} `{ ok: true }` on load; `{ ok: false, error }` when missing.
+- @satisfies CTN-009
+
+### iface `export interface EnabledToolsResolution` (L264-269)
+- @brief Result of resolving the `GOOGLE_MAPS_ENABLED_TOOLS` allowlist.
+- @details `names` is the effective tool-name list; `matched` counts allowlist
+hits; `fallback` is true when the allowlist matched zero tools and the full
+set is returned (REQ-012); `requested` lists the parsed allowlist items.
+
+### fn `export function resolveEnabledToolNames(` (L282-302)
+- @brief Resolves the enabled-tool allowlist against the full tool registry.
+- @details Semantics: unset, empty, or `*` -> full set (REQ-010); at least one
+matching name -> the named subset, items trimmed and empties ignored
+(REQ-011); zero matches -> full set with `fallback: true` (REQ-012). Pure;
+complexity O(n + m) with n registry names and m allowlist items.
+- @param allToolNames {readonly string[]} Full registered tool-name registry.
+- @param raw {string | undefined} Raw `GOOGLE_MAPS_ENABLED_TOOLS` value.
+- @return {EnabledToolsResolution} Effective names plus resolution metadata.
+- @satisfies REQ-010, REQ-011, REQ-012, PRJ-006
+
+## Symbol Index
+|Symbol|Kind|Vis|Lines|Sig|
+|---|---|---|---|---|
+|`RuntimeConfigOverrides`|iface||36-41|export interface RuntimeConfigOverrides|
+|`RuntimeConfigSource`|type||44||
+|`ResolvedRuntimeConfig`|iface||53-65|export interface ResolvedRuntimeConfig|
+|`resolveRuntimeConfig`|fn||83-85|export function resolveRuntimeConfig(|
+|`maskSecret`|fn||134-142|export function maskSecret(value: string | undefined): st...|
+|`ConfigDiagnostics`|iface||150-157|export interface ConfigDiagnostics|
+|`describeRuntimeConfig`|fn||168-181|export function describeRuntimeConfig(config: ResolvedRun...|
+|`formatConfigDiagnostics`|fn||192-200|export function formatConfigDiagnostics(diagnostics: Conf...|
+|`HttpEndpointValidation`|iface||207-210|export interface HttpEndpointValidation|
+|`validateHttpEndpoint`|fn||221-230|export function validateHttpEndpoint(config: ResolvedRunt...|
+|`ExplicitEnvFileResult`|iface||236-239|export interface ExplicitEnvFileResult|
+|`applyExplicitEnvFile`|fn||250-256|export function applyExplicitEnvFile(path: string): Expli...|
+|`EnabledToolsResolution`|iface||264-269|export interface EnabledToolsResolution|
+|`resolveEnabledToolNames`|fn||282-302|export function resolveEnabledToolNames(|
+
+
+---
+
 # requestContext.ts | TypeScript | 24L | 3 symbols | 1 imports | 3 comments
 > Path: `src/utils/requestContext.ts`
 
@@ -907,4 +1282,56 @@ import { AsyncLocalStorage } from "node:async_hooks";
 |`RequestContext`|iface||3-6|interface RequestContext|
 |`getCurrentApiKey`|fn||14-17|export function getCurrentApiKey(): string | undefined|
 |`runWithContext`|fn||22-24|export function runWithContext<T>(context: RequestContext...|
+
+
+---
+
+# toolProfiles.ts | TypeScript | 162L | 5 symbols | 0 imports | 7 comments
+> Path: `src/utils/toolProfiles.ts`
+
+## Definitions
+
+- type `export type GoogleApiId =` (L6)
+- @brief Identifier of a Google Maps Platform API consumed by a tool.
+- @details Stable machine-readable ids used across tool profiles, `doctor`
+local reports, and documentation tables.
+### iface `export interface ToolApiProfile` (L39-43)
+- @brief Dependency profile of one MCP tool.
+- @details `apis` lists every Google API the tool can call at runtime
+(including dependencies reached through composite resolution such as
+address geocoding or text-search fallback); `dependsOnTools` lists the
+sibling tools whose operations the composite tool chains internally.
+
+### fn `export function getToolProfile(toolName: string): ToolApiProfile | undefined` (L107-109)
+- @brief Looks up the dependency profile of one tool.
+- @details Direct registry access; unknown names return undefined so callers
+decide whether to skip or report. Complexity O(1).
+- @param toolName {string} MCP tool name (e.g. `maps_geocode`).
+- @return {ToolApiProfile | undefined} Profile when registered; undefined otherwise.
+- @satisfies PRJ-009
+
+### iface `export interface ToolsProfileSummary` (L116-120)
+- @brief Aggregated API-dependency summary for a set of enabled tools.
+- @details `tools` keeps per-tool ordering of the input; `apis` is the deduped,
+registry-order union of required `GoogleApiId`s across all given tools.
+
+### fn `export function describeToolsProfile(toolNames: readonly string[]): ToolsProfileSummary` (L133-162)
+- @brief Aggregates tool/API profiles for the enabled tool set.
+- @details Maps each name through `TOOL_API_PROFILES` (unknown names and
+duplicates are skipped), unions the required APIs in registry order without
+duplicates, and echoes per-tool dependencies. No network access.
+Complexity O(n) in tool names plus O(n*a) API union work.
+- @param toolNames {readonly string[]} Effective enabled tool names.
+- @return {ToolsProfileSummary} Per-tool profiles and aggregated API union.
+- @see getToolProfile
+- @satisfies PRJ-009, REQ-090
+
+## Symbol Index
+|Symbol|Kind|Vis|Lines|Sig|
+|---|---|---|---|---|
+|`GoogleApiId`|type||6||
+|`ToolApiProfile`|iface||39-43|export interface ToolApiProfile|
+|`getToolProfile`|fn||107-109|export function getToolProfile(toolName: string): ToolApi...|
+|`ToolsProfileSummary`|iface||116-120|export interface ToolsProfileSummary|
+|`describeToolsProfile`|fn||133-162|export function describeToolsProfile(toolNames: readonly ...|
 

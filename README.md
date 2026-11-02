@@ -91,26 +91,31 @@ gcloud services enable places-backend-new.googleapis.com \
 
 **Prerequisites**: Node.js **>= 22** and a Google Maps API key (see [Requirements](#requirements)).
 
-### From npm
+### Prebuilt package (recommended)
 
 ```bash
 npm install -g mcp-google-map
-mcp-google-map doctor               # self-check (no API calls)
-npx -y mcp-google-map --stdio       # one-shot stdio server, no global install
+mcp-google-map setup --write-env   # scaffold .env in the current directory (never overwrites)
+$EDITOR .env                       # set GOOGLE_MAPS_API_KEY
+mcp-google-map doctor               # local self-check: Node, package, key, config (no network)
+mcp-google-map --stdio             # MCP server over stdio
+mcp-google-map                      # MCP server over Streamable HTTP at http://127.0.0.1:3000/mcp
 ```
+
+One-shot alternative without a global install: `npx -y mcp-google-map --stdio`.
 
 ### From source (this repository) — cross-platform, no bash required
 
 ```bash
 git clone https://github.com/Ogekuri/mcp-google-map.git
 cd mcp-google-map
-npm install
+npm ci                             # install dependencies from the lockfile
 npm run build                       # tsup -> dist/ (ESM)
 node dist/cli.js --stdio            # MCP server over stdio
 node dist/cli.js --host 127.0.0.1 --port 3000   # Streamable HTTP at /mcp
 ```
 
-On Linux/macOS the bash helpers in `scripts/` automate the same steps (`scripts/setup.sh`, `scripts/build.sh`, `scripts/start-mcp.sh`, `scripts/start-http.sh`, `scripts/test.sh`); on Windows use the `npm`/`node` commands above.
+On Linux/macOS the bash helpers in `scripts/` wrap the same commands (`scripts/setup.sh`, `scripts/build.sh`, `scripts/start-mcp.sh`, `scripts/start-http.sh`, `scripts/test.sh`); each helper fails with remediation guidance instead of chaining implicit installs or builds. On Windows use the `npm`/`node` commands above.
 
 MCP client registration over stdio works cross-platform with plain `node`:
 
@@ -135,15 +140,15 @@ rm -rf mcp-google-map              # from-source clone; also remove any MCP clie
 
 ## Quick Start
 
-```bash
-scripts/setup.sh        # installs dependencies and creates .env
-$EDITOR .env            # enter GOOGLE_MAPS_API_KEY
-scripts/build.sh        # compiles to dist/
+The [prebuilt-package path](#install) is the recommended Quick Start: install, `setup --write-env`, set the key, `doctor`, run. Registration snippets for any client are one command away (JSON on stdout, no files written):
 
-scripts/start-mcp.sh    # MCP server over stdio (for pi, Claude Desktop, Cursor, ...)
-scripts/start-http.sh   # MCP server at http://127.0.0.1:3000/mcp
-scripts/test.sh         # unit tests (no API key required)
+```bash
+mcp-google-map snippet --client claude                           # stdio snippet (npx launcher)
+mcp-google-map snippet --client pi --env-key GOOGLE_MAPS_API_KEY # ${VAR} reference (client-specific expansion)
+mcp-google-map snippet --transport http --port 3100              # HTTP URL snippet
 ```
+
+> **Loopback default (migration)**: the HTTP server now binds to `127.0.0.1` by default; it previously bound `0.0.0.0`. To listen on all interfaces pass `--host 0.0.0.0` or set `MCP_SERVER_HOST=0.0.0.0`. In HTTP mode, `SIGINT`/`SIGTERM` close all sessions and the listening socket before exit.
 
 ## Command-line interface
 
@@ -151,19 +156,28 @@ All commands work through the `mcp-google-map` binary (npm install) or `node dis
 
 ```bash
 mcp-google-map --stdio                                  # MCP server over stdio
-mcp-google-map --host 127.0.0.1 --port 3000             # MCP server over Streamable HTTP at /mcp
-mcp-google-map doctor                                   # local self-check: Node version, package version, API key (no network)
+mcp-google-map --host 127.0.0.1 --port 3000             # MCP server over Streamable HTTP at /mcp (loopback default)
+mcp-google-map setup --write-env                        # onboarding: readiness checks + .env scaffold (no network, no prompts)
+mcp-google-map doctor                                   # local self-check: Node, package, key, config, tool profiles (no network)
 mcp-google-map doctor --live --apikey "AIza..."         # also probes Geocoding, Places (New), Routes (billable calls)
+mcp-google-map doctor --live --probes geocoding,routes  # probe only the selected APIs
 mcp-google-map exec geocode '{"address":"Tokyo Tower"}' # one tool call from the terminal
 mcp-google-map batch-geocode -i addresses.txt -o results.json
+mcp-google-map --env-file /path/to/.env doctor          # load an explicit environment file
+mcp-google-map snippet --client cursor                  # print an MCP client registration snippet (no files written)
 ```
 
 - `exec <tool> [params]` runs one tool and prints JSON; `params` is a JSON string. Tool names accept short (`geocode`), snake_case (`search_places`), and `maps_`-prefixed (`maps_geocode`) forms.
 - `exec` writes results to stdout and errors to stderr; it exits 1 when no API key is configured, the tool reports a failure, the JSON is invalid, or the tool name is unknown.
 - `batch-geocode` reads one address per line from `--input` (use `-` for stdin), geocodes with bounded concurrency (`--concurrency`, default 20, clamped to 1–50), writes a JSON summary `{ total, succeeded, failed, results }` to `--output` or stdout, and exits 1 if any address failed.
-- HTTP mode starts even without an API key and logs a warning; stdio mode and the CLI commands require a key (`--apikey` or `GOOGLE_MAPS_API_KEY`).
+- `setup` is non-interactive: no prompts, no Google API calls, and no writes unless `--write-env` is passed; `--write-env` creates `.env` in `--env-dir` (default: current directory) only when it does not exist and never overwrites it.
+- `snippet` prints a valid `mcpServers` JSON registration to stdout (guidance notes on stderr) and never writes or edits configuration files; by default it embeds a literal placeholder, and `--env-key NAME` emits a `${NAME}` reference whose expansion is client-specific.
+- `--env-file <path>` loads exactly the given environment file for any command and exits 1 with a JSON error when the file is missing (no implicit `.env` fallback).
+- HTTP mode starts even without an API key and logs a warning; stdio mode and the CLI commands require a key (`--apikey` or `GOOGLE_MAPS_API_KEY`). When no HTTP instance can start (invalid or taken port), the process exits non-zero.
 
 ## Registering in an MCP client
+
+Generate the registration JSON with `mcp-google-map snippet --client <generic|claude|cursor|pi>` (see [Quick Start](#quick-start)), then paste it into the target file. Manual examples:
 
 **stdio:**
 
@@ -257,6 +271,8 @@ mcp-google-map/
 ## Development
 
 ```bash
+npm ci             # install dependencies from the lockfile
+npm run verify     # single pipeline: typecheck + unit tests + build
 npm run dev        # incremental watch build
 npm run typecheck  # tsc --noEmit
 npm test           # unit tests

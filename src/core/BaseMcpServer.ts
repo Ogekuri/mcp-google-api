@@ -74,7 +74,20 @@ export class BaseMcpServer {
     Logger.log(`${this.serverName} connected and ready to process requests`);
   }
 
-  async startHttpServer(port: number, host: string = "0.0.0.0"): Promise<void> {
+  /**
+   * @brief Starts the Streamable HTTP listener and resolves once it is accepting connections.
+   * @details Builds the Express app with the `/mcp` POST/GET/DELETE handlers,
+   * then wraps `app.listen` in a Promise that resolves from the listen callback
+   * and rejects on the server `error` event (e.g. EADDRINUSE), so callers get
+   * a reliable startup outcome instead of an unhandled error. Default host is
+   * loopback `127.0.0.1` (REQ-008); pass `0.0.0.0` to bind all interfaces.
+   * @param port {number} TCP port to listen on (1-65535).
+   * @param host {string} Bind address; defaults to `127.0.0.1`.
+   * @return {Promise<void>} Resolves when listening; rejects with the listen error.
+   * @throws {Error} Rejects when the HTTP listener emits an error (port in use, permission denied).
+   * @satisfies REQ-008, REQ-095
+   */
+  async startHttpServer(port: number, host: string = "127.0.0.1"): Promise<void> {
     const app = express();
     app.use(express.json());
 
@@ -175,9 +188,13 @@ export class BaseMcpServer {
     app.delete("/mcp", handleSessionRequest);
 
     const displayHost = host === "0.0.0.0" ? "localhost" : host;
-    this.httpServer = app.listen(port, host, () => {
-      Logger.log(`[${this.serverName}] HTTP server listening on ${host}:${port}`);
-      Logger.log(`[${this.serverName}] MCP endpoint available at http://${displayHost}:${port}/mcp`);
+    await new Promise<void>((resolve, reject) => {
+      this.httpServer = app.listen(port, host, () => {
+        Logger.log(`[${this.serverName}] HTTP server listening on ${host}:${port}`);
+        Logger.log(`[${this.serverName}] MCP endpoint available at http://${displayHost}:${port}/mcp`);
+        resolve();
+      });
+      this.httpServer!.on("error", (error: Error) => reject(error));
     });
   }
 
@@ -186,39 +203,42 @@ export class BaseMcpServer {
     await this.connect(transport);
   }
 
+  /**
+   * @brief Stops the HTTP listener and closes every session transport in order.
+   * @details Idempotent: when no listener exists it logs and resolves. Otherwise
+   * it detaches the server reference, clears the session map, awaits
+   * `transport.close()` for every session (errors tolerated via allSettled),
+   * calls `closeAllConnections` when available, and finally closes the socket.
+   * Wired to SIGINT/SIGTERM through `installShutdownHandlers` (REQ-096).
+   * @return {Promise<void>} Resolves after the socket closes; rejects when `server.close` errors.
+   * @throws {Error} Rejects with the `server.close` error.
+   * @satisfies REQ-096
+   */
   async stopHttpServer(): Promise<void> {
-    if (!this.httpServer) {
-      // Changed to Logger.warn and return, as throwing an error might be too harsh if called multiple times.
+    const server = this.httpServer;
+    if (!server) {
       Logger.error(`[${this.serverName}] HTTP server is not running or already stopped.`);
       return;
     }
 
+    this.httpServer = null;
+    const closingSessions = Object.values(this.sessions);
+    this.sessions = {};
+    await Promise.allSettled(closingSessions.map((context) => context.transport.close()));
+    if (closingSessions.length > 0) {
+      Logger.log(`[${this.serverName}] All transports closed.`);
+    }
+
     return new Promise((resolve, reject) => {
-      this.httpServer!.close((err: Error | undefined) => {
+      server.closeAllConnections?.();
+      server.close((err: Error | undefined) => {
         if (err) {
           Logger.error(`[${this.serverName}] Error stopping HTTP server:`, err);
           reject(err);
           return;
         }
         Logger.log(`[${this.serverName}] HTTP server stopped.`);
-        this.httpServer = null;
-        const closingSessions = Object.values(this.sessions).map((context) => {
-          // Clean up session
-          if (context.transport.sessionId) {
-            delete this.sessions[context.transport.sessionId];
-          }
-          return Promise.resolve();
-        });
-        Promise.all(closingSessions)
-          .then(() => {
-            Logger.log(`[${this.serverName}] All transports closed.`);
-            resolve();
-          })
-          .catch((transportCloseErr) => {
-            // This catch might be redundant if individual transport close errors are handled
-            Logger.error(`[${this.serverName}] Error during bulk transport closing:`, transportCloseErr);
-            reject(transportCloseErr);
-          });
+        resolve();
       });
     });
   }

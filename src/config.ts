@@ -1,3 +1,4 @@
+import { resolveEnabledToolNames } from "./utils/configResolver.js";
 import { Logger } from "./index.js";
 import { ToolConfig } from "./core/BaseMcpServer.js";
 
@@ -170,25 +171,34 @@ const serverConfigs: ServerInstanceConfig[] = [
   },
 ];
 
+/**
+ * @brief Applies the `GOOGLE_MAPS_ENABLED_TOOLS` allowlist to a tool registry.
+ * @details Delegates allowlist semantics to `resolveEnabledToolNames` (unset,
+ * empty, or `*` -> full set; >=1 match -> subset; 0 matches -> full set plus
+ * stderr error). Logs the active-count line only when a strict subset is
+ * selected, preserving legacy output. Complexity O(n + m).
+ * @param tools {ToolConfig[]} Full tool registry.
+ * @return {ToolConfig[]} Effective tool list (never empty for a non-empty input).
+ * @see resolveEnabledToolNames
+ * @satisfies PRJ-006, REQ-010, REQ-011, REQ-012
+ */
 export function filterTools(tools: ToolConfig[]): ToolConfig[] {
-  const raw = process.env.GOOGLE_MAPS_ENABLED_TOOLS?.trim();
-  if (!raw || raw === "*") return tools;
-
-  const enabled = new Set(
-    raw
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
+  const resolution = resolveEnabledToolNames(
+    tools.map((tool) => tool.name),
+    process.env.GOOGLE_MAPS_ENABLED_TOOLS
   );
-  const filtered = tools.filter((t) => enabled.has(t.name));
 
-  if (filtered.length === 0) {
+  if (resolution.fallback) {
     Logger.error(`GOOGLE_MAPS_ENABLED_TOOLS matched 0 tools. Available: ${tools.map((t) => t.name).join(", ")}`);
     return tools;
   }
 
-  Logger.log(`GOOGLE_MAPS_ENABLED_TOOLS: ${filtered.length}/${tools.length} tools active`);
-  return filtered;
+  if (resolution.matched !== tools.length) {
+    Logger.log(`GOOGLE_MAPS_ENABLED_TOOLS: ${resolution.matched}/${tools.length} tools active`);
+  }
+
+  const enabled = new Set(resolution.names);
+  return tools.filter((tool) => enabled.has(tool.name));
 }
 
 export default serverConfigs;

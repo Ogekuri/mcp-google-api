@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# setup.sh — prepare the project: install dependencies and create .env
+# setup.sh — developer setup: install dependencies from the lockfile and
+# scaffold .env when absent (never overwrites an existing .env)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -14,9 +15,9 @@ if [ ! -f .env ]; then
   echo "Created .env from .env.example — edit it and set GOOGLE_MAPS_API_KEY."
 fi
 
-npm install
+npm ci
 echo
 echo "Setup complete. Next steps:"
-echo "  scripts/build.sh       # compile to dist/"
-echo "  scripts/start-mcp.sh   # run MCP server (stdio)"
-echo "  scripts/start-http.sh  # run MCP server (HTTP)"
+echo "  npm run build            # compile to dist/ (or: npm run verify for the full pipeline)"
+echo "  node dist/cli.js doctor  # local self-check (no network)"
+echo "  node dist/cli.js --stdio # run MCP server (stdio)"

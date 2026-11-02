@@ -3,7 +3,7 @@
 ## Execution Units Index
 | ID | Type | Parent | Role | Entrypoint(s) | Defining File(s) |
 |---|---|---|---|---|---|
-| PROC:main | process | - | Single Node.js ESM process hosting all runtime modes: MCP HTTP server, MCP stdio server, `exec` CLI, `doctor` CLI, `batch-geocode` CLI | `yargs.parse()` command dispatch; `startServer(...)`; `runExecCommand(...)`; `runDoctor(...)`; `batch-geocode` command handler; `BaseMcpServer.startStdio()` | `src/cli.ts`, `src/core/BaseMcpServer.ts` |
+| PROC:main | process | - | Single Node.js ESM process hosting all runtime modes: MCP HTTP server, MCP stdio server, `exec` CLI, `doctor` CLI, `batch-geocode` CLI, `setup` CLI, `snippet` CLI | `yargs.parse()` command dispatch; `startServer(...)`; `runExecCommand(...)`; `runDoctor(...)`; `runSetup(...)`; `runSnippetCommand(...)`; `batch-geocode` command handler; `BaseMcpServer.startStdio()` | `src/cli.ts`, `src/core/BaseMcpServer.ts` |
 
 - Threads: no explicit threads detected for `PROC:main` — `src/` contains no `worker_threads`, `cluster`, or `child_process` usage. All concurrency is event-loop based (`Promise.all`, `Promise.race`, async/await); Node.js libuv pool usage is an implicit runtime detail, not created by `src/` code.
 
@@ -28,9 +28,14 @@
 - Internal Call-Trace Tree:
 
   TRACE-A: module load and command dispatch [`src/cli.ts`]
-  - `(module scope)`: loads dotenv twice (cwd `.env`, then package `.env`); computes `__dirname`; builds `serverConfigs` indirectly via import of `src/config.ts`
-    - external: dotenv config, `fileURLToPath`/`dirname`, `readFileSync`
-  - `yargs(...).parse()`: dispatches to the command handler selected by argv
+  - `(module scope)`: computes `__dirname`; builds `serverConfigs` indirectly via import of `src/config.ts`
+    - external: `fileURLToPath`/`dirname`
+  - `loadEnvironment(extractEnvFileOption(process.argv))`: direct-run entry loads environment before command dispatch; explicit `--env-file <path>` loads exactly that file (missing -> JSON stderr error, exit 1, no implicit fallback); otherwise dotenv loads cwd `.env`, then package `.env` [`src/cli.ts`]
+    - `extractEnvFileOption(argv)`: scans argv for `--env-file <path>` and `--env-file=<path>` forms
+      - `applyExplicitEnvFile(path)`: existence-checked dotenv load [`src/utils/configResolver.ts`]
+        - external: `existsSync`, dotenv config
+    - external (implicit path): dotenv config on cwd/package `.env`
+  - `yargs(...).parse()`: dispatches to the command handler selected by argv (global `--env-file` option declared for help)
     - external: yargs/hideBin
 
   TRACE-B: HTTP-server mode (default command, no `--stdio`) [`src/cli.ts`]
@@ -38,12 +43,16 @@
     - `checkForUpdates(...)`: fire-and-forget npm update check (`void ... .catch(() => undefined)`; never blocks startup); skipped when `MCP_AUTO_UPDATE_DISABLED` is set [`src/utils/autoUpdate.ts`]
       - `isAutoUpdateDisabled(env)`: true when `MCP_AUTO_UPDATE_DISABLED` is `1`/`true`/`yes` case-insensitively; short-circuits before any network call
       - external: `fetch` → `https://registry.npmjs.org/mcp-google-map/latest` with `AbortSignal.timeout(2000)`; stderr-only diagnostics and upgrade notice via `Logger`
-    - `startServer(port, apiKey, host)`: env overrides; iterates `serverConfigs` (one instance `MCP-Server`, port env `MCP_SERVER_PORT`); boots each instance; logs completion
+    - `startServer(port, apiKey, host)`: env overrides; iterates `serverConfigs` (one instance `MCP-Server`, port env `MCP_SERVER_PORT`); validates port (integer 1-65535; unset/invalid marks the instance failed with remediation guidance); boots each instance; on success calls `installShutdownHandlers(servers)`; returns `{ started, failed, servers }` and the `$0` handler exits 1 when `started === 0`
+      - `installShutdownHandlers(servers)`: registers SIGINT/SIGTERM wrappers; one-shot orderly stop then exit 0 [`src/cli.ts`]
+        - `createShutdownHandler(servers, exitHook?)`: awaits stop of every server (tolerant), then exit hook; repeated signals are no-ops
+          - `stopHttpServer()`: closes every session transport, clears the session map, `closeAllConnections`, then closes the socket; idempotent [`src/core/BaseMcpServer.ts`]
       - `filterTools(tools)`: applies `GOOGLE_MAPS_ENABLED_TOOLS` allowlist; logs active count or zero-match error [`src/config.ts`]
-        - `Logger.log(...)` / `Logger.error(...)`: stderr diagnostics [`src/index.ts`]
+        - `resolveEnabledToolNames(allToolNames, raw)`: unset/`*` -> full set; >=1 match -> subset; 0 matches -> full set + fallback flag [`src/utils/configResolver.ts`]
+          - `Logger.log(...)` / `Logger.error(...)`: stderr diagnostics [`src/index.ts`]
       - `new BaseMcpServer(name, tools)`: stores name/tools; builds root MCP server
         - `createMcpServer()`: constructs `McpServer` (capabilities: logging, tools) and registers every `ToolConfig` (description, zod inputSchema, annotations, ACTION closure) [`src/core/BaseMcpServer.ts`]
-      - `startHttpServer(port, host)`: express app with JSON body parsing; registers `/mcp` handlers; starts listener
+      - `startHttpServer(port, host)`: express app with JSON body parsing; registers `/mcp` handlers; resolves only after the listener accepts (rejects on listen errors, e.g. EADDRINUSE); default host `127.0.0.1` (loopback)
         - `POST /mcp` handler closure: session + key routing per request [`src/core/BaseMcpServer.ts`]
           - `ApiKeyManager.getInstance()`: lazily builds singleton keyed on `GOOGLE_MAPS_API_KEY` [`src/utils/apiKeyManager.ts`]
           - `ApiKeyManager.getApiKey(req, sessionApiKey)`: header key → Bearer token → session key → default key
@@ -64,7 +73,7 @@
   - `$0` handler: applies `--apikey` to env; fires auto-update check (same `checkForUpdates` node as TRACE-B)
     - `filterTools(serverConfigs[0].tools)`: allowlist [`src/config.ts`]
     - `new BaseMcpServer(name, tools)` → `createMcpServer()` (as TRACE-B) [`src/core/BaseMcpServer.ts`]
-    - `startStdio()`: creates `StdioServerTransport` and connects it
+    - `startStdio()`: creates `StdioServerTransport` and connects it; runs directly from the built `dist` artifact (`bin` entry `dist/cli.js`; artifact-missing remediation lives in the launcher scripts, not `src/`)
       - `connect(transport)`: SDK connect + stdout guard (drops non-`{` stdout writes to protect JSON-RPC framing) [`src/core/BaseMcpServer.ts`]
     - external: `StdioServerTransport`; SDK reads stdin JSON-RPC frames and invokes registered ACTION closures (TRACE-F)
 
@@ -209,9 +218,15 @@
       - inline: ARP / ATRP / SoLV / `found_in` metric computation
 
   TRACE-G: doctor CLI mode [`src/cli.ts`]
-  - `doctor` handler: reads installed package version from `package.json`
+  - `doctor` handler: reads installed package version from `package.json`; parses `--probes` before dispatch (invalid input -> JSON stderr error, exit 1)
     - external: `readFileSync`; fallback version `"0.0.0"`
-    - `runDoctor(packageVersion, apiKey, live, runner?)`: local checks (node ≥ 18, version ≠ `"0.0.0"`, key presence); live branch probes three APIs sequentially; assembles `DoctorReport`
+    - `runDoctor(packageVersion, apiKey, live, runner?, options?)`: local checks (node >= `NODE_ENGINE_FLOOR` 22 per `engines`, non-zero version, key presence, config diagnostics, env-file status, tool/API profile); live branch probes three APIs sequentially by default or the selected `--probes` subset; assembles `DoctorReport`
+      - `resolveRuntimeConfig(env, overrides)`: typed config snapshot with per-field sources (flag/environment/default) [`src/utils/configResolver.ts`]
+      - `describeRuntimeConfig(config)` / `formatConfigDiagnostics(diagnostics)`: masked effective-configuration line (raw secret never printed) [`src/utils/configResolver.ts`]
+        - `maskSecret(value)`: prefix/suffix masking helper
+      - `resolveEnabledToolNames(allToolNames, raw)`: effective tool set + zero-match fallback flag [`src/utils/configResolver.ts`]
+      - `describeToolsProfile(names)`: per-tool Google API union incl. composite tool dependencies [`src/utils/toolProfiles.ts`]
+      - `parseDoctorProbes(raw)`: alias-mapped, deduped subset of `DOCTOR_PROBES` (undefined -> all three)
       - `execTool(check.tool, check.params, apiKey)`: probe runner (default) → facade subtrees as TRACE-D
       - external: `process.versions.node` read; stdout JSON write; `process.exitCode`
 
@@ -223,11 +238,23 @@
       - task closure → `PlacesSearcher.geocode(address)` (as above) per line
     - external: `writeFileSync` (`--output`) or `console.log` stdout summary; `process.exit(failed > 0 ? 1 : 0)`
 
+  TRACE-I: setup CLI mode [`src/cli.ts`]
+  - `setup` handler: non-interactive onboarding; no prompts, no Google API calls, no writes without `--write-env`
+    - `runSetup({ packageDir, targetDir, writeEnv }, deps?)`: checks node floor (`NODE_ENGINE_FLOOR` 22), `.env.example` presence, `.env` state in `targetDir`; with `--write-env` creates `.env` from the template only when absent (existing files never overwritten); api-key presence from resolved config; assembles `SetupReport { success, created, checks[] }` (masked)
+      - `resolveRuntimeConfig(env)`: as TRACE-G [`src/utils/configResolver.ts`]
+      - external: `existsSync`/`readFileSync`/`writeFileSync` (injectable for tests), `process.stdout` JSON write, `process.exitCode`
+
+  TRACE-J: snippet CLI mode [`src/cli.ts`]
+  - `snippet` handler: prints MCP-client registration snippets; writes no file
+    - `runSnippetCommand(options, streams?)`: renders snippet, writes JSON to stdout and `[snippet]` notes to stderr; exit 1 on render error
+      - `renderClientSnippet(options)`: stdio entry (launchers `npx`/`node`/`bin`; literal placeholder default, `${NAME}` reference with `--env-key`) or HTTP `{ url }` entry; target-file notes per client [`src/utils/clientSnippets.ts`]
+      - external: `JSON.stringify`, process streams
+
 - External Boundaries:
   - stdio: stdin/stdout JSON-RPC framing (stdio-server mode); stdout guard installed in `connect(...)`.
   - network (inbound): Express HTTP listener on `http://{host}:{port}/mcp` (POST/GET/DELETE; SSE for GET).
   - network (outbound): `https://routes.googleapis.com` (computeRoutes, computeRouteMatrix), `https://registry.npmjs.org` (automatic update check, fire-and-forget, disabled by `MCP_AUTO_UPDATE_DISABLED`), `https://places.googleapis.com/v1/places:searchText`, `@googlemaps/places` `PlacesClient` (searchNearby, searchText, getPlace, getPhotoMedia), `@googlemaps/google-maps-services-js` `Client` (geocode, reverseGeocode, timezone, elevation), `https://weather.googleapis.com`, `https://airquality.googleapis.com`, `https://maps.googleapis.com/maps/api/staticmap`.
-  - filesystem: `.env` loads (dotenv), `package.json` version read (doctor), batch-geocode input/output files.
+  - filesystem: `.env` loads (dotenv; explicit `--env-file` loads exactly the given file), `package.json` version read (doctor/setup), setup `.env` scaffolding, batch-geocode input/output files.
   - OS/runtime: `process.env` reads/writes, `process.exit`/`process.exitCode`, `process.stdout`/`process.stderr`, `randomUUID` (node:crypto), `AsyncLocalStorage` (node:async_hooks), `Date`/`Math` local-time computations.
 
 ## Communication Edges
@@ -238,5 +265,5 @@
 | EDGE-03 | external MCP client process → `PROC:main` | HTTP POST/GET/DELETE (Express) + SSE | `http://{host}:{port}/mcp` | JSON-RPC 2.0 body; headers `mcp-session-id`, `X-Google-Maps-API-Key`, `Authorization: Bearer`; 400 + JSON-RPC error `-32000` on invalid session | `src/core/BaseMcpServer.ts` |
 | EDGE-04 | `PROC:main` → external MCP client process | HTTP response / SSE stream | `/mcp` | JSON-RPC responses; SSE event stream on GET; per-session isolation keyed by `mcp-session-id` | `src/core/BaseMcpServer.ts` |
 | EDGE-05 | `PROC:main` request-handling path → `PROC:main` tool-ACTION path (intra-process) | `AsyncLocalStorage` context store | in-process `RequestContext { apiKey?, sessionId? }` | per-request API key + session id; read by `getCurrentApiKey()` inside every tool ACTION | `src/utils/requestContext.ts`, `src/core/BaseMcpServer.ts`, `src/tools/maps/*.ts` |
-| EDGE-06 | `PROC:main` request-handling path → invoking shell / CI consumer (external) | process stdout/stderr | stdout / stderr | CLI JSON outputs: doctor `DoctorReport { success, version, live, checks[] }`; exec result JSON or `{ error }`; batch summary `{ total, succeeded, failed, results }`; `[INFO]`/`[ERROR]` diagnostics via `Logger` | `src/cli.ts`, `src/index.ts` |
+| EDGE-06 | `PROC:main` request-handling path → invoking shell / CI consumer (external) | process stdout/stderr | stdout / stderr | CLI JSON outputs: doctor `DoctorReport { success, version, live, checks[] }`; setup `SetupReport { success, created, checks[] }`; snippet registration JSON (stdout) + `[snippet]` notes (stderr); exec result JSON or `{ error }`; batch summary `{ total, succeeded, failed, results }`; `[INFO]`/`[ERROR]` diagnostics via `Logger` | `src/cli.ts`, `src/index.ts` |
 | EDGE-07 | `PROC:main` startup path → external npm registry | HTTPS GET, fire-and-forget (not awaited; bounded by `AbortSignal.timeout(2000)`) | `https://registry.npmjs.org/mcp-google-map/latest` | Request: no body; Response: JSON `{ version }`; check skipped entirely when `MCP_AUTO_UPDATE_DISABLED` is `1`/`true`/`yes`; newer version reported on stderr only | `src/utils/autoUpdate.ts`, `src/cli.ts` |

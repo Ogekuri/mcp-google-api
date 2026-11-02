@@ -47,6 +47,7 @@
 !.env.example
 !tsconfig.json
 !tsup.config.ts
+!eslint.config.js
 
 ##########################################
 # Exlucde specific files and directories #

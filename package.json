@@ -21,7 +21,8 @@
     "test": "tsx --test tests/*.unit.test.ts",
     "test:e2e": "tsx tests/smoke.test.ts",
     "check:publish-version": "node scripts/check-publish-version.mjs",
-    "prepublishOnly": "npm run check:publish-version && npm run typecheck && npm test && npm run build"
+    "verify": "npm run typecheck && npm test && npm run build",
+    "prepublishOnly": "npm run check:publish-version && npm run verify"
   },
   "engines": {
     "node": ">=22"
@@ -63,6 +64,7 @@
     "@types/yargs": "^17.0.33",
     "tsup": "^8.4.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.72.1"
   }
 }

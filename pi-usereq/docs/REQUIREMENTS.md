@@ -16,7 +16,7 @@ This document MUST follow these authoring rules (LLM-first, normative SRS):
   - Do NOT add YAML front matter or in-document revision history; use git history / CHANGELOG.md for change tracking.
 
 ### 1.2 Project Scope
-`mcp-google-map` (v0.0.0, GPL-3.0) is a Model Context Protocol (MCP) server exposing 18 Google Maps tools (geocoding, Places API (New), Routes, Weather, Air Quality, Time Zone, Elevation, Static Maps) to AI agents over stdio or Streamable HTTP, plus a standalone CLI (`doctor`, `exec`, `batch-geocode`). Boundaries: read-only Google API queries only; no persistence, no caching layer, no user management, no write operations.
+`mcp-google-map` (v0.0.0, GPL-3.0) is a Model Context Protocol (MCP) server exposing 18 Google Maps tools (geocoding, Places API (New), Routes, Weather, Air Quality, Time Zone, Elevation, Static Maps) to AI agents over stdio or Streamable HTTP, plus a standalone CLI (`doctor`, `exec`, `batch-geocode`, `setup`, `snippet`). Boundaries: read-only Google API queries only; no persistence, no caching layer, no user management, no write operations.
 
 Project file/folder structure (evidence: repository tree):
 
@@ -40,7 +40,11 @@ mcp-google-map/
 │   │   └── maps/                # 18 MCP tool modules (NAME/DESCRIPTION/SCHEMA/ACTION)
 │   └── utils/
 │       ├── apiKeyManager.ts     # ApiKeyManager singleton (key resolution priority)
-│       └── requestContext.ts    # AsyncLocalStorage request context (apiKey, sessionId)
+│       ├── autoUpdate.ts        # npm registry update check (stderr-only)
+│       ├── clientSnippets.ts    # MCP-client registration snippet renderer
+│       ├── configResolver.ts    # typed runtime config resolution + secret masking
+│       ├── requestContext.ts    # AsyncLocalStorage request context (apiKey, sessionId)
+│       └── toolProfiles.ts      # tool -> Google API dependency profiles
 ├── tests/                       # node:test unit suites + smoke.test.ts (live e2e)
 ├── package.json
 ├── tsconfig.json
@@ -62,29 +66,33 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 ### 2.1 Project Functions
 - **PRJ-001**: MUST expose 18 Google Maps MCP tools: maps_geocode, maps_reverse_geocode, maps_search_nearby, maps_search_places, maps_place_details, maps_directions, maps_distance_matrix, maps_elevation, maps_timezone, maps_weather, maps_explore_area, maps_plan_route, maps_compare_places, maps_air_quality, maps_static_map, maps_batch_geocode, maps_search_along_route, maps_local_rank_tracker.
 - **PRJ-002**: MUST serve tool calls over both stdio transport and Streamable HTTP transport at endpoint path `/mcp`.
-- **PRJ-003**: MUST provide a standalone CLI with commands: `doctor`, `exec <tool> [params]`, `batch-geocode`, and default server-start command.
+- **PRJ-003**: MUST provide a standalone CLI with commands: `doctor`, `exec <tool> [params]`, `batch-geocode`, `setup`, `snippet`, and default server-start command.
 - **PRJ-004**: MUST provide composite tools (explore-area, plan-route, compare-places, search-along-route, local-rank-tracker) that chain geocoding, search, details, and routing calls internally.
 - **PRJ-005**: MUST support per-request and per-session Google Maps API keys so concurrent HTTP clients use isolated credentials.
-- **PRJ-006**: MUST allow restricting exposed tools via the `GOOGLE_MAPS_ENABLED_TOOLS` comma-separated allowlist environment variable.
+- **PRJ-006**: MUST allow restricting exposed tools via the `GOOGLE_MAPS_ENABLED_TOOLS` comma-separated allowlist environment variable resolved through the central typed configuration.
 - **PRJ-007**: MUST provide CLI batch geocoding of address files or stdin with bounded concurrency and JSON summary output.
 - **PRJ-008**: MUST report machine-readable JSON results on stdout and diagnostics on stderr in all CLI modes.
+- **PRJ-009**: MUST provide machine-readable tool/API dependency profiles covering all 18 tools, including the tool dependencies of composite tools.
+- **PRJ-010**: MUST provide a `snippet` CLI command that prints valid MCP-client registration snippets without modifying any client configuration file.
+- **PRJ-011**: MUST provide a non-interactive `setup` CLI command that verifies local readiness without prompts or Google API calls.
 
 ### 2.2 Project Constraints
 - **CTN-001**: MUST declare all tools read-only, non-destructive, idempotent, and open-world via MCP tool annotations (evidence: `MAPS_TOOL_ANNOTATIONS`, `src/config.ts`).
 - **CTN-002**: MUST require a Google Maps API key from environment `GOOGLE_MAPS_API_KEY`, CLI `--apikey`, or per-request HTTP header before any tool call executes.
 - **CTN-003**: MUST reserve stdio-mode stdout exclusively for JSON-RPC frames, dropping non-JSON stdout writes.
 - **CTN-004**: MUST default Places API result language to English (`languageCode: "en"`).
-- **CTN-005**: MUST run on Node.js; `package.json` declares `engines.node >= 22` while the doctor check passes at Node >= 18.
+- **CTN-005**: MUST run on Node.js `>= 22`, declared in `package.json` `engines` and enforced identically by the `doctor` local check.
 - **CTN-006**: MUST build and run as ECMAScript Modules only (`"type": "module"`, tsup ESM output).
-- **CTN-007**: MUST load `.env` from the current working directory first, then from the package installation directory (`src/cli.ts`).
-- **CTN-008**: MUST NOT use any database or file-based persistence; all state is in-memory per process.
+- **CTN-007**: MUST load `.env` from the current working directory first, then from the package installation directory, unless an explicit `--env-file` is given.
+- **CTN-008**: MUST NOT use any database or file-based persistence; all state is in-memory per process, except user-authorized local configuration files.
+- **CTN-009**: MUST support a global `--env-file <path>` CLI option that loads exactly the given file before command execution and fails when it is missing.
 
 ### 2.3 Packaging and Publication
 - **PKG-001**: MUST keep `README.md` free of placeholder markers and of badges that do not match the Node.js runtime declared in `package.json` `engines`.
 - **PKG-002**: MUST resolve every `README.md` navigation-menu anchor to an existing section heading in the same document.
-- **PKG-003**: MUST document in `README.md` at least three installation paths: npm package install, one-shot `npx` execution, and cross-platform manual commands equivalent to the bash helper scripts.
-- **PKG-004**: MUST run a GitHub Actions CI workflow on push and pull_request that installs dependencies with the lockfile, runs typecheck, and runs unit tests excluding live e2e tests.
-- **PKG-005**: MUST define a `prepublishOnly` script in `package.json` that runs typecheck, unit tests, and build before any `npm publish`.
+- **PKG-003**: MUST document in `README.md` a prebuilt-package-first Quick Start and installation paths: npm install, one-shot `npx`, and from-source build via cross-platform npm commands.
+- **PKG-004**: MUST run a GitHub Actions CI workflow on push and pull_request across Linux, macOS, and Windows that installs dependencies with the lockfile, typechecks, and runs unit tests excluding live e2e tests.
+- **PKG-005**: MUST define a `prepublishOnly` script in `package.json` that runs the version guard, typecheck, unit tests, and build before any `npm publish`.
 - **PKG-006**: MUST set one identical non-`0.0.0` semantic version across `package.json`, `package-lock.json`, and the `README.md` title for every published release.
 - **PKG-007**: MUST print only the distribution package name `mcp-google-map` in user-facing doctor messages.
 - **PKG-008**: MUST trigger the release workflow only on pushed tags matching `v[0-9]+.[0-9]+.[0-9]+` whose commit is reachable from `master`, publishing the verified build.
@@ -97,6 +105,11 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-015**: MUST document in `README.md` and `docs/CONFIGURATION.md` MCP-client registration for pi CLI and OpenClaw with complete working stdio examples, including key-expansion and post-change reload notes.
 - **PKG-016**: MUST document configuration prerequisites in `README.md` and `docs/CONFIGURATION.md`: single `GOOGLE_MAPS_API_KEY`, enabled Google services, minimal operational subset, `GOOGLE_MAPS_ENABLED_TOOLS`, and post-install `doctor` verification.
 - **PKG-017**: MUST fail `npm publish` via the `prepublishOnly` guard when the `package.json` version is `0.0.0`-based or carries a prerelease or build suffix.
+- **PKG-018**: MUST document in `README.md` the migration of the HTTP default bind from `0.0.0.0` to loopback `127.0.0.1`, including the `--host 0.0.0.0` opt-in.
+- **PKG-019**: MUST provide a single `npm run verify` pipeline (typecheck, unit tests, build) and keep helper scripts free of implicit chained install/build steps.
+- **PKG-020**: MUST document developer setup using lockfile-based `npm ci` and cross-platform npm commands in `README.md`.
+- **PKG-021**: MUST install the packed tarball into a temporary CI environment and run the installed `doctor` local smoke check without Google API calls.
+- **PKG-022**: MUST keep every documented example consistent with supported CLI flags, headers, and transports.
 
 ## 3. Requirements
 
@@ -114,7 +127,9 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **DES-011**: MUST map Google API error codes 403/gRPC-7 to an "API key invalid or API not enabled" message and 429/gRPC-8 to a quota-exceeded message.
 - **DES-012**: MUST map legacy travel-mode names driving/walking/bicycling/transit to Routes API DRIVE/WALK/BICYCLE/TRANSIT, defaulting unknown modes to DRIVE.
 - **DES-013**: MUST prefer place IDs over coordinates when converting resolved locations to Routes waypoints, because Routes snaps coordinates to roads (`toRouteWaypoint`, `src/services/PlacesSearcher.ts`).
-- **DES-014**: MUST implement runnability self-checks in a doctor command decoupled from server startup, with injectable tool runner for testing (`runDoctor`, `src/cli.ts`).
+- **DES-014**: MUST implement doctor self-checks decoupled from server startup with injectable tool runner, Node version, and configuration dependencies for testing (`runDoctor`, `src/cli.ts`).
+- **DES-015**: MUST resolve runtime configuration (API key, host, port, enabled tools, update flag, env file) in one typed resolver consumed by every CLI command.
+- **DES-016**: MUST mask secret values via a single masking helper in every diagnostic, doctor, and setup report.
 
 ### 3.2 Functions
 
@@ -126,8 +141,11 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-005**: MUST delete the stored session context when the session transport emits `onclose`.
 - **REQ-006**: MUST overwrite the stored session API key when a later request on that session supplies a header-based key.
 - **REQ-007**: MUST serve GET `/mcp` for server-to-client SSE notifications and DELETE `/mcp` for session termination through one shared handler.
-- **REQ-008**: MUST bind the HTTP server to `--host` (default `MCP_SERVER_HOST` or `0.0.0.0`) and port `--port` (default `MCP_SERVER_PORT` or 3000).
-- **REQ-009**: MUST skip starting a server instance and log remediation guidance when its port environment variable is unset or non-positive.
+- **REQ-008**: MUST bind the HTTP server to `--host` (default `MCP_SERVER_HOST` or `127.0.0.1`) and port `--port` (default `MCP_SERVER_PORT` or 3000).
+- **REQ-009**: MUST skip starting a server instance, log remediation guidance, and mark startup failed when its port value is unset or invalid.
+- **REQ-094**: MUST start stdio mode directly from the built `dist` artifact, failing with build remediation guidance instead of implicit builds.
+- **REQ-095**: MUST exit non-zero from HTTP startup when zero server instances are listening.
+- **REQ-096**: MUST close all HTTP sessions and the listening socket on SIGINT or SIGTERM before exiting.
 - **REQ-010**: MUST return the full tool set when `GOOGLE_MAPS_ENABLED_TOOLS` is unset, empty, or `*`.
 - **REQ-011**: MUST return the named tool subset when `GOOGLE_MAPS_ENABLED_TOOLS` matches at least one tool name, trimming whitespace and ignoring empty items.
 - **REQ-012**: MUST return the full tool set and log an error when `GOOGLE_MAPS_ENABLED_TOOLS` matches zero tools.
@@ -205,17 +223,24 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-069**: SHOULD resolve the target business display name for `maps_local_rank_tracker` via place details while tolerating lookup failure with an empty name.
 
 #### CLI
-- **REQ-070**: MUST verify Node >= 18, non-zero package version, and API key presence in `doctor` local mode without network calls, printing a JSON report and exiting 0 only when no check fails.
+- **REQ-070**: MUST verify Node >= 22 per `package.json` `engines`, non-zero package version, and API key presence in `doctor` local mode without network calls, exiting 0 only when no check fails.
 - **REQ-071**: MUST add a skipped `live-api` check in `doctor` when `--live` is absent or no API key is configured, making no billable calls.
 - **REQ-072**: MUST probe Geocoding, Places (New), and Routes APIs independently via geocode, search-places, and directions calls in `doctor --live` mode, failing only the probes that error.
+- **REQ-089**: MUST report effective configuration with per-field sources and masked secrets in `doctor` local mode.
+- **REQ-090**: MUST report the Google APIs required by each enabled tool from the tool/API profiles in `doctor` local mode without network calls.
+- **REQ-091**: MUST probe a `--probes`-selected subset of Geocoding, Places (New), and Routes in `doctor --live`, probing all three when `--probes` is absent.
 - **REQ-073**: MUST execute a named tool with JSON parameters for `exec`, accepting short, snake_case, and `maps_`-prefixed aliases per the `EXEC_TOOLS` mapping.
 - **REQ-074**: MUST exit 1 with a JSON error on stderr for `exec` when no API key is configured, when the tool reports `{ success: false }`, when parameters are not valid JSON, or when the tool name is unknown.
 - **REQ-075**: MUST write successful `exec` results as pretty-printed JSON to stdout with exit code 0.
 - **REQ-076**: MUST read one address per line for `batch-geocode` from `--input` file or stdin when `--input -`, rejecting empty input with exit 1.
 - **REQ-077**: MUST bound `batch-geocode` concurrency between 1 and 50 (default 20), print a JSON summary with counts and per-address results, and write progress to stderr only when `--output` is set.
 - **REQ-078**: MUST write `batch-geocode` results to `--output` file when given, otherwise stdout, and exit 1 when any address failed.
-- **REQ-079**: MUST start the MCP server in stdio mode when `--stdio` is passed, otherwise in HTTP mode, applying `--apikey` to the environment before startup.
+- **REQ-079**: MUST start the MCP server in stdio mode when `--stdio` is passed, otherwise in HTTP mode, applying `--apikey` and `--env-file` before startup.
 - **REQ-080**: MUST log a warning instead of failing when the default server-start command runs in HTTP mode without an API key.
+- **REQ-087**: MUST run `setup` non-interactively: no prompts, no Google API calls, no writes unless an explicit write option is passed.
+- **REQ-088**: MUST create `.env` from `.env.example` in `setup` only with explicit write authorization and only when the target file is absent, never overwriting existing files.
+- **REQ-092**: MUST print valid JSON MCP-client registration snippets for stdio and HTTP to stdout in `snippet`, writing no file.
+- **REQ-093**: MUST embed literal placeholder values in snippets by default; `--env-key` MUST emit variable references documented as client-specific.
 
 #### Automatic Update Check
 - **REQ-082**: MUST run an automatic update check by default at server startup in stdio and HTTP modes, comparing the running version against the latest `mcp-google-map` version published on the npm registry.
@@ -227,7 +252,6 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 ### 3.3 Known Limitations (True State)
 - **LIM-001**: `maps_search_nearby` may return fewer than 20 results when client-side `openNow`/`minRating` filters discard matches post-query.
 - **LIM-002**: `GoogleMapsTools.parseCoordinates` validates only numeric parsing, not geographic ranges; range rejection happens only in composite `resolveLocation` (`src/services/toolclass.ts`).
-- **LIM-003**: `doctor` accepts Node >= 18 while `package.json` `engines` requires >= 22; a passing doctor report does not guarantee engine compliance.
 - **LIM-004**: `maps_static_map` passes `size` through without enforcing the documented 640x640 maximum; only the 16384-character URL limit is enforced.
 - **LIM-005**: Transit routing has regional coverage gaps; the server surfaces Google's regional limitations (notably Japan and India) as errors or warnings rather than fallbacks.
 - **LIM-006**: No explicit performance optimizations identified beyond bounded concurrency batching (grid scan concurrency 5 in `scanKeywordGrid`; CLI semaphore clamp 1-50).
@@ -235,7 +259,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 
 ## 4. Test Requirements
 - **TST-001**: MUST verify REQ-073/REQ-074/REQ-075 by running `npm test` (`tests/cliExec.unit.test.ts`): injected runners assert stdout JSON on success, stderr JSON plus exit code 1 on failure responses, thrown errors, and alias resolution; pass when all assertions hold.
-- **TST-002**: MUST verify REQ-070/REQ-071/REQ-072 by running `npm test` (`tests/cliExec.unit.test.ts` doctor cases): local mode makes zero API calls, missing key fails safely, live mode probes three APIs independently; pass when reports match expectations.
+- **TST-002**: MUST verify REQ-070/REQ-071/REQ-072/REQ-089/REQ-090/REQ-091 by running `npm test` (`tests/cliExec.unit.test.ts`, `tests/doctorExt.unit.test.ts`): local mode makes zero API calls, engines floor enforced, config diagnostics masked, tool profiles reported, probes selectable and independent; pass when reports match expectations.
 - **TST-003**: MUST verify REQ-024-REQ-030 and REQ-081 by running `npm test` (`tests/geoscoutFilters.unit.test.ts`): mocked `PlacesClient` assertions confirm forwarded filters, field masks, priceRange preservation, `pageSize`→`maxResultCount` translation, `nextPageToken`, `pageToken` forwarding, raw payloads, and legacy array contract.
 - **TST-004**: MUST verify REQ-054/REQ-055/REQ-057 by running `npm test` (`tests/locationResolution.unit.test.ts`): mocked clients assert resolved waypoints, geocode→text-search fallback, thrown errors on unresolvable stops, and coordinate handling without API calls.
 - **TST-005**: MUST verify REQ-058 by running `npm test` (`tests/planRoute.unit.test.ts`): 2-4 stop scenarios assert optimization is applied or skipped per thresholds and ordering is preserved when disabled.
@@ -245,3 +269,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-009**: MUST verify REQ-056 defaults by running `npm test` (`tests/exploreArea.unit.test.ts`): default type set contains only valid Places API (New) type names and caller-supplied types are preserved.
 - **TST-010**: SHOULD verify end-to-end behavior against live Google APIs by running `npm run test:e2e` (`tests/smoke.test.ts`) with a real API key; pass requires all live tool calls to succeed. This test is excluded from `npm test`.
 - **TST-011**: MUST verify REQ-082/REQ-083/REQ-084/REQ-085 by running `npm test` (`tests/autoUpdate.unit.test.ts`): injected fetch and logger assert disabled short-circuit without fetch, newer-version stderr notice, and startup-failure tolerance.
+- **TST-012**: MUST verify REQ-089/CTN-009/DES-015/DES-016 by running `npm test` (`tests/configResolver.unit.test.ts`): typed resolution, per-field sources, explicit env-file precedence and missing-file failure, masked secrets.
+- **TST-013**: MUST verify PRJ-009/REQ-090 by running `npm test` (`tests/toolProfiles.unit.test.ts`): all 18 tools mapped to Google APIs with composite tool dependencies included.
+- **TST-014**: MUST verify PRJ-010/REQ-092/REQ-093 by running `npm test` (`tests/snippet.unit.test.ts`): snippets parse as JSON, default placeholders, `--env-key` references, no file writes.
+- **TST-015**: MUST verify PRJ-011/REQ-087/REQ-088 by running `npm test` (`tests/setupCommand.unit.test.ts`): no prompts, no network, authorized creation only, existing files preserved.
+- **TST-016**: MUST verify REQ-009/REQ-095/REQ-096 by running `npm test` (`tests/httpLifecycle.unit.test.ts`): invalid port marks startup failed, zero listening instances exit non-zero, signals close sessions and socket.

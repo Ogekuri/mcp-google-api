@@ -13,17 +13,104 @@ import { dirname } from "path";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { createInterface } from "readline";
 import { checkForUpdates } from "./utils/autoUpdate.js";
+import {
+  NODE_ENGINE_FLOOR,
+  applyExplicitEnvFile,
+  describeRuntimeConfig,
+  formatConfigDiagnostics,
+  resolveEnabledToolNames,
+  resolveRuntimeConfig,
+  type ResolvedRuntimeConfig,
+} from "./utils/configResolver.js";
+import { describeToolsProfile } from "./utils/toolProfiles.js";
+import { renderClientSnippet, type SnippetClient, type SnippetOptions } from "./utils/clientSnippets.js";
 
 // Get the directory of the current module
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Try to load .env from current directory first, then from package directory
-dotenvConfig({ path: resolve(process.cwd(), ".env") });
-// Also try to load from the package installation directory
-dotenvConfig({ path: resolve(__dirname, "../.env") });
+/**
+ * @brief Extracts the explicit `--env-file <path>` value from a raw argv array.
+ * @details Scans for both `--env-file <path>` and `--env-file=<path>` forms
+ * before any command parsing so the file loads before option defaults are
+ * captured. First match wins. Complexity O(n) in argv length; pure.
+ * @param argv {readonly string[]} Raw process argument vector.
+ * @return {string | undefined} Path value when present; undefined otherwise.
+ * @satisfies CTN-009
+ */
+function extractEnvFileOption(argv: readonly string[]): string | undefined {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--env-file" && i + 1 < argv.length) {
+      return argv[i + 1];
+    }
+    if (arg.startsWith("--env-file=")) {
+      return arg.slice("--env-file=".length);
+    }
+  }
+  return undefined;
+}
 
-export async function startServer(port?: number, apiKey?: string, host?: string): Promise<void> {
+/**
+ * @brief Loads environment files for the current CLI invocation.
+ * @details Explicit mode (`envFile` set): loads exactly that file via
+ * `applyExplicitEnvFile` and exits 1 with a JSON stderr error when missing —
+ * no implicit fallback. Implicit mode: loads `.env` from the current working
+ * directory first, then from the package installation directory (dotenv never
+ * overrides already-set variables). Complexity O(file count).
+ * @param envFile {string | undefined} Explicit `--env-file` value; undefined selects implicit discovery.
+ * @return {void}
+ * @throws {never} Terminates the process via `process.exit(1)` on a missing explicit file.
+ * @see applyExplicitEnvFile
+ * @satisfies CTN-007, CTN-009
+ */
+function loadEnvironment(envFile: string | undefined): void {
+  if (envFile !== undefined) {
+    const result = applyExplicitEnvFile(envFile);
+    if (!result.ok) {
+      process.stderr.write(JSON.stringify({ error: result.error }, null, 2) + "\n");
+      process.exit(1);
+    }
+    return;
+  }
+  // Try to load .env from current directory first, then from package directory
+  dotenvConfig({ path: resolve(process.cwd(), ".env") });
+  // Also try to load from the package installation directory
+  dotenvConfig({ path: resolve(__dirname, "../.env") });
+}
+
+/**
+ * @brief Aggregated HTTP startup result across all configured server instances.
+ * @details `started`/`failed` count per instance; `servers` holds only the
+ * instances that are listening, so a zero-length array with `started === 0`
+ * is the reliable-failure signal consumed by the default command (REQ-095).
+ */
+export interface ServerStartupOutcome {
+  started: number;
+  failed: number;
+  servers: BaseMcpServer[];
+}
+
+/**
+ * @brief Starts every configured HTTP MCP server instance and reports the outcome.
+ * @details Applies flag overrides to the environment, validates each instance
+ * port (integer 1-65535), skips invalid instances with remediation guidance
+ * while marking them failed (REQ-009), awaits `startHttpServer` so listen
+ * errors are caught, installs SIGINT/SIGTERM handlers on success (REQ-096),
+ * and returns the aggregate outcome. Default bind host is loopback
+ * `127.0.0.1` (REQ-008). Complexity O(instances).
+ * @param port {number | undefined} `--port` override written to `MCP_SERVER_PORT`.
+ * @param apiKey {string | undefined} `--apikey` override written to `GOOGLE_MAPS_API_KEY`.
+ * @param host {string | undefined} `--host` override written to `MCP_SERVER_HOST`.
+ * @return {Promise<ServerStartupOutcome>} Per-run counts plus listening servers.
+ * @see installShutdownHandlers
+ * @satisfies REQ-008, REQ-009, REQ-096
+ */
+export async function startServer(
+  port?: number,
+  apiKey?: string,
+  host?: string
+): Promise<ServerStartupOutcome> {
   // Override environment variables with CLI arguments if provided
   if (port) {
     process.env.MCP_SERVER_PORT = port.toString();
@@ -42,40 +129,104 @@ export async function startServer(port?: number, apiKey?: string, host?: string)
   );
   Logger.log("");
 
-  const startPromises = serverConfigs.map(async (config) => {
-    const portString = process.env[config.portEnvVar];
-    if (!portString) {
-      Logger.error(`⚠️  [${config.name}] Port environment variable ${config.portEnvVar} not set.`);
-      Logger.log(`💡 Please set ${config.portEnvVar} in your .env file or use --port parameter.`);
-      Logger.log(`   Example: ${config.portEnvVar}=3000 or --port 3000`);
-      return;
-    }
+  const servers: BaseMcpServer[] = [];
+  let started = 0;
+  let failed = 0;
 
-    const serverPort = Number(portString);
-    if (isNaN(serverPort) || serverPort <= 0) {
-      Logger.error(`❌ [${config.name}] Invalid port number "${portString}" defined in ${config.portEnvVar}.`);
-      return;
-    }
+  await Promise.all(
+    serverConfigs.map(async (config) => {
+      const portString = process.env[config.portEnvVar];
+      if (!portString) {
+        Logger.error(`⚠️  [${config.name}] Port environment variable ${config.portEnvVar} not set.`);
+        Logger.log(`💡 Please set ${config.portEnvVar} in your .env file or use --port parameter.`);
+        Logger.log(`   Example: ${config.portEnvVar}=3000 or --port 3000`);
+        failed++;
+        return;
+      }
 
-    try {
-      const server = new BaseMcpServer(config.name, filterTools(config.tools));
-      const serverHost = process.env.MCP_SERVER_HOST || "0.0.0.0";
-      Logger.log(`🔧 [${config.name}] Initializing MCP Server in HTTP mode on ${serverHost}:${serverPort}...`);
-      await server.startHttpServer(serverPort, serverHost);
-      const displayHost = serverHost === "0.0.0.0" ? "localhost" : serverHost;
-      Logger.log(`✅ [${config.name}] MCP Server started successfully!`);
-      Logger.log(`   🌐 Endpoint: http://${displayHost}:${serverPort}/mcp`);
-      Logger.log(`   📚 Tools: ${config.tools.length} available`);
-    } catch (error) {
-      Logger.error(`❌ [${config.name}] Failed to start MCP Server on port ${serverPort}:`, error);
-    }
-  });
+      const serverPort = Number(portString);
+      if (!Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65535) {
+        Logger.error(
+              `❌ [${config.name}] Invalid port number "${portString}" defined in ${config.portEnvVar} (expected integer 1-65535).`
+        );
+        failed++;
+        return;
+      }
 
-  await Promise.allSettled(startPromises);
+      try {
+        const activeTools = filterTools(config.tools);
+        const server = new BaseMcpServer(config.name, activeTools);
+        const serverHost = process.env.MCP_SERVER_HOST || "127.0.0.1";
+        Logger.log(`🔧 [${config.name}] Initializing MCP Server in HTTP mode on ${serverHost}:${serverPort}...`);
+        await server.startHttpServer(serverPort, serverHost);
+        servers.push(server);
+        started++;
+        const displayHost = serverHost === "0.0.0.0" ? "localhost" : serverHost;
+        Logger.log(`✅ [${config.name}] MCP Server started successfully!`);
+        Logger.log(`   🌐 Endpoint: http://${displayHost}:${serverPort}/mcp`);
+        Logger.log(`   📚 Tools: ${activeTools.length} available`);
+      } catch (error) {
+        Logger.error(`❌ [${config.name}] Failed to start MCP Server on port ${serverPort}:`, error);
+        failed++;
+      }
+    })
+  );
+
+  if (started > 0) {
+    installShutdownHandlers(servers);
+  }
 
   Logger.log("");
-  Logger.log("🎉 Server initialization completed!");
+  Logger.log(started > 0 ? "🎉 Server initialization completed!" : "❌ No MCP server instance started.");
   Logger.log("💡 Need help? Check the README.md for configuration details.");
+  return { started, failed, servers };
+}
+
+/** @brief Exit hook signature used by the shutdown handler. */
+export type ShutdownExitHook = (code: number) => void;
+
+/**
+ * @brief Builds a one-shot orderly shutdown handler for HTTP server instances.
+ * @details On first invocation it stops every given server via
+ * `stopHttpServer()` (transport close + socket close, errors tolerated) and
+ * then calls `exitHook(0)`; subsequent invocations are no-ops, so repeated
+ * signals never double-stop. Complexity O(servers).
+ * @param servers {readonly BaseMcpServer[]} Listening server instances.
+ * @param exitHook {ShutdownExitHook} Terminal action; defaults to `process.exit`.
+ * @return {(signal: string) => Promise<void>} Reusable async signal handler.
+ * @see stopHttpServer
+ * @satisfies REQ-096
+ */
+export function createShutdownHandler(
+  servers: readonly BaseMcpServer[],
+  exitHook: ShutdownExitHook = (code) => process.exit(code)
+): (signal: string) => Promise<void> {
+  let invoked = false;
+  return async (signal: string) => {
+    if (invoked) {
+      return;
+    }
+    invoked = true;
+    Logger.log(`📶 Received ${signal}; shutting down MCP HTTP server...`);
+    await Promise.allSettled(servers.map((server) => server.stopHttpServer()));
+    exitHook(0);
+  };
+}
+
+/**
+ * @brief Registers SIGINT/SIGTERM handlers that orderly-stop the given servers.
+ * @details Wraps `createShutdownHandler` and attaches it to both signals so
+ * Ctrl-C and terminate requests close all HTTP sessions and the listening
+ * socket before process exit (REQ-096). Complexity O(1).
+ * @param servers {readonly BaseMcpServer[]} Listening server instances.
+ * @return {void}
+ * @see createShutdownHandler
+ * @satisfies REQ-096
+ */
+export function installShutdownHandlers(servers: readonly BaseMcpServer[]): void {
+  const handler = createShutdownHandler(servers);
+  process.on("SIGINT", () => void handler("SIGINT"));
+  process.on("SIGTERM", () => void handler("SIGTERM"));
 }
 
 // --------------- Exec Mode ---------------
@@ -319,23 +470,141 @@ export async function runExecCommand(
   }
 }
 
+/** @brief Selectable live-probe identifier used by `doctor --live --probes`. */
+export type DoctorProbeId = "geocoding" | "places-new" | "routes";
+
+/** @brief Static definition of one billable live probe executed by doctor. */
+export interface DoctorLiveProbe {
+  readonly id: DoctorProbeId;
+  readonly name: string;
+  readonly tool: string;
+  readonly params: Record<string, unknown>;
+}
+
 /**
- * Check whether the standalone CLI is ready for Skill-driven use. Local mode
- * performs no Google API requests. Live mode makes three small requests so it
- * can distinguish Geocoding, Places (New), and Routes API availability.
+ * @brief Registry of the three independent live probes (Geocoding, Places (New), Routes).
+ * @details Each probe maps to one cheap `exec` tool call; probes run
+ * independently so a single API outage fails exactly one check. Complexity
+ * O(1); pure constant.
+ * @satisfies REQ-072, REQ-091
+ */
+export const DOCTOR_PROBES: readonly DoctorLiveProbe[] = [
+  { id: "geocoding", name: "geocoding-api", tool: "geocode", params: { address: "Tokyo Tower" } },
+  { id: "places-new", name: "places-api-new", tool: "search-places", params: { query: "Tokyo Tower" } },
+  {
+    id: "routes",
+    name: "routes-api",
+    tool: "directions",
+    params: { origin: "Tokyo Tower", destination: "Tokyo Station", mode: "walking" },
+  },
+];
+
+/** @brief Accepted case-insensitive `--probes` spellings per probe id. */
+const DOCTOR_PROBE_ALIASES: Readonly<Record<string, DoctorProbeId>> = {
+  geocoding: "geocoding",
+  "geocoding-api": "geocoding",
+  "places-new": "places-new",
+  places: "places-new",
+  "places-api-new": "places-new",
+  routes: "routes",
+  "routes-api": "routes",
+};
+
+/** @brief Parsed `--probes` CLI value: either valid probe ids or an error. */
+export interface DoctorProbesParseResult {
+  probes: DoctorProbeId[] | undefined;
+  error?: string;
+}
+
+/**
+ * @brief Parses the raw `--probes` CLI string into validated probe ids.
+ * @details `undefined` input -> `{ probes: undefined }` (probe all three,
+ * legacy `--live` behavior). Splits on commas, trims, lowercases, maps through
+ * `DOCTOR_PROBE_ALIASES`, dedupes, and rejects unknown names or an empty list
+ * with a remediation error. Complexity O(n) in items; pure.
+ * @param raw {string | undefined} Raw option value from argv.
+ * @return {DoctorProbesParseResult} Validated ids, or `error` describing the invalid input.
+ * @satisfies REQ-091
+ */
+export function parseDoctorProbes(raw: string | undefined): DoctorProbesParseResult {
+  if (raw === undefined) {
+    return { probes: undefined };
+  }
+  const items = raw
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+  if (items.length === 0) {
+    return { probes: undefined, error: "--probes received no probe names (expected: geocoding, places-new, routes)" };
+  }
+  const probes: DoctorProbeId[] = [];
+  for (const item of items) {
+    const id = DOCTOR_PROBE_ALIASES[item];
+    if (!id) {
+      return { probes: [], error: `unknown probe "${item}" (expected: geocoding, places-new, routes)` };
+    }
+    if (!probes.includes(id)) {
+      probes.push(id);
+    }
+  }
+  return { probes };
+}
+
+/**
+ * @brief Injectable doctor dependencies for deterministic testing.
+ * @details `nodeVersion` overrides `process.versions.node`; `config` overrides
+ * environment-derived runtime configuration; `allToolNames` overrides the
+ * registered tool-name registry used by the profile check.
+ */
+export interface DoctorOptions {
+  probes?: readonly DoctorProbeId[];
+  nodeVersion?: string;
+  config?: ResolvedRuntimeConfig;
+  allToolNames?: readonly string[];
+}
+
+/**
+ * @brief Runs the readiness self-check decoupled from server startup.
+ * @details Local checks (zero network calls): Node major >=
+ * `NODE_ENGINE_FLOOR` (22, aligned with `package.json` `engines`, REQ-070),
+ * non-zero package version, API key presence (value hidden), effective
+ * configuration diagnostics with masked secrets and per-field sources
+ * (REQ-089, zero-match allowlist reported as fail), explicit env-file status,
+ * and the per-tool Google API profile of the effective tool set (REQ-090).
+ * Live branch: without `options.probes` runs all three probes (legacy
+ * `--live`, REQ-072); with `options.probes` runs only the selected subset
+ * (REQ-091); each probe fails independently. `success` is false when any
+ * check fails; the caller maps it to the exit code.
+ * @param packageVersion {string} Installed package version ("0.0.0" = unknown).
+ * @param apiKey {string | undefined} Resolved API key; never printed.
+ * @param live {boolean} True to run billable live probes.
+ * @param runner {DoctorToolRunner} Injectable tool runner; defaults to `execTool`.
+ * @param options {DoctorOptions} Injectable Node version, config, tool registry, and probe subset.
+ * @return {Promise<DoctorReport>} JSON-serializable report with `checks` and aggregate `success`.
+ * @see resolveRuntimeConfig
+ * @see describeToolsProfile
+ * @satisfies REQ-070, REQ-071, REQ-072, REQ-089, REQ-090, REQ-091
  */
 export async function runDoctor(
   packageVersion: string,
   apiKey: string | undefined,
   live = false,
-  runner: DoctorToolRunner = execTool
+  runner: DoctorToolRunner = execTool,
+  options: DoctorOptions = {}
 ): Promise<DoctorReport> {
-  const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
+  const nodeVersion = options.nodeVersion ?? process.versions.node;
+  const nodeMajor = Number.parseInt(nodeVersion.split(".")[0] ?? "0", 10);
+  const config = options.config ?? resolveRuntimeConfig(process.env);
+  const allToolNames = options.allToolNames ?? serverConfigs[0].tools.map((tool) => tool.name);
+  const toolsResolution = resolveEnabledToolNames(allToolNames, config.enabledToolsRaw);
+  const diagnostics = describeRuntimeConfig(config);
+  const toolsProfile = describeToolsProfile(toolsResolution.names);
+
   const checks: DoctorCheck[] = [
     {
       name: "node",
-      status: nodeMajor >= 18 ? "pass" : "fail",
-      detail: `Node.js ${process.versions.node} detected; version 18 or newer is required.`,
+      status: nodeMajor >= NODE_ENGINE_FLOOR ? "pass" : "fail",
+      detail: `Node.js ${nodeVersion} detected; version ${NODE_ENGINE_FLOOR} or newer is required (package.json engines).`,
     },
     {
       name: "package",
@@ -352,6 +621,25 @@ export async function runDoctor(
         ? "GOOGLE_MAPS_API_KEY is configured (value hidden)."
         : "GOOGLE_MAPS_API_KEY is not configured. Set it in the environment before making API calls.",
     },
+    {
+      name: "config",
+      status: toolsResolution.fallback ? "fail" : "pass",
+      detail: toolsResolution.fallback
+        ? `GOOGLE_MAPS_ENABLED_TOOLS matched 0 tools; the server falls back to all ${allToolNames.length} tools. Effective configuration: ${formatConfigDiagnostics(diagnostics)}`
+        : `Effective configuration: ${formatConfigDiagnostics(diagnostics)}`,
+    },
+    {
+      name: "env-file",
+      status: "pass",
+      detail: config.envFile
+        ? `Explicit environment file loaded: ${config.envFile}`
+        : "No explicit --env-file requested; implicit .env discovery (current directory, then package directory) applies.",
+    },
+    {
+      name: "tools",
+      status: "pass",
+      detail: `${toolsProfile.toolCount} tool(s) enabled; Google APIs: ${toolsProfile.apis.join(", ") || "none"}; per-tool: ${toolsProfile.tools.map((tool) => `${tool.tool}[${tool.apis.join("+")}]`).join(", ")}`,
+    },
   ];
 
   if (!live) {
@@ -367,17 +655,11 @@ export async function runDoctor(
       detail: "Live API checks require GOOGLE_MAPS_API_KEY.",
     });
   } else {
-    const liveChecks = [
-      { name: "geocoding-api", tool: "geocode", params: { address: "Tokyo Tower" } },
-      { name: "places-api-new", tool: "search-places", params: { query: "Tokyo Tower" } },
-      {
-        name: "routes-api",
-        tool: "directions",
-        params: { origin: "Tokyo Tower", destination: "Tokyo Station", mode: "walking" },
-      },
-    ];
+    const selected = options.probes
+      ? DOCTOR_PROBES.filter((probe) => (options.probes as readonly DoctorProbeId[]).includes(probe.id))
+      : DOCTOR_PROBES;
 
-    for (const check of liveChecks) {
+    for (const check of selected) {
       try {
         const result = await runner(check.tool, check.params, apiKey);
         if (isExecFailureResponse(result)) {
@@ -411,6 +693,175 @@ export async function runDoctor(
   };
 }
 
+// --------------- Setup Mode ---------------
+
+/** @brief One named onboarding check result (`pass`, `fail`, or `skip`). */
+export interface SetupCheck {
+  name: string;
+  status: "pass" | "fail" | "skip";
+  detail: string;
+}
+
+/** @brief JSON-serializable outcome of the `setup` command. */
+export interface SetupReport {
+  success: boolean;
+  created: boolean;
+  checks: SetupCheck[];
+}
+
+/** @brief Injectable filesystem surface used by `runSetup` (tests pass fakes). */
+export interface SetupFs {
+  existsSync(path: string): boolean;
+  readFileSync(path: string, encoding: "utf-8"): string;
+  writeFileSync(path: string, data: string, encoding: "utf-8"): void;
+}
+
+/** @brief Injectable dependencies for deterministic `runSetup` testing. */
+export interface SetupDeps {
+  nodeVersion?: string;
+  config?: ResolvedRuntimeConfig;
+  fs?: SetupFs;
+}
+
+/** @brief Inputs controlling `runSetup` behavior. */
+export interface SetupOptions {
+  packageDir: string;
+  targetDir: string;
+  writeEnv: boolean;
+}
+
+/**
+ * @brief Runs the non-interactive onboarding self-check with optional `.env` scaffolding.
+ * @details Zero prompts, zero Google API calls, zero writes unless `writeEnv`
+ * is true (REQ-087). Checks: Node major >= `NODE_ENGINE_FLOOR` (22);
+ * `.env.example` presence in `packageDir`; `.env` handling in `targetDir` —
+ * with `writeEnv` the file is created from the template only when absent and
+ * is never overwritten (REQ-088), without it the check reports the current
+ * state; API key presence from the resolved configuration (value hidden).
+ * `success` is false only when a check fails. Complexity O(1) filesystem ops.
+ * @param options {SetupOptions} Directories and the explicit write authorization flag.
+ * @param deps {SetupDeps} Injectable Node version, config, and fs surface.
+ * @return {Promise<SetupReport>} Report with `created` flag and named checks.
+ * @see resolveRuntimeConfig
+ * @satisfies PRJ-011, REQ-087, REQ-088
+ */
+export async function runSetup(options: SetupOptions, deps: SetupDeps = {}): Promise<SetupReport> {
+  const fsImpl: SetupFs =
+    deps.fs ?? {
+      existsSync: (path) => existsSync(path),
+      readFileSync: (path, encoding) => readFileSync(path, encoding),
+      writeFileSync: (path, data, encoding) => writeFileSync(path, data, encoding),
+    };
+  const nodeVersion = deps.nodeVersion ?? process.versions.node;
+  const nodeMajor = Number.parseInt(nodeVersion.split(".")[0] ?? "0", 10);
+  const config = deps.config ?? resolveRuntimeConfig(process.env);
+
+  const examplePath = resolve(options.packageDir, ".env.example");
+  const envPath = resolve(options.targetDir, ".env");
+  const checks: SetupCheck[] = [
+    {
+      name: "node",
+      status: nodeMajor >= NODE_ENGINE_FLOOR ? "pass" : "fail",
+      detail: `Node.js ${nodeVersion} detected; version ${NODE_ENGINE_FLOOR} or newer is required (package.json engines).`,
+    },
+    {
+      name: "env-template",
+      status: fsImpl.existsSync(examplePath) ? "pass" : "fail",
+      detail: fsImpl.existsSync(examplePath)
+        ? `Template found: ${examplePath}`
+        : `Template missing: ${examplePath} (expected next to the installed package).`,
+    },
+  ];
+
+  let created = false;
+  if (options.writeEnv) {
+    if (fsImpl.existsSync(envPath)) {
+      checks.push({
+        name: "env-file",
+        status: "pass",
+        detail: `${envPath} already exists; left untouched (no overwrite).`,
+      });
+    } else if (!fsImpl.existsSync(examplePath)) {
+      checks.push({
+        name: "env-file",
+        status: "fail",
+        detail: `Cannot create ${envPath}: template ${examplePath} is missing.`,
+      });
+    } else {
+      try {
+        fsImpl.writeFileSync(envPath, fsImpl.readFileSync(examplePath, "utf-8"), "utf-8");
+        created = true;
+        checks.push({
+          name: "env-file",
+          status: "pass",
+          detail: `Created ${envPath} from template; edit it and set GOOGLE_MAPS_API_KEY.`,
+        });
+      } catch (error: unknown) {
+        checks.push({
+          name: "env-file",
+          status: "fail",
+          detail: `Failed to create ${envPath}: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    }
+  } else {
+    checks.push({
+      name: "env-file",
+      status: fsImpl.existsSync(envPath) ? "pass" : "skip",
+      detail: fsImpl.existsSync(envPath)
+        ? `${envPath} found.`
+        : `${envPath} not found; rerun with --write-env to create it from the template.`,
+    });
+  }
+
+  checks.push({
+    name: "api-key",
+    status: config.apiKey ? "pass" : "fail",
+    detail: config.apiKey
+      ? `GOOGLE_MAPS_API_KEY is configured (source: ${config.apiKeySource}, value hidden).`
+      : "GOOGLE_MAPS_API_KEY is not configured. Set it in the environment or in .env after scaffolding.",
+  });
+
+  return {
+    success: checks.every((check) => check.status !== "fail"),
+    created,
+    checks,
+  };
+}
+
+// --------------- Snippet Mode ---------------
+
+/**
+ * @brief Renders a client registration snippet and routes output per PRJ-008.
+ * @details Delegates JSON construction to `renderClientSnippet`, writes the
+ * snippet JSON to `stdout` and each guidance note to `stderr` so stdout stays
+ * pure JSON; never writes or edits any file. Rendering errors surface as a
+ * JSON stderr error with exit code 1. Complexity O(1).
+ * @param options {SnippetOptions} Rendering options forwarded to `renderClientSnippet`.
+ * @param streams {ExecStreams} Injectable stdout/stderr sinks; defaults to process streams.
+ * @return {number} Exit code: 0 on success, 1 on a rendering error.
+ * @see renderClientSnippet
+ * @satisfies PRJ-010, REQ-092, REQ-093
+ */
+export function runSnippetCommand(
+  options: SnippetOptions,
+  streams: ExecStreams = { stdout: process.stdout, stderr: process.stderr }
+): number {
+  try {
+    const snippet = renderClientSnippet(options);
+    streams.stdout.write(snippet.json + "\n");
+    for (const note of snippet.notes) {
+      streams.stderr.write(`[snippet] ${note}\n`);
+    }
+    return 0;
+  } catch (error: unknown) {
+    streams.stderr.write(
+      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }, null, 2) + "\n"
+    );
+    return 1;
+  }
+}
+
 // --------------- Entry Point ---------------
 
 // Check if this script is being run directly
@@ -424,6 +875,10 @@ const isRunDirectly =
 const isMainModule = import.meta.url === `file://${process.argv[1]}`;
 
 if (isRunDirectly || isMainModule) {
+  // Load environment files before command dispatch: explicit --env-file wins
+  // over the implicit cwd/package .env discovery chain.
+  loadEnvironment(extractEnvFileOption(process.argv));
+
   let packageVersion = "0.0.0";
   try {
     const packageJsonPath = resolve(__dirname, "../package.json");
@@ -444,6 +899,10 @@ if (isRunDirectly || isMainModule) {
             default: false,
             description: "Make billable test requests to Geocoding, Places (New), and Routes APIs",
           })
+          .option("probes", {
+            type: "string",
+            description: "Comma-separated subset of live probes: geocoding, places-new, routes (default: all three)",
+          })
           .option("apikey", {
             alias: "k",
             type: "string",
@@ -453,11 +912,114 @@ if (isRunDirectly || isMainModule) {
           .example([
             ["$0 doctor", "Check local runtime and API key configuration without network calls"],
             ["$0 doctor --live", "Also verify three Google Maps APIs with billable requests"],
+            ["$0 doctor --live --probes geocoding,routes", "Probe only the selected APIs"],
           ]),
       async (argv) => {
-        const report = await runDoctor(packageVersion, argv.apikey as string | undefined, argv.live as boolean);
+        const parsedProbes = parseDoctorProbes(argv.probes as string | undefined);
+        if (parsedProbes.error) {
+          process.stderr.write(JSON.stringify({ error: parsedProbes.error }, null, 2) + "\n");
+          process.exitCode = 1;
+          return;
+        }
+        const report = await runDoctor(packageVersion, argv.apikey as string | undefined, argv.live as boolean, undefined, {
+          probes: parsedProbes.probes,
+          config: resolveRuntimeConfig(process.env, { envFile: extractEnvFileOption(process.argv) }),
+        });
         process.stdout.write(JSON.stringify(report, null, 2) + "\n");
         process.exitCode = report.success ? 0 : 1;
+      }
+    )
+    .command(
+      "setup",
+      "Non-interactive onboarding: verify local readiness, optionally scaffold .env",
+      (yargs) =>
+        yargs
+          .option("write-env", {
+            type: "boolean",
+            default: false,
+            description: "Create .env from .env.example in --env-dir when it does not exist (never overwrites)",
+          })
+          .option("env-dir", {
+            type: "string",
+            default: process.cwd(),
+            description: "Directory where .env is looked up / created",
+          })
+          .example([
+            ["$0 setup", "Check readiness without writing anything"],
+            ["$0 setup --write-env", "Also scaffold .env from the package template"],
+          ]),
+      async (argv) => {
+        const report = await runSetup({
+          packageDir: resolve(__dirname, ".."),
+          targetDir: argv.envDir as string,
+          writeEnv: argv.writeEnv as boolean,
+        });
+        process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+        process.exitCode = report.success ? 0 : 1;
+      }
+    )
+    .command(
+      "snippet",
+      "Print an MCP client registration snippet (JSON on stdout; never writes files)",
+      (yargs) =>
+        yargs
+          .option("client", {
+            type: "string",
+            choices: ["generic", "claude", "cursor", "pi"],
+            default: "generic",
+            description: "Target client (selects the documented target file)",
+          })
+          .option("transport", {
+            type: "string",
+            choices: ["stdio", "http"],
+            default: "stdio",
+            description: "MCP transport of the snippet",
+          })
+          .option("launcher", {
+            type: "string",
+            choices: ["npx", "node", "bin"],
+            default: "npx",
+            description: "stdio launcher command",
+          })
+          .option("command", {
+            type: "string",
+            description: "Absolute path to dist/cli.js (required for --launcher node)",
+          })
+          .option("host", {
+            type: "string",
+            default: "127.0.0.1",
+            description: "Host used in the URL (transport http)",
+          })
+          .option("port", {
+            type: "number",
+            default: 3000,
+            description: "Port used in the URL (transport http)",
+          })
+          .option("env-key", {
+            type: "string",
+            description: 'Emit a ${NAME} variable reference instead of a literal placeholder (expansion is client-specific)',
+          })
+          .option("name", {
+            type: "string",
+            default: "mcp-google-map",
+            description: "Server name inside mcpServers",
+          })
+          .example([
+            ["$0 snippet --client claude", "stdio snippet using the npx launcher"],
+            ["$0 snippet --client pi --launcher node --command /abs/path/dist/cli.js", "stdio snippet with an explicit artifact"],
+            ["$0 snippet --transport http --port 3100", "HTTP URL snippet"],
+          ]),
+      (argv) => {
+        process.exitCode = runSnippetCommand({
+          client: argv.client as SnippetClient,
+          transport: argv.transport as "stdio" | "http",
+          launcher: argv.launcher as "npx" | "node" | "bin",
+          commandPath: argv.command as string | undefined,
+          host: argv.host as string,
+          port: argv.port as number,
+          envKey: argv.envKey as string | undefined,
+          serverName: argv.name as string,
+        });
       }
     )
     .command(
@@ -645,8 +1207,8 @@ if (isRunDirectly || isMainModule) {
           })
           .option("host", {
             type: "string",
-            description: "Hostname to bind the server to (e.g. 0.0.0.0 for all interfaces)",
-            default: process.env.MCP_SERVER_HOST || "0.0.0.0",
+            description: "Hostname to bind the server to (default 127.0.0.1 loopback; 0.0.0.0 for all interfaces)",
+            default: process.env.MCP_SERVER_HOST || "127.0.0.1",
           })
           .option("apikey", {
             alias: "k",
@@ -693,15 +1255,26 @@ if (isRunDirectly || isMainModule) {
             Logger.log("");
           }
 
-          startServer(argv.port as number, argv.apikey as string, argv.host as string).catch((error) => {
-            Logger.error("❌ Failed to start server:", error);
-            process.exit(1);
-          });
+          startServer(argv.port as number, argv.apikey as string, argv.host as string)
+            .then((outcome) => {
+              if (outcome.started === 0) {
+                process.exit(1);
+              }
+            })
+            .catch((error) => {
+              Logger.error("❌ Failed to start server:", error);
+              process.exit(1);
+            });
         }
       }
     )
     .version(packageVersion)
     .alias("version", "v")
+    .option("env-file", {
+      type: "string",
+      global: true,
+      description: "Load environment variables from this exact file (error if missing; no implicit .env fallback)",
+    })
     .help()
     .parse();
 }
