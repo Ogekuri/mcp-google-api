@@ -1216,17 +1216,18 @@ remaining CLIs still run.
 
 ---
 
-# cliSettings.ts | TypeScript | 110L | 5 symbols | 2 imports | 8 comments
+# cliSettings.ts | TypeScript | 126L | 5 symbols | 2 imports | 9 comments
 > Path: `src/utils/cliSettings.ts`
 - @brief Persist the enabled-CLI set for the CLI configuration-management commands.
 - @details Stores `{"enabled": ["<cli>", ...]}` at
-`<home>/.config/mcp-google-map/config.json`. Loading tolerates missing,
-unreadable, non-object, or malformed content by returning normalized
-defaults; saving serializes with two-space indentation plus a trailing
-newline, writes a sibling temporary file, and replaces the target
-atomically. Adopted from the reference `skills` settings model
-(`$HOME/.config/skills/config.json`) so both tools share one UX.
-- @satisfies DES-018
+`<home>/.config/<SETTINGS_PROGRAM_NAME>/config.json`. The settings directory
+segment is the distribution program name `mcp-google-map` (DES-021):
+program-owned, never a shared or generic directory such as `skills`.
+Loading tolerates missing, unreadable, non-object, or malformed content by
+returning normalized defaults; saving serializes with two-space
+indentation plus a trailing newline, writes a sibling temporary file,
+and replaces the target atomically.
+- @satisfies DES-018, DES-021
 
 ## Imports
 ```
@@ -1236,50 +1237,54 @@ import { join, resolve } from "node:path";
 
 ## Definitions
 
-### iface `export interface CliSettings` (L35-37)
+### iface `export interface CliSettings` (L47-49)
 - @brief User settings shape consumed by enable/disable/install/uninstall/show.
 - @details `enabled` lists canonical CLI names in persistence order.
 
-### fn `export function resolveCliSettingsPath(home?: string): string` (L45-48)
+### fn `export function resolveCliSettingsPath(home?: string): string` (L60-63)
 - @brief Resolve the user settings file path for a home root.
+- @details Joins the effective home directory with
+`.config/<SETTINGS_PROGRAM_NAME>/config.json` — the program-owned path
+derived from the distribution name, never a shared directory (DES-021).
 - @param home {string | undefined} Home-directory override; defaults to `os.homedir()`.
 - @return {string} Absolute settings file path.
-- @satisfies DES-018
+- @satisfies DES-018, DES-021
 
-### fn `function uniqueStrings(value: unknown): string[]` (L55-64)
+### fn `function uniqueStrings(value: unknown): string[]` (L70-79)
 - @brief Normalize an arbitrary parsed value into unique non-empty strings.
 - @param value {unknown} Candidate JSON value.
 - @return {string[]} Unique strings in first-seen order; empty for non-lists.
 
-### fn `export function loadCliSettings(home?: string): CliSettings` (L74-84)
+### fn `export function loadCliSettings(home?: string): CliSettings` (L89-99)
 - @brief Load the user settings with normalized defaults.
 - @details Reads JSON from `resolveCliSettingsPath`; missing, unreadable,
 malformed, or non-object content yields `{ enabled: [] }`. Never throws.
 - @param home {string | undefined} Home-directory override.
 - @return {CliSettings} Normalized settings object.
-- @satisfies DES-018
+- @satisfies DES-018, DES-021
 
-### fn `export function saveCliSettings(settings: CliSettings, home?: string): string` (L99-110)
+### fn `export function saveCliSettings(settings: CliSettings, home?: string): string` (L115-126)
 - @brief Persist settings to the user settings file atomically.
 - @details Creates parent directories, serializes with two-space indentation
 and a trailing newline, writes `<file>.tmp`, then renames over the target
-so readers never observe a partial file.
+so readers never observe a partial file. Target path is the program-owned
+`.config/<SETTINGS_PROGRAM_NAME>/config.json` (DES-021).
 - @param settings {CliSettings} Settings object to persist.
 - @param home {string | undefined} Home-directory override.
 - @return {string} Written settings file path.
 - @throws {Error} With descriptive message when directory creation, writing,
 or replacement fails; the temporary file is best-effort removed.
-- @satisfies DES-018
+- @satisfies DES-018, DES-021
 - @post The settings file contains the serialized `settings` object.
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`CliSettings`|iface||35-37|export interface CliSettings|
-|`resolveCliSettingsPath`|fn||45-48|export function resolveCliSettingsPath(home?: string): st...|
-|`uniqueStrings`|fn||55-64|function uniqueStrings(value: unknown): string[]|
-|`loadCliSettings`|fn||74-84|export function loadCliSettings(home?: string): CliSettings|
-|`saveCliSettings`|fn||99-110|export function saveCliSettings(settings: CliSettings, ho...|
+|`CliSettings`|iface||47-49|export interface CliSettings|
+|`resolveCliSettingsPath`|fn||60-63|export function resolveCliSettingsPath(home?: string): st...|
+|`uniqueStrings`|fn||70-79|function uniqueStrings(value: unknown): string[]|
+|`loadCliSettings`|fn||89-99|export function loadCliSettings(home?: string): CliSettings|
+|`saveCliSettings`|fn||115-126|export function saveCliSettings(settings: CliSettings, ho...|
 
 
 ---

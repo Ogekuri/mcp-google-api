@@ -140,6 +140,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **DES-016**: MUST mask secret values via a single masking helper in every diagnostic, doctor, and setup report.
 - **DES-017**: MUST implement per-CLI target adapters for pi, openclaw, codex, antigravity, and claude resolving each MCP configuration file and skills destination directory from an injectable home root.
 - **DES-018**: MUST persist the enabled-CLI set as `{ "enabled": [<cli>...] }` JSON at `~/.config/mcp-google-map/config.json`, tolerating missing or malformed content and writing atomically.
+- **DES-021**: MUST derive the enabled-CLI settings directory from the distribution program name `mcp-google-map`; shared or generic directories such as `~/.config/skills/` MUST NOT be used.
 - **DES-019**: MUST apply MCP-server registration through read-modify-write preserving every unrelated configuration entry, with atomic temporary-file replacement.
 - **DES-020**: MUST synchronize packaged skills into CLI skills destinations copying all packaged files with overwrite and pruning stale files inside managed skill directories only.
 

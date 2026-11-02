@@ -2,24 +2,36 @@
  * @file cliSettings.ts
  * @brief Persist the enabled-CLI set for the CLI configuration-management commands.
  * @details Stores `{"enabled": ["<cli>", ...]}` at
- * `<home>/.config/mcp-google-map/config.json`. Loading tolerates missing,
- * unreadable, non-object, or malformed content by returning normalized
- * defaults; saving serializes with two-space indentation plus a trailing
- * newline, writes a sibling temporary file, and replaces the target
- * atomically. Adopted from the reference `skills` settings model
- * (`$HOME/.config/skills/config.json`) so both tools share one UX.
- * @satisfies DES-018
+ * `<home>/.config/<SETTINGS_PROGRAM_NAME>/config.json`. The settings directory
+ * segment is the distribution program name `mcp-google-map` (DES-021):
+ * program-owned, never a shared or generic directory such as `skills`.
+ * Loading tolerates missing, unreadable, non-object, or malformed content by
+ * returning normalized defaults; saving serializes with two-space
+ * indentation plus a trailing newline, writes a sibling temporary file,
+ * and replaces the target atomically.
+ * @satisfies DES-018, DES-021
  */
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 /**
- * @brief Ordered path segments of the settings file relative to the home root.
- * @details `.config/mcp-google-map/config.json`; first element is the dotdir.
- * @satisfies DES-018
+ * @brief Distribution program name owning the settings directory.
+ * @details Single source of truth for the settings directory segment
+ * (DES-021): `.config/<SETTINGS_PROGRAM_NAME>/config.json`. Program-owned
+ * by `mcp-google-map`; a shared or generic name such as `skills` is
+ * forbidden. Keep in sync with the `package.json` `name` field.
+ * @satisfies DES-021
  */
-const CLI_SETTINGS_RELATIVE = [".config", "mcp-google-map", "config.json"] as const;
+export const SETTINGS_PROGRAM_NAME = "mcp-google-map";
+
+/**
+ * @brief Ordered path segments of the settings file relative to the home root.
+ * @details `.config/<SETTINGS_PROGRAM_NAME>/config.json`; first element is
+ * the XDG-style dotdir, second the program-owned directory name (DES-021).
+ * @satisfies DES-018, DES-021
+ */
+const CLI_SETTINGS_RELATIVE = [".config", SETTINGS_PROGRAM_NAME, "config.json"] as const;
 
 /**
  * @brief Canonical server key used in every CLI MCP configuration.
@@ -38,9 +50,12 @@ export interface CliSettings {
 
 /**
  * @brief Resolve the user settings file path for a home root.
+ * @details Joins the effective home directory with
+ * `.config/<SETTINGS_PROGRAM_NAME>/config.json` — the program-owned path
+ * derived from the distribution name, never a shared directory (DES-021).
  * @param home {string | undefined} Home-directory override; defaults to `os.homedir()`.
  * @return {string} Absolute settings file path.
- * @satisfies DES-018
+ * @satisfies DES-018, DES-021
  */
 export function resolveCliSettingsPath(home?: string): string {
   const root = home ?? (process.env.HOME ?? process.cwd());
@@ -69,7 +84,7 @@ function uniqueStrings(value: unknown): string[] {
  * malformed, or non-object content yields `{ enabled: [] }`. Never throws.
  * @param home {string | undefined} Home-directory override.
  * @return {CliSettings} Normalized settings object.
- * @satisfies DES-018
+ * @satisfies DES-018, DES-021
  */
 export function loadCliSettings(home?: string): CliSettings {
   try {
@@ -87,14 +102,15 @@ export function loadCliSettings(home?: string): CliSettings {
  * @brief Persist settings to the user settings file atomically.
  * @details Creates parent directories, serializes with two-space indentation
  * and a trailing newline, writes `<file>.tmp`, then renames over the target
- * so readers never observe a partial file.
+ * so readers never observe a partial file. Target path is the program-owned
+ * `.config/<SETTINGS_PROGRAM_NAME>/config.json` (DES-021).
  * @param settings {CliSettings} Settings object to persist.
  * @param home {string | undefined} Home-directory override.
  * @return {string} Written settings file path.
  * @throws {Error} With descriptive message when directory creation, writing,
  * or replacement fails; the temporary file is best-effort removed.
  * @post The settings file contains the serialized `settings` object.
- * @satisfies DES-018
+ * @satisfies DES-018, DES-021
  */
 export function saveCliSettings(settings: CliSettings, home?: string): string {
   const path = resolveCliSettingsPath(home);
