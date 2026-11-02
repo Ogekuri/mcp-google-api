@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.5.0..v0.6.0) - 2026-11-02
+### ⛰️  Features
+- add --upgrade/--uninstall/--ver/--version with idle-gated version check [useReq] *(upgradeManager)*
+  - Add src/utils/upgradeManager.ts: idle cache (~/.cache/mcp-google-map/), forced --ver/--version check, npm-based --upgrade with post-upgrade skill install, --uninstall (REQ-120..REQ-128)
+  - Extract logging-free probeLatestVersion in autoUpdate.ts; startup check now idle-gated (REQ-082, REQ-121)
+  - Fix registry accept header (406 -> application/json) so online version verification works
+  - Update REQUIREMENTS (PRJ-003, CTN-008, DES-022, REQ-120..128), WORKFLOW (TRACE-L, EDGE-07/09), REFERENCES
+
 ## [0.5.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.4.0..v0.5.0) - 2026-11-02
 ### ⛰️  Features
 - add enable/disable/install/uninstall/show CLI configuration commands [useReq] *(cli)*
@@ -128,8 +136,10 @@
 - \[0.3.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.3.0
 - \[0.4.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.4.0
 - \[0.5.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.5.0
+- \[0.6.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.6.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.2.0..v0.3.0
 [0.4.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.3.0..v0.4.0
 [0.5.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.4.0..v0.5.0
+[0.6.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.5.0..v0.6.0
