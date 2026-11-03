@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.10.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.9.0..v0.10.0) - 2026-11-03
+### ⛰️  Features
+- add api-key command, install placeholder, and stdio key guard [useReq] *(api-key)*
+  - Add api-key <key> CLI: validate REQ-020 format, persist key in
+  - ~/.config/mcp-google-map/config.json (apiKey field), then reinstall
+  - every enabled CLI with the new key (REQ-136..REQ-139)
+  - install: resolve embedded key as --apikey > persisted settings >
+  - GOOGLE_MAPS_API_KEY; embed placeholder naming api-key when unset
+  - (REQ-140, REQ-141, DES-023)
+  - start/run: effective-key resolution incl. persisted settings and
+  - placeholder-as-unset; stdio mode exits 1 with stderr JSON inviting
+  - api-key when no key resolves (REQ-142, REQ-143)
+  - Docs: REQUIREMENTS/WORKFLOW/REFERENCES updated; README documents the
+  - command, key priority, and startup guard (PKG-025)
+
 ## [0.9.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.8.0..v0.9.0) - 2026-11-03
 ### 🐛  Bug Fixes
 - spawn post-upgrade install via upgraded package bin [useReq] *(upgrade)*
@@ -184,6 +199,7 @@
 - \[0.7.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.7.0
 - \[0.8.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.8.0
 - \[0.9.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.9.0
+- \[0.10.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.10.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.2.0..v0.3.0
@@ -193,3 +209,4 @@
 [0.7.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.6.0..v0.7.0
 [0.8.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.7.0..v0.8.0
 [0.9.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.8.0..v0.9.0
+[0.10.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.9.0..v0.10.0
