@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.9.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.8.0..v0.9.0) - 2026-11-03
+### 🐛  Bug Fixes
+- spawn post-upgrade install via upgraded package bin [useReq] *(upgrade)*
+  - The --upgrade post-upgrade child spawned 'npx -y mcp-google-map install',
+  - an unversioned npx spec resolved from the npx cache/registry instead of the
+  - package just upgraded by 'npm install -g'. A stale cached CLI copy could run
+  - its default command (pre-v0.7.0 releases start the MCP HTTP server there),
+  - never exit, and block the parent spawnSync forever: the user observed the
+  - MCP server running instead of the 'install' command (REQ-126 violation).
+  - POST_UPGRADE_INSTALL_COMMAND is now ['mcp-google-map', 'install']: the
+  - globally installed bin of the just-upgraded package, already on PATH in
+  - the exact --upgrade scenario; captured stdout and stderr-inherited spawn
+  - mechanics unchanged (REQ-125, REQ-126, REQ-128).
+  - Add tests/upgradeManager.unit.test.ts reproducer: post-upgrade child must
+  - be the upgraded package bin with captured stdout; upgrade-child failure
+  - propagation; no-CLI no-op; spawn-failure manual hint; uninstall child;
+  - parseManagementCommand exact-match dispatch (PRJ-003, REQ-125, REQ-127).
+  - Update WORKFLOW.md TRACE-L, External Boundaries and EDGE-09; regenerate
+  - REFERENCES.md. Full suite: 110 tests passing; typecheck and static
+  - checks clean.
+
 ## [0.8.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.7.0..v0.8.0) - 2026-11-03
 ### 🚜  Changes
 - BREAKING CHANGE: rename venue-discovery skill to eatspot-discovery [useReq] *(skills)*
@@ -162,6 +183,7 @@
 - \[0.6.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.6.0
 - \[0.7.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.7.0
 - \[0.8.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.8.0
+- \[0.9.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.9.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.2.0..v0.3.0
@@ -170,3 +192,4 @@
 [0.6.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.5.0..v0.6.0
 [0.7.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.6.0..v0.7.0
 [0.8.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.7.0..v0.8.0
+[0.9.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.8.0..v0.9.0
