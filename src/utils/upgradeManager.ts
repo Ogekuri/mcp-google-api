@@ -6,9 +6,11 @@
  * cache that suppresses registry requests while the previously computed idle
  * deadline is still in the future (REQ-121); `--ver`/`--version` force one
  * check bypassing the idle gate and print the installed version (REQ-120);
- * `--upgrade` reinstalls the latest package via npm and then re-runs the
- * upgraded package's `install` child command so packaged skills and MCP
- * registrations refresh from the upgraded package (REQ-125, REQ-126);
+ * `--upgrade` reinstalls the latest package via npm, re-runs the upgraded
+ * package's `install` child command with captured stdout so packaged skills
+ * and MCP registrations refresh from the upgraded package (REQ-125, REQ-126),
+ * and prints a human-readable stdout summary with starting/updated versions,
+ * install outcome, and per-CLI results (REQ-132, REQ-133, REQ-134, REQ-135);
  * `--uninstall` removes the globally installed package (REQ-127). Every
  * diagnostic is stderr-only; cache write failures never throw (REQ-128).
  */
@@ -82,6 +84,34 @@ export const POST_UPGRADE_INSTALL_COMMAND: readonly string[] = [
   DEFAULT_PACKAGE_NAME,
   "install",
 ];
+
+/**
+ * @brief Per-CLI result entry of the post-upgrade install consumed by the `--upgrade` summary.
+ * @details One entry per CLI processed by the child `install` command (REQ-133);
+ * counts are present only when the child JSON summary was parseable.
+ */
+export interface PostUpgradeCliOutcome {
+  /** Canonical CLI name as reported by the child `install` summary or the persisted settings. */
+  cli: string;
+  /** True when no child error diagnostic references this CLI and no fallback failure applies. */
+  ok: boolean;
+  /** Registered-server count from the child `install` summary; undefined when unknown. */
+  server?: number;
+  /** Installed-skill count from the child `install` summary; undefined when unknown. */
+  skills?: number;
+}
+
+/**
+ * @brief Aggregate outcome of the post-upgrade `install` child command (REQ-126, REQ-132).
+ * @details `clis` is empty only when no CLI is enabled (successful no-op);
+ * `exitCode` is the child exit code, 0 for the no-op and success cases.
+ */
+export interface PostUpgradeInstallOutcome {
+  /** Child `install` exit code; 0 for the zero-enabled-CLI no-op and full success. */
+  exitCode: number;
+  /** One entry per processed CLI, in child-summary or persisted-settings order. */
+  clis: PostUpgradeCliOutcome[];
+}
 
 /**
  * @brief Persisted idle-cache shape (snake_case keys, reference-CLI layout).
@@ -346,9 +376,10 @@ export interface PackageManagerDeps {
 
 /**
  * @brief Options consumed by the management command handlers.
- * @details `currentVersion` backs the `--ver`/`--version` output and the
- * forced online check; `home` scopes the enabled-CLI settings read performed
- * by the post-upgrade skill installation.
+ * @details `currentVersion` backs the `--ver`/`--version` output, the forced
+ * online check, and the starting version of the `--upgrade` summary; `home`
+ * scopes the enabled-CLI settings read performed by the post-upgrade skill
+ * installation.
  */
 export interface ManagementCommandOptions {
   /** Running package version printed by `--ver`/`--version`. */
@@ -365,7 +396,7 @@ export interface ManagementCommandOptions {
 export interface ManagementCommandDeps extends PackageManagerDeps {
   /** Dependencies forwarded to `checkVersionIdle` by `--ver`/`--version`. */
   idleCheck?: IdleCheckDeps;
-  /** stdout sink receiving the installed-version line; defaults to `process.stdout`. */
+  /** stdout sink receiving the installed-version line and the `--upgrade` summary; defaults to `process.stdout`. */
   stdout?: { write: (data: string) => void };
 }
 
@@ -433,29 +464,199 @@ export function runPackageManagerCommand(
 }
 
 /**
+ * @brief Parses the child `install` JSON summary into per-CLI outcomes.
+ * @details Accepts the `{ success, operation, summaries[], errors[] }` payload
+ * emitted by the `install` command on stdout; locates the first `{`, parses
+ * the remainder, validates the `summaries` array shape, and marks a CLI
+ * `ok: false` when any error diagnostic text contains its name
+ * (case-insensitive). Returns undefined for missing, non-JSON, or malformed
+ * payloads so callers fall back to the persisted enabled-CLI list (REQ-135).
+ * Pure; never throws.
+ * @param raw {string | undefined} Captured child stdout text.
+ * @return {PostUpgradeCliOutcome[] | undefined} Per-CLI entries in summary order; undefined when unparseable.
+ * @satisfies REQ-133, REQ-135
+ * @note Complexity: O(n + m) with n summary entries and m error strings.
+ */
+function parsePostUpgradeCliOutcomes(
+  raw: string | undefined
+): PostUpgradeCliOutcome[] | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  const start = raw.indexOf("{");
+  if (start < 0) {
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.slice(start));
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== "object" || parsed === null) {
+    return undefined;
+  }
+  const summaries = (parsed as { summaries?: unknown }).summaries;
+  const errors = (parsed as { errors?: unknown }).errors;
+  if (!Array.isArray(summaries)) {
+    return undefined;
+  }
+  const errorTexts = Array.isArray(errors)
+    ? errors.filter((item): item is string => typeof item === "string")
+    : [];
+  const outcomes: PostUpgradeCliOutcome[] = [];
+  for (const entry of summaries) {
+    if (typeof entry !== "object" || entry === null) {
+      continue;
+    }
+    const record = entry as { cli?: unknown; server?: unknown; skills?: unknown };
+    const cli = record.cli;
+    if (typeof cli !== "string" || cli.length === 0) {
+      continue;
+    }
+    const lowered = cli.toLowerCase();
+    const failed = errorTexts.some((text) => text.toLowerCase().includes(lowered));
+    outcomes.push({
+      cli,
+      ok: !failed,
+      server: typeof record.server === "number" ? record.server : undefined,
+      skills: typeof record.skills === "number" ? record.skills : undefined,
+    });
+  }
+  return outcomes;
+}
+
+/**
  * @brief Refreshes installed skills through the upgraded package after `--upgrade`.
- * @details Mirrors the reference skills CLI post-upgrade hook: when at least
- * one CLI is enabled in the persisted settings, spawns
- * `npx -y mcp-google-map install` so the freshly upgraded package
- * (not the running process) re-synchronizes its packaged skills and MCP
- * registrations into every enabled CLI; with zero enabled CLIs the hook is a
- * successful no-op returning 0.
+ * @details When at least one CLI is enabled in the persisted settings, spawns
+ * `npx -y mcp-google-map install` with captured child stdout (stderr stays
+ * inherited so child diagnostics remain visible), so the freshly upgraded
+ * package (not the running process) re-synchronizes its packaged skills and
+ * MCP registrations into every enabled CLI without echoing the child JSON
+ * summary (REQ-126). The captured payload is parsed into per-CLI outcomes;
+ * missing or unparseable output falls back to the persisted enabled-CLI list
+ * carrying the aggregate exit-code outcome (REQ-135). Spawn failures report
+ * the manual command hint on stderr and map to exit code 1 (REQ-128). With
+ * zero enabled CLIs the hook is a successful no-op with an empty CLI list.
  * @param options {ManagementCommandOptions} `{ home }` scoping the settings read.
  * @param deps {PackageManagerDeps} Optional spawner/logger overrides.
- * @return {number} 0 when no CLI is enabled; otherwise the child `install` exit code.
- * @satisfies REQ-126
+ * @return {PostUpgradeInstallOutcome} Child exit code plus one outcome entry per processed CLI.
+ * @satisfies REQ-126, REQ-128, REQ-133, REQ-135
  * @see loadCliSettings
- * @see runPackageManagerCommand
+ * @see parsePostUpgradeCliOutcomes
  */
 export function runPostUpgradeSkillInstall(
   options: Pick<ManagementCommandOptions, "home">,
   deps: PackageManagerDeps = {}
-): number {
+): PostUpgradeInstallOutcome {
   const enabled = loadCliSettings(options.home).enabled;
   if (enabled.length === 0) {
-    return 0;
+    return { exitCode: 0, clis: [] };
   }
-  return runPackageManagerCommand(POST_UPGRADE_INSTALL_COMMAND, deps);
+  const logger = deps.logger ?? Logger;
+  const spawnImpl = deps.spawn ?? spawnSync;
+  const reportSpawnFailure = (message: string): PostUpgradeInstallOutcome => {
+    logger.error(`Error executing ${POST_UPGRADE_INSTALL_COMMAND[0]}: ${message}`);
+    logger.log(`Warning: run this command manually: ${POST_UPGRADE_INSTALL_COMMAND.join(" ")}`);
+    return { exitCode: 1, clis: enabled.map((cli) => ({ cli, ok: false })) };
+  };
+  try {
+    const result = spawnImpl(
+      POST_UPGRADE_INSTALL_COMMAND[0],
+      [...POST_UPGRADE_INSTALL_COMMAND.slice(1)],
+      {
+        stdio: ["ignore", "pipe", "inherit"],
+        shell: process.platform === "win32",
+      }
+    );
+    if (result.error) {
+      return reportSpawnFailure(result.error.message);
+    }
+    const exitCode = result.status ?? 1;
+    const stdoutText = result.stdout === undefined ? undefined : String(result.stdout);
+    const clis =
+      parsePostUpgradeCliOutcomes(stdoutText) ??
+      enabled.map((cli) => ({ cli, ok: exitCode === 0 }));
+    return { exitCode, clis };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return reportSpawnFailure(message);
+  }
+}
+
+/**
+ * @brief Renders the human-readable `--upgrade` summary block.
+ * @details First line states the version transition `starting -> updated`;
+ * the second line states the post-upgrade install outcome (success, failure
+ * with exit code, or skip when no CLI is enabled); with processed CLIs it
+ * appends one indented entry per CLI with its OK/FAILED result and the
+ * reported server/skill counts when known. Pure; deterministic text.
+ * @param previousVersion {string} Starting (pre-upgrade) package version.
+ * @param updatedVersion {string} Updated package version; `unknown` when the registry probe failed (REQ-134).
+ * @param outcome {PostUpgradeInstallOutcome} Post-upgrade install outcome.
+ * @return {string} Multi-line summary terminated by one trailing newline.
+ * @satisfies REQ-132, REQ-133, REQ-134
+ */
+export function renderUpgradeSummary(
+  previousVersion: string,
+  updatedVersion: string,
+  outcome: PostUpgradeInstallOutcome
+): string {
+  const lines: string[] = [
+    `mcp-google-map upgrade completed: ${previousVersion} -> ${updatedVersion}`,
+  ];
+  if (outcome.clis.length === 0) {
+    lines.push(
+      outcome.exitCode === 0
+        ? "Post-upgrade install: skipped (no CLI enabled)."
+        : `Post-upgrade install: FAILED (exit code ${outcome.exitCode}).`
+    );
+    return `${lines.join("\n")}\n`;
+  }
+  lines.push(
+    outcome.exitCode === 0
+      ? "Post-upgrade install: completed successfully on the following CLI(s):"
+      : `Post-upgrade install: FAILED (exit code ${outcome.exitCode}) for the following CLI(s):`
+  );
+  for (const entry of outcome.clis) {
+    const counts =
+      entry.server !== undefined || entry.skills !== undefined
+        ? ` (server: ${entry.server ?? 0}, skills: ${entry.skills ?? 0})`
+        : "";
+    lines.push(`  - ${entry.cli}: ${entry.ok ? "OK" : "FAILED"}${counts}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * @brief Resolves the updated package version reported by the `--upgrade` summary.
+ * @details Runs one logging-free `probeLatestVersion` registry probe after the
+ * upgrade child succeeds, forwarding the injected idle-check dependencies;
+ * maps `newer` to the registry latest version, `current` to the running
+ * version, and every other outcome (`disabled`, `unknown-version`, `error`)
+ * to `unknown` (REQ-134). Never throws.
+ * @param options {ManagementCommandOptions} Options carrying `currentVersion`.
+ * @param deps {ManagementCommandDeps} Optional idle-check dependency overrides.
+ * @return {Promise<string>} Updated version string; `unknown` when undeterminable.
+ * @satisfies REQ-134
+ * @see probeLatestVersion
+ * @note Complexity: one HTTP round-trip bounded by the probe timeout.
+ */
+async function resolveUpdatedVersion(
+  options: ManagementCommandOptions,
+  deps: ManagementCommandDeps
+): Promise<string> {
+  const probe = await probeLatestVersion({
+    ...deps.idleCheck,
+    currentVersion: options.currentVersion,
+  });
+  if (probe.status === "newer") {
+    return probe.latestVersion;
+  }
+  if (probe.status === "current") {
+    return probe.currentVersion;
+  }
+  return "unknown";
 }
 
 /**
@@ -485,27 +686,36 @@ export async function runVersionCommand(
 }
 
 /**
- * @brief Handles `--upgrade`: reinstall the latest package, then refresh skills.
+ * @brief Handles `--upgrade`: reinstall the latest package, then refresh skills with a stdout summary.
  * @details Runs `npm install -g mcp-google-map@latest` with inherited stdio
- * and propagates a non-zero exit code unchanged; on success chains
- * `runPostUpgradeSkillInstall` so enabled CLIs receive the upgraded skills
- * (REQ-125, REQ-126).
- * @param options {ManagementCommandOptions} Options carrying `home`.
- * @param deps {ManagementCommandDeps} Optional spawner/logger overrides.
- * @return {number} Upgrade exit code when non-zero; otherwise the post-upgrade install exit code.
- * @satisfies REQ-125, REQ-126
+ * and propagates a non-zero exit code unchanged without printing any summary;
+ * on success resolves the updated version via one registry probe (REQ-134),
+ * runs the captured-stdout post-upgrade install (REQ-126), prints the
+ * human-readable stdout summary with starting version, updated version,
+ * install outcome, and per-CLI entries (REQ-132, REQ-133), and returns the
+ * post-upgrade install exit code.
+ * @param options {ManagementCommandOptions} Options carrying `currentVersion` and `home`.
+ * @param deps {ManagementCommandDeps} Optional spawner/idle-check/stdout overrides.
+ * @return {Promise<number>} Upgrade exit code when non-zero; otherwise the post-upgrade install exit code.
+ * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135
  * @see runPackageManagerCommand
+ * @see resolveUpdatedVersion
  * @see runPostUpgradeSkillInstall
+ * @see renderUpgradeSummary
  */
-export function runUpgradeCommand(
+export async function runUpgradeCommand(
   options: ManagementCommandOptions,
   deps: ManagementCommandDeps = {}
-): number {
+): Promise<number> {
   const upgraded = runPackageManagerCommand(PACKAGE_UPGRADE_COMMAND, deps);
   if (upgraded !== 0) {
     return upgraded;
   }
-  return runPostUpgradeSkillInstall(options, deps);
+  const updatedVersion = await resolveUpdatedVersion(options, deps);
+  const outcome = runPostUpgradeSkillInstall(options, deps);
+  const stdout = deps.stdout ?? process.stdout;
+  stdout.write(renderUpgradeSummary(options.currentVersion, updatedVersion, outcome));
+  return outcome.exitCode;
 }
 
 /**
@@ -532,7 +742,7 @@ export function runUninstallCommand(deps: ManagementCommandDeps = {}): number {
  * @param options {ManagementCommandOptions} Options carrying version and home.
  * @param deps {ManagementCommandDeps} Optional dependency overrides.
  * @return {Promise<number>} Handler exit code suitable for `process.exitCode`.
- * @satisfies PRJ-003, REQ-120, REQ-125, REQ-126, REQ-127
+ * @satisfies PRJ-003, REQ-120, REQ-125, REQ-126, REQ-127, REQ-132, REQ-133, REQ-134, REQ-135
  * @see runVersionCommand
  * @see runUpgradeCommand
  * @see runUninstallCommand

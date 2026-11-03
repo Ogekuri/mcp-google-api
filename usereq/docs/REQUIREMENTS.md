@@ -273,9 +273,13 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-123**: MUST set the idle window to 3600 seconds when a newer version is found and 86400 seconds otherwise.
 - **REQ-124**: MUST report each executed check on stderr only: `Available Version: <latest> | Installed Version: <current>` plus an upgrade command when newer and an error notice on failure; it MUST emit no output when no newer version exists.
 - **REQ-125**: MUST implement `--upgrade` to run `npm install -g mcp-google-map@latest` as a child process with inherited stdio, propagating its exit code.
-- **REQ-126**: MUST, after a successful `--upgrade` with at least one enabled CLI, run the upgraded package's `install` child command refreshing skills and MCP registrations.
+- **REQ-126**: MUST, after a successful `--upgrade` with at least one enabled CLI, run the upgraded package's `install` child command with captured stdout, refreshing skills and MCP registrations without echoing the child JSON summary.
 - **REQ-127**: MUST implement `--uninstall` to run `npm uninstall -g mcp-google-map` as a child process with inherited stdio, propagating its exit code.
 - **REQ-128**: MUST print the manual package-manager command and return exit code 1 when a management child process fails to spawn.
+- **REQ-132**: MUST print on stdout a human-readable summary after a successful `--upgrade` package update stating the starting version, the updated version, and the post-upgrade install outcome.
+- **REQ-133**: MUST list in the `--upgrade` summary one entry per processed CLI with its name and per-CLI install result.
+- **REQ-134**: MUST print `unknown` as the updated version in the `--upgrade` summary when the post-upgrade latest-version probe fails.
+- **REQ-135**: MUST derive the `--upgrade` summary CLI list from persisted enabled settings when the child `install` output is absent or unparseable.
 
 #### Skill Resources
 - **REQ-097**: Each skill MUST provide a `SKILL.md` with YAML front matter `name` (1-64 lowercase ASCII letters, digits, hyphens, matching the directory name) and non-empty `description`.
