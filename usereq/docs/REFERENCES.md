@@ -46,7 +46,7 @@
         └── upgradeManager.ts
 ```
 
-# cli.ts | TypeScript | 1597L | 38 symbols | 21 imports | 55 comments
+# cli.ts | TypeScript | 1752L | 39 symbols | 22 imports | 65 comments
 > Path: `src/cli.ts`
 
 ## Imports
@@ -68,7 +68,8 @@ import { checkVersionIdle, parseManagementCommand, runManagementCommand } from "
 import {
 import { describeToolsProfile } from "./utils/toolProfiles.js";
 import { renderClientSnippet, type SnippetClient, type SnippetOptions } from "./utils/clientSnippets.js";
-import { loadCliSettings, saveCliSettings } from "./utils/cliSettings.js";
+import { ApiKeyManager } from "./utils/apiKeyManager.js";
+import { isUnsetApiKey, loadCliSettings, loadConfiguredApiKey, saveCliSettings } from "./utils/cliSettings.js";
 import { resolveCliTarget, supportedCliNames } from "./utils/cliTargets.js";
 import {
 import { buildCliShowReport } from "./utils/cliShow.js";
@@ -76,7 +77,7 @@ import { buildCliShowReport } from "./utils/cliShow.js";
 
 ## Definitions
 
-### fn `export function extractEnvFileOption(argv: readonly string[]): string | undefined` (L51-62)
+### fn `export function extractEnvFileOption(argv: readonly string[]): string | undefined` (L54-65)
 - @brief Extracts the explicit `--env-file <path>` value from a raw argv array.
 - @details Scans for both `--env-file <path>` and `--env-file=<path>` forms
 before any command parsing so the file loads before option defaults are
@@ -85,7 +86,7 @@ captured. First match wins. Complexity O(n) in argv length; pure.
 - @return {string | undefined} Path value when present; undefined otherwise.
 - @satisfies CTN-009
 
-### fn `function loadEnvironment(envFile: string | undefined): void` (L77-90)
+### fn `function loadEnvironment(envFile: string | undefined): void` (L80-93)
 - @brief Loads environment files for the current CLI invocation.
 - @details Explicit mode (`envFile` set): loads exactly that file via
 `applyExplicitEnvFile` and exits 1 with a JSON stderr error when missing —
@@ -98,13 +99,13 @@ overrides already-set variables). Complexity O(file count).
 - @see applyExplicitEnvFile
 - @satisfies CTN-007, CTN-009
 
-### iface `export interface ServerStartupOutcome` (L98-102)
+### iface `export interface ServerStartupOutcome` (L101-105)
 - @brief Aggregated HTTP startup result across all configured server instances.
 - @details `started`/`failed` count per instance; `servers` holds only the
 instances that are listening, so a zero-length array with `started === 0`
 is the reliable-failure signal consumed by the default command (REQ-095).
 
-### fn `export async function startServer(` (L119-193)
+### fn `export async function startServer(` (L122-196)
 - @brief Starts every configured HTTP MCP server instance and reports the outcome.
 - @details Applies flag overrides to the environment, validates each instance
 port (integer 1-65535), skips invalid instances with remediation guidance
@@ -119,9 +120,9 @@ and returns the aggregate outcome. Default bind host is loopback
 - @see installShutdownHandlers
 - @satisfies REQ-008, REQ-009, REQ-096
 
-- type `export type ShutdownExitHook = (code: number) => void;` (L196)
+- type `export type ShutdownExitHook = (code: number) => void;` (L199)
 - @brief Exit hook signature used by the shutdown handler. */
-### fn `export function createShutdownHandler(` (L210-224)
+### fn `export function createShutdownHandler(` (L213-227)
 - @brief Builds a one-shot orderly shutdown handler for HTTP server instances.
 - @details On first invocation it stops every given server via
 `stopHttpServer()` (transport close + socket close, errors tolerated) and
@@ -133,7 +134,7 @@ signals never double-stop. Complexity O(servers).
 - @see stopHttpServer
 - @satisfies REQ-096
 
-### fn `export function installShutdownHandlers(servers: readonly BaseMcpServer[]): void` (L236-240)
+### fn `export function installShutdownHandlers(servers: readonly BaseMcpServer[]): void` (L239-243)
 - @brief Registers SIGINT/SIGTERM handlers that orderly-stop the given servers.
 - @details Wraps `createShutdownHandler` and attaches it to both signals so
 Ctrl-C and terminate requests close all HTTP sessions and the listening
@@ -143,32 +144,32 @@ socket before process exit (REQ-096). Complexity O(1).
 - @see createShutdownHandler
 - @satisfies REQ-096
 
-- type `type ExecFailureResponse = {` (L265)
-### iface `interface ExecOutput` (L270-272)
+- type `type ExecFailureResponse = {` (L268)
+### iface `interface ExecOutput` (L273-275)
 
-### iface `interface ExecStreams` (L274-277)
+### iface `interface ExecStreams` (L277-280)
 
-- type `type ExecToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L279)
-- type `export type DoctorCheck = {` (L281)
-- type `export type DoctorReport = {` (L287)
-- type `type DoctorToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L294)
-### fn `function isExecFailureResponse(result: unknown): result is ExecFailureResponse` (L296-303)
+- type `type ExecToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L282)
+- type `export type DoctorCheck = {` (L284)
+- type `export type DoctorReport = {` (L290)
+- type `type DoctorToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L297)
+### fn `function isExecFailureResponse(result: unknown): result is ExecFailureResponse` (L299-306)
 
-### fn `function getExecFailureMessage(toolName: string, result: ExecFailureResponse): string` (L305-313)
+### fn `function getExecFailureMessage(toolName: string, result: ExecFailureResponse): string` (L308-316)
 
-### fn `export async function execTool(toolName: string, params: any, apiKey: string): Promise<any>` (L315-449)
+### fn `export async function execTool(toolName: string, params: any, apiKey: string): Promise<any>` (L318-452)
 
-### fn `export async function runExecCommand(` (L459-464)
+### fn `export async function runExecCommand(` (L462-467)
 
-- type `export type DoctorProbeId = "geocoding" | "places-new" | "routes";` (L484)
+- type `export type DoctorProbeId = "geocoding" | "places-new" | "routes";` (L487)
 - @brief Selectable live-probe identifier used by `doctor --live --probes`. */
-### iface `export interface DoctorLiveProbe` (L487-492)
+### iface `export interface DoctorLiveProbe` (L490-495)
 - @brief Static definition of one billable live probe executed by doctor. */
 
-### iface `export interface DoctorProbesParseResult` (L524-527)
+### iface `export interface DoctorProbesParseResult` (L527-530)
 - @brief Parsed `--probes` CLI value: either valid probe ids or an error. */
 
-### fn `export function parseDoctorProbes(raw: string | undefined): DoctorProbesParseResult` (L539-561)
+### fn `export function parseDoctorProbes(raw: string | undefined): DoctorProbesParseResult` (L542-564)
 - @brief Parses the raw `--probes` CLI string into validated probe ids.
 - @details `undefined` input -> `{ probes: undefined }` (probe all three,
 legacy `--live` behavior). Splits on commas, trims, lowercases, maps through
@@ -178,13 +179,13 @@ with a remediation error. Complexity O(n) in items; pure.
 - @return {DoctorProbesParseResult} Validated ids, or `error` describing the invalid input.
 - @satisfies REQ-091
 
-### iface `export interface DoctorOptions` (L569-574)
+### iface `export interface DoctorOptions` (L572-577)
 - @brief Injectable doctor dependencies for deterministic testing.
 - @details `nodeVersion` overrides `process.versions.node`; `config` overrides
 environment-derived runtime configuration; `allToolNames` overrides the
 registered tool-name registry used by the profile check.
 
-### fn `export async function runDoctor(` (L598-603)
+### fn `export async function runDoctor(` (L601-606)
 - @brief Runs the readiness self-check decoupled from server startup.
 - @details Local checks (zero network calls): Node major >=
 `NODE_ENGINE_FLOOR` (22, aligned with `package.json` `engines`, REQ-070),
@@ -206,22 +207,22 @@ check fails; the caller maps it to the exit code.
 - @see describeToolsProfile
 - @satisfies REQ-070, REQ-071, REQ-072, REQ-089, REQ-090, REQ-091
 
-### iface `export interface SetupCheck` (L709-713)
+### iface `export interface SetupCheck` (L712-716)
 - @brief One named onboarding check result (`pass`, `fail`, or `skip`). */
 
-### iface `export interface SetupReport` (L716-720)
+### iface `export interface SetupReport` (L719-723)
 - @brief JSON-serializable outcome of the `setup` command. */
 
-### iface `export interface SetupFs` (L723-727)
+### iface `export interface SetupFs` (L726-730)
 - @brief Injectable filesystem surface used by `runSetup` (tests pass fakes). */
 
-### iface `export interface SetupDeps` (L730-734)
+### iface `export interface SetupDeps` (L733-737)
 - @brief Injectable dependencies for deterministic `runSetup` testing. */
 
-### iface `export interface SetupOptions` (L737-741)
+### iface `export interface SetupOptions` (L740-744)
 - @brief Inputs controlling `runSetup` behavior. */
 
-### fn `export async function runSetup(options: SetupOptions, deps: SetupDeps = {}): Promise<SetupReport>` (L758-840)
+### fn `export async function runSetup(options: SetupOptions, deps: SetupDeps = {}): Promise<SetupReport>` (L761-843)
 - @brief Runs the non-interactive onboarding self-check with optional `.env` scaffolding.
 - @details Zero prompts, zero Google API calls, zero writes unless `writeEnv`
 is true (REQ-087). Checks: Node major >= `NODE_ENGINE_FLOOR` (22);
@@ -236,7 +237,7 @@ state; API key presence from the resolved configuration (value hidden).
 - @see resolveRuntimeConfig
 - @satisfies PRJ-011, REQ-087, REQ-088
 
-### fn `export function runSnippetCommand(` (L856-858)
+### fn `export function runSnippetCommand(` (L859-861)
 - @brief Renders a client registration snippet and routes output per PRJ-008.
 - @details Delegates JSON construction to `renderClientSnippet`, writes the
 snippet JSON to `stdout` and each guidance note to `stderr` so stdout stays
@@ -248,7 +249,7 @@ JSON stderr error with exit code 1. Complexity O(1).
 - @see renderClientSnippet
 - @satisfies PRJ-010, REQ-092, REQ-093
 
-### fn `export function runEnableDisableCliCommand(` (L892-895)
+### fn `export function runEnableDisableCliCommand(` (L895-898)
 - @brief Enables or disables one supported CLI in the persisted settings.
 - @details Resolves the CLI adapter case-insensitively; unsupported names
 exit 2 with a JSON stderr error listing supported names (REQ-110).
@@ -263,7 +264,25 @@ result on stdout (PRJ-008).
 - @see saveCliSettings
 - @satisfies REQ-110, REQ-111
 
-### fn `export function runInstallUninstallCommand(` (L937-939)
+### fn `export function runApiKeyCommand(` (L944-946)
+- @brief Saves the Google Maps API key in the persisted settings and refreshes enabled-CLI registrations.
+- @details Validates the key first (REQ-020 format via `ApiKeyManager`),
+rejecting empty, whitespace-only, or malformed input with a JSON stderr
+error and non-zero exit before any write (REQ-137); persists the key as
+the settings `apiKey` field atomically (REQ-136, DES-023); then runs the
+install operation for every enabled CLI embedding the newly persisted key
+with REQ-116 and REQ-119 semantics (REQ-138). Prints exactly one JSON
+object on stdout containing the masked key (DES-016), the settings path,
+and the per-CLI install summaries and errors (REQ-139).
+- @param key {string | undefined} Raw key argument from the command line.
+- @param options {object} `{ home?, resourcesRoot, streams? }`; streams default to process streams.
+- @return {number} Exit code: 0 on success or zero enabled CLIs, 1 on validation, persistence, or install failure.
+- @see loadCliSettings
+- @see saveCliSettings
+- @see installEnabledCliResources
+- @satisfies REQ-136, REQ-137, REQ-138, REQ-139
+
+### fn `export function runInstallUninstallCommand(` (L1027-1029)
 - @brief Shared handler for the `install` and `uninstall` commands.
 - @details Runs the requested operation over every enabled CLI, prints the
 aggregate JSON result on stdout, and exits 1 when any per-CLI failure was
@@ -277,7 +296,7 @@ stays the single machine-readable channel (PRJ-008).
 - @see uninstallEnabledCliResources
 - @satisfies REQ-114, REQ-115, REQ-116, REQ-119
 
-### fn `export function runShowCommand(` (L985-986)
+### fn `export function runShowCommand(` (L1075-1076)
 - @brief Prints the CLI Configuration and Installation Status tables.
 - @details Delegates rendering to `buildCliShowReport` and writes the report
 text to stdout (human-readable exception to PRJ-008). Manifest or render
@@ -287,7 +306,7 @@ failures surface as a JSON stderr error with exit code 1.
 - @see buildCliShowReport
 - @satisfies REQ-117, REQ-118, REQ-119
 
-### fn `const buildServerCommandOptions = (yargs: Argv) =>` (L1052-1059)
+### fn `const buildServerCommandOptions = (yargs: Argv) =>` (L1142-1149)
 - @brief Applies the shared server-start options to a yargs builder.
 - @details Declares `--port`, `--host`, `--apikey`, and `--stdio` with
 environment-derived defaults plus the server-mode examples. Shared
@@ -297,61 +316,67 @@ option surface (PRJ-003). Complexity O(1).
 - @return {Argv} The same builder instance with the typed server options attached.
 - @satisfies REQ-079
 
-- type `type ServerCommandArgs = BuilderArguments<typeof buildServerCommandOptions>;` (L1085)
-### fn `const runServerCommand = async (argv: ServerCommandArgs): Promise<void> =>` (L1098-1137)
+- type `type ServerCommandArgs = BuilderArguments<typeof buildServerCommandOptions>;` (L1175)
+### fn `const runServerCommand = async (argv: ServerCommandArgs): Promise<void> =>` (L1193-1263)
 - @brief Server-start handler shared by the `start` and `run` commands.
-- @details Applies `--apikey` to the environment, fires the idle-gated
-automatic update check fire-and-forget (REQ-082; never blocks startup),
-then starts stdio mode when `--stdio` is passed, otherwise HTTP mode via
-`startServer`, exiting 1 when zero instances listen (REQ-095). HTTP mode
-without an API key logs a warning and still starts (REQ-080).
+- @details Applies `--apikey` to the environment, resolves the effective
+key with priority `--apikey` flag, `GOOGLE_MAPS_API_KEY` environment
+(placeholder counts as unset), then the persisted settings key promoted
+into the environment (REQ-142); fires the idle-gated automatic update
+check fire-and-forget (REQ-082; never blocks startup), then starts
+stdio mode when `--stdio` is passed — exiting 1 with a stderr JSON
+error naming the `api-key` command when no key resolves (REQ-143) —
+otherwise HTTP mode via `startServer`, exiting 1 when zero instances
+listen (REQ-095). HTTP mode without an API key logs a warning and still
+starts (REQ-080).
 - @param argv {ServerCommandArgs} Parsed options: `--port`, `--host`, `--apikey`, `--stdio`.
 - @return {Promise<void>} Resolves when stdio mode stops; HTTP mode persists.
-- @satisfies REQ-079, REQ-080, REQ-082, REQ-095
+- @satisfies REQ-079, REQ-080, REQ-082, REQ-095, REQ-142, REQ-143
 
-### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1511-1523)
+### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1666-1678)
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`extractEnvFileOption`|fn||51-62|export function extractEnvFileOption(argv: readonly strin...|
-|`loadEnvironment`|fn||77-90|function loadEnvironment(envFile: string | undefined): void|
-|`ServerStartupOutcome`|iface||98-102|export interface ServerStartupOutcome|
-|`startServer`|fn||119-193|export async function startServer(|
-|`ShutdownExitHook`|type||196||
-|`createShutdownHandler`|fn||210-224|export function createShutdownHandler(|
-|`installShutdownHandlers`|fn||236-240|export function installShutdownHandlers(servers: readonly...|
-|`ExecFailureResponse`|type||265||
-|`ExecOutput`|iface||270-272|interface ExecOutput|
-|`ExecStreams`|iface||274-277|interface ExecStreams|
-|`ExecToolRunner`|type||279||
-|`DoctorCheck`|type||281||
-|`DoctorReport`|type||287||
-|`DoctorToolRunner`|type||294||
-|`isExecFailureResponse`|fn||296-303|function isExecFailureResponse(result: unknown): result i...|
-|`getExecFailureMessage`|fn||305-313|function getExecFailureMessage(toolName: string, result: ...|
-|`execTool`|fn||315-449|export async function execTool(toolName: string, params: ...|
-|`runExecCommand`|fn||459-464|export async function runExecCommand(|
-|`DoctorProbeId`|type||484||
-|`DoctorLiveProbe`|iface||487-492|export interface DoctorLiveProbe|
-|`DoctorProbesParseResult`|iface||524-527|export interface DoctorProbesParseResult|
-|`parseDoctorProbes`|fn||539-561|export function parseDoctorProbes(raw: string | undefined...|
-|`DoctorOptions`|iface||569-574|export interface DoctorOptions|
-|`runDoctor`|fn||598-603|export async function runDoctor(|
-|`SetupCheck`|iface||709-713|export interface SetupCheck|
-|`SetupReport`|iface||716-720|export interface SetupReport|
-|`SetupFs`|iface||723-727|export interface SetupFs|
-|`SetupDeps`|iface||730-734|export interface SetupDeps|
-|`SetupOptions`|iface||737-741|export interface SetupOptions|
-|`runSetup`|fn||758-840|export async function runSetup(options: SetupOptions, dep...|
-|`runSnippetCommand`|fn||856-858|export function runSnippetCommand(|
-|`runEnableDisableCliCommand`|fn||892-895|export function runEnableDisableCliCommand(|
-|`runInstallUninstallCommand`|fn||937-939|export function runInstallUninstallCommand(|
-|`runShowCommand`|fn||985-986|export function runShowCommand(|
-|`buildServerCommandOptions`|fn||1052-1059|const buildServerCommandOptions = (yargs: Argv) =>|
-|`ServerCommandArgs`|type||1085||
-|`runServerCommand`|fn||1098-1137|const runServerCommand = async (argv: ServerCommandArgs):...|
-|`semaphore`|fn||1511-1523|const semaphore = async (tasks: (() => Promise<void>)[], ...|
+|`extractEnvFileOption`|fn||54-65|export function extractEnvFileOption(argv: readonly strin...|
+|`loadEnvironment`|fn||80-93|function loadEnvironment(envFile: string | undefined): void|
+|`ServerStartupOutcome`|iface||101-105|export interface ServerStartupOutcome|
+|`startServer`|fn||122-196|export async function startServer(|
+|`ShutdownExitHook`|type||199||
+|`createShutdownHandler`|fn||213-227|export function createShutdownHandler(|
+|`installShutdownHandlers`|fn||239-243|export function installShutdownHandlers(servers: readonly...|
+|`ExecFailureResponse`|type||268||
+|`ExecOutput`|iface||273-275|interface ExecOutput|
+|`ExecStreams`|iface||277-280|interface ExecStreams|
+|`ExecToolRunner`|type||282||
+|`DoctorCheck`|type||284||
+|`DoctorReport`|type||290||
+|`DoctorToolRunner`|type||297||
+|`isExecFailureResponse`|fn||299-306|function isExecFailureResponse(result: unknown): result i...|
+|`getExecFailureMessage`|fn||308-316|function getExecFailureMessage(toolName: string, result: ...|
+|`execTool`|fn||318-452|export async function execTool(toolName: string, params: ...|
+|`runExecCommand`|fn||462-467|export async function runExecCommand(|
+|`DoctorProbeId`|type||487||
+|`DoctorLiveProbe`|iface||490-495|export interface DoctorLiveProbe|
+|`DoctorProbesParseResult`|iface||527-530|export interface DoctorProbesParseResult|
+|`parseDoctorProbes`|fn||542-564|export function parseDoctorProbes(raw: string | undefined...|
+|`DoctorOptions`|iface||572-577|export interface DoctorOptions|
+|`runDoctor`|fn||601-606|export async function runDoctor(|
+|`SetupCheck`|iface||712-716|export interface SetupCheck|
+|`SetupReport`|iface||719-723|export interface SetupReport|
+|`SetupFs`|iface||726-730|export interface SetupFs|
+|`SetupDeps`|iface||733-737|export interface SetupDeps|
+|`SetupOptions`|iface||740-744|export interface SetupOptions|
+|`runSetup`|fn||761-843|export async function runSetup(options: SetupOptions, dep...|
+|`runSnippetCommand`|fn||859-861|export function runSnippetCommand(|
+|`runEnableDisableCliCommand`|fn||895-898|export function runEnableDisableCliCommand(|
+|`runApiKeyCommand`|fn||944-946|export function runApiKeyCommand(|
+|`runInstallUninstallCommand`|fn||1027-1029|export function runInstallUninstallCommand(|
+|`runShowCommand`|fn||1075-1076|export function runShowCommand(|
+|`buildServerCommandOptions`|fn||1142-1149|const buildServerCommandOptions = (yargs: Argv) =>|
+|`ServerCommandArgs`|type||1175||
+|`runServerCommand`|fn||1193-1263|const runServerCommand = async (argv: ServerCommandArgs):...|
+|`semaphore`|fn||1666-1678|const semaphore = async (tasks: (() => Promise<void>)[], ...|
 
 
 ---
@@ -1170,7 +1195,7 @@ returns null, logs to stderr only, and never throws (REQ-085).
 
 ---
 
-# cliInstaller.ts | TypeScript | 210L | 8 symbols | 4 imports | 9 comments
+# cliInstaller.ts | TypeScript | 246L | 9 symbols | 4 imports | 10 comments
 > Path: `src/utils/cliInstaller.ts`
 - @brief Orchestrate MCP-server registration and skill installation for enabled CLIs.
 - @details Loads the enabled-CLI settings, reads the packaged skills
@@ -1185,35 +1210,50 @@ remaining CLIs.
 ```
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { loadCliSettings, MCP_SERVER_NAME } from "./cliSettings.js";
+import {
 import {
 ```
 
 ## Definitions
 
-### iface `export interface ManifestSkill` (L28-34)
+### iface `export interface ManifestSkill` (L34-40)
 - @brief One manifest skill entry from `src/resources/skills/manifest.json`.
 - @details `id` names the packaged `<id>/` directory holding `SKILL.md`.
 
-### iface `export interface CliOperationSummary` (L41-45)
+### iface `export interface CliOperationSummary` (L47-51)
 - @brief Per-CLI outcome of one install or uninstall run.
 - @details `server` counts the MCP registration (0 or 1); `skills` counts
 processed manifest skills for that CLI.
 
-### iface `export interface CliOperationResult` (L51-54)
+### iface `export interface CliOperationResult` (L57-60)
 - @brief Aggregate outcome of one install or uninstall run.
 - @details Both lists are empty when no CLI is enabled (REQ-116, REQ-119).
 
-### fn `export function buildServerRegistration(apiKey: string | undefined):` (L65-75)
+### fn `export function buildServerRegistration(apiKey: string | undefined):` (L73-82)
 - @brief Build the stdio MCP-server registration entry.
-- @details Launcher `npx -y mcp-google-map start --stdio`; `env` embeds
-`GOOGLE_MAPS_API_KEY` only when resolved at install time, matching the
-prebuilt-package-first Quick Start.
-- @param apiKey {string | undefined} Resolved Google Maps API key.
+- @details Launcher `npx -y mcp-google-map start --stdio`; `env` always embeds
+`GOOGLE_MAPS_API_KEY`: the resolved install-time key, or the literal
+placeholder inviting the `api-key` command when no key resolves (REQ-141).
+Key resolution priority is owned by `resolveInstallApiKey` (REQ-140).
+- @param apiKey {string | undefined} Install-time resolved Google Maps API key.
 - @return {object} Registration entry consumed by every supported CLI.
-- @satisfies REQ-114
+- @see resolveInstallApiKey
+- @satisfies REQ-114, REQ-140, REQ-141
 
-### fn `export function resolveSkillsResourcesRoot(packageRoot: string): string` (L86-92)
+### fn `export function resolveInstallApiKey(options:` (L97-110)
+- @brief Resolve the API key embedded by `install` into CLI configurations.
+- @details Priority (REQ-140): explicit `--apikey` flag, then the persisted
+user-settings key (`api-key` command), then the `GOOGLE_MAPS_API_KEY`
+environment value; the placeholder marker counts as unset at every level,
+so a placeholder never re-embeds itself. Pure aside from the settings-file
+read; complexity O(1).
+- @param options {object} `{ flagKey?, envKey?, home? }`.
+- @return {string | undefined} Resolved key; undefined when nothing resolves.
+- @see loadConfiguredApiKey
+- @see isUnsetApiKey
+- @satisfies REQ-140
+
+### fn `export function resolveSkillsResourcesRoot(packageRoot: string): string` (L121-127)
 - @brief Resolve the packaged skills root for the running installation.
 - @details Checks `<packageRoot>/src/resources/skills` — the layout used
 both by from-source runs and by the published npm package, which ships the
@@ -1222,25 +1262,26 @@ same subtree (PKG-024).
 - @return {string} Absolute skills resources root.
 - @throws {Error} When the skills root directory is missing.
 
-### fn `export function loadSkillsManifest(resourcesRoot: string): ManifestSkill[]` (L101-132)
+### fn `export function loadSkillsManifest(resourcesRoot: string): ManifestSkill[]` (L136-167)
 - @brief Load and validate the packaged skills manifest.
 - @param resourcesRoot {string} Skills resources root directory.
 - @return {ManifestSkill[]} Manifest entries in file order.
 - @throws {Error} When the manifest is missing, malformed, or lists a missing
 `SKILL.md` path.
 
-### fn `export function installEnabledCliResources(options:` (L145-172)
+### fn `export function installEnabledCliResources(options:` (L181-208)
 - @brief Install the MCP server entry and every manifest skill per enabled CLI.
 - @details For each enabled CLI in settings order: registers the stdio entry
-via `applyServerRegistration`, then synchronizes each manifest skill
-directory `<resourcesRoot>/<skill-id>` into `<skillsDir>/<skill-id>`.
+via `applyServerRegistration` (embedding the resolved key or the REQ-141
+placeholder), then synchronizes each manifest skill directory
+`<resourcesRoot>/<skill-id>` into `<skillsDir>/<skill-id>`.
 Failures are collected per CLI and remaining CLIs still run.
 - @param options {object} `{ home?, apiKey, resourcesRoot }`.
 - @return {CliOperationResult} Per-CLI summaries and failure diagnostics.
 - @throws {Error} When the skills manifest cannot be loaded (all CLIs fail).
-- @satisfies REQ-114, REQ-116
+- @satisfies REQ-114, REQ-116, REQ-140, REQ-141
 
-### fn `export function uninstallEnabledCliResources(options:` (L185-210)
+### fn `export function uninstallEnabledCliResources(options:` (L221-246)
 - @brief Remove the MCP server entry and managed skills per enabled CLI.
 - @details Reciprocal of `installEnabledCliResources`: removes the managed
 server entry and deletes each manifest skill directory. Missing entries
@@ -1254,22 +1295,23 @@ remaining CLIs still run.
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`ManifestSkill`|iface||28-34|export interface ManifestSkill|
-|`CliOperationSummary`|iface||41-45|export interface CliOperationSummary|
-|`CliOperationResult`|iface||51-54|export interface CliOperationResult|
-|`buildServerRegistration`|fn||65-75|export function buildServerRegistration(apiKey: string | ...|
-|`resolveSkillsResourcesRoot`|fn||86-92|export function resolveSkillsResourcesRoot(packageRoot: s...|
-|`loadSkillsManifest`|fn||101-132|export function loadSkillsManifest(resourcesRoot: string)...|
-|`installEnabledCliResources`|fn||145-172|export function installEnabledCliResources(options:|
-|`uninstallEnabledCliResources`|fn||185-210|export function uninstallEnabledCliResources(options:|
+|`ManifestSkill`|iface||34-40|export interface ManifestSkill|
+|`CliOperationSummary`|iface||47-51|export interface CliOperationSummary|
+|`CliOperationResult`|iface||57-60|export interface CliOperationResult|
+|`buildServerRegistration`|fn||73-82|export function buildServerRegistration(apiKey: string | ...|
+|`resolveInstallApiKey`|fn||97-110|export function resolveInstallApiKey(options:|
+|`resolveSkillsResourcesRoot`|fn||121-127|export function resolveSkillsResourcesRoot(packageRoot: s...|
+|`loadSkillsManifest`|fn||136-167|export function loadSkillsManifest(resourcesRoot: string)...|
+|`installEnabledCliResources`|fn||181-208|export function installEnabledCliResources(options:|
+|`uninstallEnabledCliResources`|fn||221-246|export function uninstallEnabledCliResources(options:|
 
 
 ---
 
-# cliSettings.ts | TypeScript | 126L | 5 symbols | 2 imports | 9 comments
+# cliSettings.ts | TypeScript | 185L | 7 symbols | 2 imports | 12 comments
 > Path: `src/utils/cliSettings.ts`
-- @brief Persist the enabled-CLI set for the CLI configuration-management commands.
-- @details Stores `{"enabled": ["<cli>", ...]}` at
+- @brief Persist the enabled-CLI set and the configured API key for the CLI configuration-management commands.
+- @details Stores `{"enabled": ["<cli>", ...], "apiKey": "<key>"}` at
 `<home>/.config/<SETTINGS_PROGRAM_NAME>/config.json`. The settings directory
 segment is the distribution program name `mcp-google-map` (DES-021):
 program-owned, never a shared or generic directory such as `skills`.
@@ -1277,7 +1319,7 @@ Loading tolerates missing, unreadable, non-object, or malformed content by
 returning normalized defaults; saving serializes with two-space
 indentation plus a trailing newline, writes a sibling temporary file,
 and replaces the target atomically.
-- @satisfies DES-018, DES-021
+- @satisfies DES-018, DES-021, DES-023
 
 ## Imports
 ```
@@ -1287,11 +1329,12 @@ import { join, resolve } from "node:path";
 
 ## Definitions
 
-### iface `export interface CliSettings` (L47-49)
-- @brief User settings shape consumed by enable/disable/install/uninstall/show.
-- @details `enabled` lists canonical CLI names in persistence order.
+### iface `export interface CliSettings` (L59-62)
+- @brief User settings shape consumed by enable/disable/api-key/install/uninstall/show.
+- @details `enabled` lists canonical CLI names in persistence order; `apiKey`
+is the user-configured Google Maps API key (DES-023), omitted when unset.
 
-### fn `export function resolveCliSettingsPath(home?: string): string` (L60-63)
+### fn `export function resolveCliSettingsPath(home?: string): string` (L73-76)
 - @brief Resolve the user settings file path for a home root.
 - @details Joins the effective home directory with
 `.config/<SETTINGS_PROGRAM_NAME>/config.json` — the program-owned path
@@ -1300,41 +1343,66 @@ derived from the distribution name, never a shared directory (DES-021).
 - @return {string} Absolute settings file path.
 - @satisfies DES-018, DES-021
 
-### fn `function uniqueStrings(value: unknown): string[]` (L70-79)
+### fn `function uniqueStrings(value: unknown): string[]` (L83-92)
 - @brief Normalize an arbitrary parsed value into unique non-empty strings.
 - @param value {unknown} Candidate JSON value.
 - @return {string[]} Unique strings in first-seen order; empty for non-lists.
 
-### fn `export function loadCliSettings(home?: string): CliSettings` (L89-99)
+### fn `export function isUnsetApiKey(value: string | undefined | null): boolean` (L105-112)
+- @brief Classify a candidate API key value as unset.
+- @details True for undefined/null, empty or whitespace-only strings, and the
+literal `INSTALL_API_KEY_PLACEHOLDER` marker, so placeholder-bearing client
+configurations never count as a configured key (REQ-140, REQ-142). Pure;
+complexity O(1).
+- @param value {string | undefined | null} Candidate key from flag, environment, or settings.
+- @return {boolean} True when the value must be treated as no key.
+- @see INSTALL_API_KEY_PLACEHOLDER
+- @satisfies REQ-140, REQ-142
+
+### fn `export function loadCliSettings(home?: string): CliSettings` (L123-138)
 - @brief Load the user settings with normalized defaults.
 - @details Reads JSON from `resolveCliSettingsPath`; missing, unreadable,
-malformed, or non-object content yields `{ enabled: [] }`. Never throws.
+malformed, or non-object content yields `{ enabled: [] }`. The optional
+`apiKey` field is accepted only as a non-empty string (DES-023). Never throws.
 - @param home {string | undefined} Home-directory override.
 - @return {CliSettings} Normalized settings object.
-- @satisfies DES-018, DES-021
+- @satisfies DES-018, DES-021, DES-023
 
-### fn `export function saveCliSettings(settings: CliSettings, home?: string): string` (L115-126)
+### fn `export function loadConfiguredApiKey(home?: string): string | undefined` (L150-153)
+- @brief Load the user-configured API key from the persisted settings.
+- @details Reads `loadCliSettings().apiKey` and normalizes placeholder and
+empty values to undefined so callers receive only a usable key (DES-023,
+REQ-142). Tolerates any malformed settings content by delegation.
+- @param home {string | undefined} Home-directory override.
+- @return {string | undefined} Configured key; undefined when unset or placeholder.
+- @see isUnsetApiKey
+- @satisfies DES-023, REQ-140, REQ-142
+
+### fn `export function saveCliSettings(settings: CliSettings, home?: string): string` (L170-185)
 - @brief Persist settings to the user settings file atomically.
-- @details Creates parent directories, serializes with two-space indentation
-and a trailing newline, writes `<file>.tmp`, then renames over the target
-so readers never observe a partial file. Target path is the program-owned
+- @details Creates parent directories, serializes `enabled` plus the optional
+non-empty `apiKey` field (DES-023) with two-space indentation and a
+trailing newline, writes `<file>.tmp`, then renames over the target so
+readers never observe a partial file. Target path is the program-owned
 `.config/<SETTINGS_PROGRAM_NAME>/config.json` (DES-021).
 - @param settings {CliSettings} Settings object to persist.
 - @param home {string | undefined} Home-directory override.
 - @return {string} Written settings file path.
 - @throws {Error} With descriptive message when directory creation, writing,
 or replacement fails; the temporary file is best-effort removed.
-- @satisfies DES-018, DES-021
+- @satisfies DES-018, DES-021, DES-023
 - @post The settings file contains the serialized `settings` object.
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`CliSettings`|iface||47-49|export interface CliSettings|
-|`resolveCliSettingsPath`|fn||60-63|export function resolveCliSettingsPath(home?: string): st...|
-|`uniqueStrings`|fn||70-79|function uniqueStrings(value: unknown): string[]|
-|`loadCliSettings`|fn||89-99|export function loadCliSettings(home?: string): CliSettings|
-|`saveCliSettings`|fn||115-126|export function saveCliSettings(settings: CliSettings, ho...|
+|`CliSettings`|iface||59-62|export interface CliSettings|
+|`resolveCliSettingsPath`|fn||73-76|export function resolveCliSettingsPath(home?: string): st...|
+|`uniqueStrings`|fn||83-92|function uniqueStrings(value: unknown): string[]|
+|`isUnsetApiKey`|fn||105-112|export function isUnsetApiKey(value: string | undefined |...|
+|`loadCliSettings`|fn||123-138|export function loadCliSettings(home?: string): CliSettings|
+|`loadConfiguredApiKey`|fn||150-153|export function loadConfiguredApiKey(home?: string): stri...|
+|`saveCliSettings`|fn||170-185|export function saveCliSettings(settings: CliSettings, ho...|
 
 
 ---
