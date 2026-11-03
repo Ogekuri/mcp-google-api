@@ -77,10 +77,22 @@ export const PACKAGE_UNINSTALL_COMMAND: readonly string[] = [
   DEFAULT_PACKAGE_NAME,
 ];
 
-/** Child command refreshing skills/registrations after `--upgrade` (REQ-126). */
+/**
+ * @brief Child command refreshing skills/registrations after `--upgrade` (REQ-126).
+ * @details Invokes the globally installed bin of the package JUST upgraded by
+ * `PACKAGE_UPGRADE_COMMAND` (REQ-125): the executable already on `PATH` in the
+ * exact scenario where `--upgrade` runs, guaranteed to match the upgraded
+ * version. MUST NOT be an unversioned `npx -y mcp-google-map` spec: npx
+ * resolves from its own cache/registry rather than the upgraded global
+ * install, so a stale cached copy of the CLI could execute instead — on
+ * pre-`$0`-gating releases the default command starts the MCP HTTP server,
+ * which never exits and blocks the parent `spawnSync` forever (observed
+ * defect: `--upgrade` appears to launch the MCP server instead of running
+ * `install`). Windows spawns run through a shell, so `mcp-google-map.cmd`
+ * resolves via `PATHEXT` exactly like the `npm` executable.
+ * @satisfies REQ-126
+ */
 export const POST_UPGRADE_INSTALL_COMMAND: readonly string[] = [
-  "npx",
-  "-y",
   DEFAULT_PACKAGE_NAME,
   "install",
 ];
@@ -529,11 +541,12 @@ function parsePostUpgradeCliOutcomes(
 /**
  * @brief Refreshes installed skills through the upgraded package after `--upgrade`.
  * @details When at least one CLI is enabled in the persisted settings, spawns
- * `npx -y mcp-google-map install` with captured child stdout (stderr stays
- * inherited so child diagnostics remain visible), so the freshly upgraded
- * package (not the running process) re-synchronizes its packaged skills and
- * MCP registrations into every enabled CLI without echoing the child JSON
- * summary (REQ-126). The captured payload is parsed into per-CLI outcomes;
+ * `mcp-google-map install` — the globally installed bin of the just-upgraded
+ * package (`POST_UPGRADE_INSTALL_COMMAND`) — with captured child stdout
+ * (stderr stays inherited so child diagnostics remain visible), so the
+ * freshly upgraded package (not the running process, and never a stale npx
+ * cache copy) re-synchronizes its packaged skills and MCP registrations into
+ * every enabled CLI without echoing the child JSON summary (REQ-126). The captured payload is parsed into per-CLI outcomes;
  * missing or unparseable output falls back to the persisted enabled-CLI list
  * carrying the aggregate exit-code outcome (REQ-135). Spawn failures report
  * the manual command hint on stderr and map to exit code 1 (REQ-128). With
