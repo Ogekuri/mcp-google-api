@@ -46,7 +46,7 @@
         └── upgradeManager.ts
 ```
 
-# cli.ts | TypeScript | 1532L | 35 symbols | 20 imports | 53 comments
+# cli.ts | TypeScript | 1597L | 38 symbols | 21 imports | 55 comments
 > Path: `src/cli.ts`
 
 ## Imports
@@ -54,6 +54,7 @@
 import { config as dotenvConfig } from "dotenv";
 import { resolve } from "path";
 import yargs from "yargs";
+import type { Argv, BuilderArguments } from "yargs";
 import { hideBin } from "yargs/helpers";
 import serverConfigs, { filterTools } from "./config.js";
 import { BaseMcpServer } from "./core/BaseMcpServer.js";
@@ -75,7 +76,7 @@ import { buildCliShowReport } from "./utils/cliShow.js";
 
 ## Definitions
 
-### fn `export function extractEnvFileOption(argv: readonly string[]): string | undefined` (L50-61)
+### fn `export function extractEnvFileOption(argv: readonly string[]): string | undefined` (L51-62)
 - @brief Extracts the explicit `--env-file <path>` value from a raw argv array.
 - @details Scans for both `--env-file <path>` and `--env-file=<path>` forms
 before any command parsing so the file loads before option defaults are
@@ -84,7 +85,7 @@ captured. First match wins. Complexity O(n) in argv length; pure.
 - @return {string | undefined} Path value when present; undefined otherwise.
 - @satisfies CTN-009
 
-### fn `function loadEnvironment(envFile: string | undefined): void` (L76-89)
+### fn `function loadEnvironment(envFile: string | undefined): void` (L77-90)
 - @brief Loads environment files for the current CLI invocation.
 - @details Explicit mode (`envFile` set): loads exactly that file via
 `applyExplicitEnvFile` and exits 1 with a JSON stderr error when missing —
@@ -97,13 +98,13 @@ overrides already-set variables). Complexity O(file count).
 - @see applyExplicitEnvFile
 - @satisfies CTN-007, CTN-009
 
-### iface `export interface ServerStartupOutcome` (L97-101)
+### iface `export interface ServerStartupOutcome` (L98-102)
 - @brief Aggregated HTTP startup result across all configured server instances.
 - @details `started`/`failed` count per instance; `servers` holds only the
 instances that are listening, so a zero-length array with `started === 0`
 is the reliable-failure signal consumed by the default command (REQ-095).
 
-### fn `export async function startServer(` (L118-192)
+### fn `export async function startServer(` (L119-193)
 - @brief Starts every configured HTTP MCP server instance and reports the outcome.
 - @details Applies flag overrides to the environment, validates each instance
 port (integer 1-65535), skips invalid instances with remediation guidance
@@ -118,9 +119,9 @@ and returns the aggregate outcome. Default bind host is loopback
 - @see installShutdownHandlers
 - @satisfies REQ-008, REQ-009, REQ-096
 
-- type `export type ShutdownExitHook = (code: number) => void;` (L195)
+- type `export type ShutdownExitHook = (code: number) => void;` (L196)
 - @brief Exit hook signature used by the shutdown handler. */
-### fn `export function createShutdownHandler(` (L209-223)
+### fn `export function createShutdownHandler(` (L210-224)
 - @brief Builds a one-shot orderly shutdown handler for HTTP server instances.
 - @details On first invocation it stops every given server via
 `stopHttpServer()` (transport close + socket close, errors tolerated) and
@@ -132,7 +133,7 @@ signals never double-stop. Complexity O(servers).
 - @see stopHttpServer
 - @satisfies REQ-096
 
-### fn `export function installShutdownHandlers(servers: readonly BaseMcpServer[]): void` (L235-239)
+### fn `export function installShutdownHandlers(servers: readonly BaseMcpServer[]): void` (L236-240)
 - @brief Registers SIGINT/SIGTERM handlers that orderly-stop the given servers.
 - @details Wraps `createShutdownHandler` and attaches it to both signals so
 Ctrl-C and terminate requests close all HTTP sessions and the listening
@@ -142,32 +143,32 @@ socket before process exit (REQ-096). Complexity O(1).
 - @see createShutdownHandler
 - @satisfies REQ-096
 
-- type `type ExecFailureResponse = {` (L264)
-### iface `interface ExecOutput` (L269-271)
+- type `type ExecFailureResponse = {` (L265)
+### iface `interface ExecOutput` (L270-272)
 
-### iface `interface ExecStreams` (L273-276)
+### iface `interface ExecStreams` (L274-277)
 
-- type `type ExecToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L278)
-- type `export type DoctorCheck = {` (L280)
-- type `export type DoctorReport = {` (L286)
-- type `type DoctorToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L293)
-### fn `function isExecFailureResponse(result: unknown): result is ExecFailureResponse` (L295-302)
+- type `type ExecToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L279)
+- type `export type DoctorCheck = {` (L281)
+- type `export type DoctorReport = {` (L287)
+- type `type DoctorToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L294)
+### fn `function isExecFailureResponse(result: unknown): result is ExecFailureResponse` (L296-303)
 
-### fn `function getExecFailureMessage(toolName: string, result: ExecFailureResponse): string` (L304-312)
+### fn `function getExecFailureMessage(toolName: string, result: ExecFailureResponse): string` (L305-313)
 
-### fn `export async function execTool(toolName: string, params: any, apiKey: string): Promise<any>` (L314-448)
+### fn `export async function execTool(toolName: string, params: any, apiKey: string): Promise<any>` (L315-449)
 
-### fn `export async function runExecCommand(` (L458-463)
+### fn `export async function runExecCommand(` (L459-464)
 
-- type `export type DoctorProbeId = "geocoding" | "places-new" | "routes";` (L483)
+- type `export type DoctorProbeId = "geocoding" | "places-new" | "routes";` (L484)
 - @brief Selectable live-probe identifier used by `doctor --live --probes`. */
-### iface `export interface DoctorLiveProbe` (L486-491)
+### iface `export interface DoctorLiveProbe` (L487-492)
 - @brief Static definition of one billable live probe executed by doctor. */
 
-### iface `export interface DoctorProbesParseResult` (L523-526)
+### iface `export interface DoctorProbesParseResult` (L524-527)
 - @brief Parsed `--probes` CLI value: either valid probe ids or an error. */
 
-### fn `export function parseDoctorProbes(raw: string | undefined): DoctorProbesParseResult` (L538-560)
+### fn `export function parseDoctorProbes(raw: string | undefined): DoctorProbesParseResult` (L539-561)
 - @brief Parses the raw `--probes` CLI string into validated probe ids.
 - @details `undefined` input -> `{ probes: undefined }` (probe all three,
 legacy `--live` behavior). Splits on commas, trims, lowercases, maps through
@@ -177,13 +178,13 @@ with a remediation error. Complexity O(n) in items; pure.
 - @return {DoctorProbesParseResult} Validated ids, or `error` describing the invalid input.
 - @satisfies REQ-091
 
-### iface `export interface DoctorOptions` (L568-573)
+### iface `export interface DoctorOptions` (L569-574)
 - @brief Injectable doctor dependencies for deterministic testing.
 - @details `nodeVersion` overrides `process.versions.node`; `config` overrides
 environment-derived runtime configuration; `allToolNames` overrides the
 registered tool-name registry used by the profile check.
 
-### fn `export async function runDoctor(` (L597-602)
+### fn `export async function runDoctor(` (L598-603)
 - @brief Runs the readiness self-check decoupled from server startup.
 - @details Local checks (zero network calls): Node major >=
 `NODE_ENGINE_FLOOR` (22, aligned with `package.json` `engines`, REQ-070),
@@ -205,22 +206,22 @@ check fails; the caller maps it to the exit code.
 - @see describeToolsProfile
 - @satisfies REQ-070, REQ-071, REQ-072, REQ-089, REQ-090, REQ-091
 
-### iface `export interface SetupCheck` (L708-712)
+### iface `export interface SetupCheck` (L709-713)
 - @brief One named onboarding check result (`pass`, `fail`, or `skip`). */
 
-### iface `export interface SetupReport` (L715-719)
+### iface `export interface SetupReport` (L716-720)
 - @brief JSON-serializable outcome of the `setup` command. */
 
-### iface `export interface SetupFs` (L722-726)
+### iface `export interface SetupFs` (L723-727)
 - @brief Injectable filesystem surface used by `runSetup` (tests pass fakes). */
 
-### iface `export interface SetupDeps` (L729-733)
+### iface `export interface SetupDeps` (L730-734)
 - @brief Injectable dependencies for deterministic `runSetup` testing. */
 
-### iface `export interface SetupOptions` (L736-740)
+### iface `export interface SetupOptions` (L737-741)
 - @brief Inputs controlling `runSetup` behavior. */
 
-### fn `export async function runSetup(options: SetupOptions, deps: SetupDeps = {}): Promise<SetupReport>` (L757-839)
+### fn `export async function runSetup(options: SetupOptions, deps: SetupDeps = {}): Promise<SetupReport>` (L758-840)
 - @brief Runs the non-interactive onboarding self-check with optional `.env` scaffolding.
 - @details Zero prompts, zero Google API calls, zero writes unless `writeEnv`
 is true (REQ-087). Checks: Node major >= `NODE_ENGINE_FLOOR` (22);
@@ -235,7 +236,7 @@ state; API key presence from the resolved configuration (value hidden).
 - @see resolveRuntimeConfig
 - @satisfies PRJ-011, REQ-087, REQ-088
 
-### fn `export function runSnippetCommand(` (L855-857)
+### fn `export function runSnippetCommand(` (L856-858)
 - @brief Renders a client registration snippet and routes output per PRJ-008.
 - @details Delegates JSON construction to `renderClientSnippet`, writes the
 snippet JSON to `stdout` and each guidance note to `stderr` so stdout stays
@@ -247,7 +248,7 @@ JSON stderr error with exit code 1. Complexity O(1).
 - @see renderClientSnippet
 - @satisfies PRJ-010, REQ-092, REQ-093
 
-### fn `export function runEnableDisableCliCommand(` (L891-894)
+### fn `export function runEnableDisableCliCommand(` (L892-895)
 - @brief Enables or disables one supported CLI in the persisted settings.
 - @details Resolves the CLI adapter case-insensitively; unsupported names
 exit 2 with a JSON stderr error listing supported names (REQ-110).
@@ -262,7 +263,7 @@ result on stdout (PRJ-008).
 - @see saveCliSettings
 - @satisfies REQ-110, REQ-111
 
-### fn `export function runInstallUninstallCommand(` (L936-938)
+### fn `export function runInstallUninstallCommand(` (L937-939)
 - @brief Shared handler for the `install` and `uninstall` commands.
 - @details Runs the requested operation over every enabled CLI, prints the
 aggregate JSON result on stdout, and exits 1 when any per-CLI failure was
@@ -276,7 +277,7 @@ stays the single machine-readable channel (PRJ-008).
 - @see uninstallEnabledCliResources
 - @satisfies REQ-114, REQ-115, REQ-116, REQ-119
 
-### fn `export function runShowCommand(` (L984-985)
+### fn `export function runShowCommand(` (L985-986)
 - @brief Prints the CLI Configuration and Installation Status tables.
 - @details Delegates rendering to `buildCliShowReport` and writes the report
 text to stdout (human-readable exception to PRJ-008). Manifest or render
@@ -286,46 +287,71 @@ failures surface as a JSON stderr error with exit code 1.
 - @see buildCliShowReport
 - @satisfies REQ-117, REQ-118, REQ-119
 
-### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1396-1408)
+### fn `const buildServerCommandOptions = (yargs: Argv) =>` (L1052-1059)
+- @brief Applies the shared server-start options to a yargs builder.
+- @details Declares `--port`, `--host`, `--apikey`, and `--stdio` with
+environment-derived defaults plus the server-mode examples. Shared
+verbatim by the `start` and `run` commands so both expose an identical
+option surface (PRJ-003). Complexity O(1).
+- @param yargs {Argv} Builder of the command being configured.
+- @return {Argv} The same builder instance with the typed server options attached.
+- @satisfies REQ-079
+
+- type `type ServerCommandArgs = BuilderArguments<typeof buildServerCommandOptions>;` (L1085)
+### fn `const runServerCommand = async (argv: ServerCommandArgs): Promise<void> =>` (L1098-1137)
+- @brief Server-start handler shared by the `start` and `run` commands.
+- @details Applies `--apikey` to the environment, fires the idle-gated
+automatic update check fire-and-forget (REQ-082; never blocks startup),
+then starts stdio mode when `--stdio` is passed, otherwise HTTP mode via
+`startServer`, exiting 1 when zero instances listen (REQ-095). HTTP mode
+without an API key logs a warning and still starts (REQ-080).
+- @param argv {ServerCommandArgs} Parsed options: `--port`, `--host`, `--apikey`, `--stdio`.
+- @return {Promise<void>} Resolves when stdio mode stops; HTTP mode persists.
+- @satisfies REQ-079, REQ-080, REQ-082, REQ-095
+
+### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1511-1523)
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`extractEnvFileOption`|fn||50-61|export function extractEnvFileOption(argv: readonly strin...|
-|`loadEnvironment`|fn||76-89|function loadEnvironment(envFile: string | undefined): void|
-|`ServerStartupOutcome`|iface||97-101|export interface ServerStartupOutcome|
-|`startServer`|fn||118-192|export async function startServer(|
-|`ShutdownExitHook`|type||195||
-|`createShutdownHandler`|fn||209-223|export function createShutdownHandler(|
-|`installShutdownHandlers`|fn||235-239|export function installShutdownHandlers(servers: readonly...|
-|`ExecFailureResponse`|type||264||
-|`ExecOutput`|iface||269-271|interface ExecOutput|
-|`ExecStreams`|iface||273-276|interface ExecStreams|
-|`ExecToolRunner`|type||278||
-|`DoctorCheck`|type||280||
-|`DoctorReport`|type||286||
-|`DoctorToolRunner`|type||293||
-|`isExecFailureResponse`|fn||295-302|function isExecFailureResponse(result: unknown): result i...|
-|`getExecFailureMessage`|fn||304-312|function getExecFailureMessage(toolName: string, result: ...|
-|`execTool`|fn||314-448|export async function execTool(toolName: string, params: ...|
-|`runExecCommand`|fn||458-463|export async function runExecCommand(|
-|`DoctorProbeId`|type||483||
-|`DoctorLiveProbe`|iface||486-491|export interface DoctorLiveProbe|
-|`DoctorProbesParseResult`|iface||523-526|export interface DoctorProbesParseResult|
-|`parseDoctorProbes`|fn||538-560|export function parseDoctorProbes(raw: string | undefined...|
-|`DoctorOptions`|iface||568-573|export interface DoctorOptions|
-|`runDoctor`|fn||597-602|export async function runDoctor(|
-|`SetupCheck`|iface||708-712|export interface SetupCheck|
-|`SetupReport`|iface||715-719|export interface SetupReport|
-|`SetupFs`|iface||722-726|export interface SetupFs|
-|`SetupDeps`|iface||729-733|export interface SetupDeps|
-|`SetupOptions`|iface||736-740|export interface SetupOptions|
-|`runSetup`|fn||757-839|export async function runSetup(options: SetupOptions, dep...|
-|`runSnippetCommand`|fn||855-857|export function runSnippetCommand(|
-|`runEnableDisableCliCommand`|fn||891-894|export function runEnableDisableCliCommand(|
-|`runInstallUninstallCommand`|fn||936-938|export function runInstallUninstallCommand(|
-|`runShowCommand`|fn||984-985|export function runShowCommand(|
-|`semaphore`|fn||1396-1408|const semaphore = async (tasks: (() => Promise<void>)[], ...|
+|`extractEnvFileOption`|fn||51-62|export function extractEnvFileOption(argv: readonly strin...|
+|`loadEnvironment`|fn||77-90|function loadEnvironment(envFile: string | undefined): void|
+|`ServerStartupOutcome`|iface||98-102|export interface ServerStartupOutcome|
+|`startServer`|fn||119-193|export async function startServer(|
+|`ShutdownExitHook`|type||196||
+|`createShutdownHandler`|fn||210-224|export function createShutdownHandler(|
+|`installShutdownHandlers`|fn||236-240|export function installShutdownHandlers(servers: readonly...|
+|`ExecFailureResponse`|type||265||
+|`ExecOutput`|iface||270-272|interface ExecOutput|
+|`ExecStreams`|iface||274-277|interface ExecStreams|
+|`ExecToolRunner`|type||279||
+|`DoctorCheck`|type||281||
+|`DoctorReport`|type||287||
+|`DoctorToolRunner`|type||294||
+|`isExecFailureResponse`|fn||296-303|function isExecFailureResponse(result: unknown): result i...|
+|`getExecFailureMessage`|fn||305-313|function getExecFailureMessage(toolName: string, result: ...|
+|`execTool`|fn||315-449|export async function execTool(toolName: string, params: ...|
+|`runExecCommand`|fn||459-464|export async function runExecCommand(|
+|`DoctorProbeId`|type||484||
+|`DoctorLiveProbe`|iface||487-492|export interface DoctorLiveProbe|
+|`DoctorProbesParseResult`|iface||524-527|export interface DoctorProbesParseResult|
+|`parseDoctorProbes`|fn||539-561|export function parseDoctorProbes(raw: string | undefined...|
+|`DoctorOptions`|iface||569-574|export interface DoctorOptions|
+|`runDoctor`|fn||598-603|export async function runDoctor(|
+|`SetupCheck`|iface||709-713|export interface SetupCheck|
+|`SetupReport`|iface||716-720|export interface SetupReport|
+|`SetupFs`|iface||723-727|export interface SetupFs|
+|`SetupDeps`|iface||730-734|export interface SetupDeps|
+|`SetupOptions`|iface||737-741|export interface SetupOptions|
+|`runSetup`|fn||758-840|export async function runSetup(options: SetupOptions, dep...|
+|`runSnippetCommand`|fn||856-858|export function runSnippetCommand(|
+|`runEnableDisableCliCommand`|fn||892-895|export function runEnableDisableCliCommand(|
+|`runInstallUninstallCommand`|fn||937-939|export function runInstallUninstallCommand(|
+|`runShowCommand`|fn||985-986|export function runShowCommand(|
+|`buildServerCommandOptions`|fn||1052-1059|const buildServerCommandOptions = (yargs: Argv) =>|
+|`ServerCommandArgs`|type||1085||
+|`runServerCommand`|fn||1098-1137|const runServerCommand = async (argv: ServerCommandArgs):...|
+|`semaphore`|fn||1511-1523|const semaphore = async (tasks: (() => Promise<void>)[], ...|
 
 
 ---
@@ -1180,7 +1206,7 @@ processed manifest skills for that CLI.
 
 ### fn `export function buildServerRegistration(apiKey: string | undefined):` (L65-75)
 - @brief Build the stdio MCP-server registration entry.
-- @details Launcher `npx -y mcp-google-map --stdio`; `env` embeds
+- @details Launcher `npx -y mcp-google-map start --stdio`; `env` embeds
 `GOOGLE_MAPS_API_KEY` only when resolved at install time, matching the
 prebuilt-package-first Quick Start.
 - @param apiKey {string | undefined} Resolved Google Maps API key.
@@ -1650,7 +1676,7 @@ undefined removes the entry.
 
 ---
 
-# clientSnippets.ts | TypeScript | 120L | 6 symbols | 0 imports | 10 comments
+# clientSnippets.ts | TypeScript | 121L | 6 symbols | 0 imports | 10 comments
 > Path: `src/utils/clientSnippets.ts`
 
 ## Definitions
@@ -1672,11 +1698,12 @@ launcher `npx`, serverName `mcp-google-map`, HTTP host `127.0.0.1`, port 3000.
 object (parses with `JSON.parse`); `notes` are human guidance lines the CLI
 prints on stderr so stdout stays pure JSON (PRJ-008).
 
-### fn `export function renderClientSnippet(options: SnippetOptions = {}): SnippetResult` (L78-120)
+### fn `export function renderClientSnippet(options: SnippetOptions = {}): SnippetResult` (L79-121)
 - @brief Renders a valid MCP-client registration snippet without writing files.
-- @details stdio transport: launcher `npx` -> `npx -y mcp-google-map --stdio`;
-`bin` -> installed `mcp-google-map --stdio`; `node` -> `node <commandPath>
---stdio` and throws when `commandPath` is missing. HTTP transport: emits
+- @details stdio transport: launcher `npx` -> `npx -y mcp-google-map start
+--stdio`; `bin` -> installed `mcp-google-map start --stdio`; `node` ->
+`node <commandPath> start --stdio` and throws when `commandPath` is
+missing. HTTP transport: emits
 `{ url: "http://<host>:<port>/mcp" }`. The `env` block embeds
 `API_KEY_PLACEHOLDER` by default; a provided `envKey` switches the value to
 the literal `${<envKey>}` and adds a note that variable expansion is
@@ -1695,7 +1722,7 @@ JSON.stringify'd with 2-space indent. Complexity O(1).
 |`SnippetLauncher`|type||16||
 |`SnippetOptions`|iface||23-32|export interface SnippetOptions|
 |`SnippetResult`|iface||40-43|export interface SnippetResult|
-|`renderClientSnippet`|fn||78-120|export function renderClientSnippet(options: SnippetOptio...|
+|`renderClientSnippet`|fn||79-121|export function renderClientSnippet(options: SnippetOptio...|
 
 
 ---
@@ -1918,7 +1945,7 @@ Complexity O(n) in tool names plus O(n*a) API union work.
 
 ---
 
-# upgradeManager.ts | TypeScript | 553L | 25 symbols | 7 imports | 56 comments
+# upgradeManager.ts | TypeScript | 554L | 25 symbols | 7 imports | 58 comments
 > Path: `src/utils/upgradeManager.ts`
 
 ## Imports
@@ -2001,7 +2028,7 @@ check itself already completed).
 
 ### fn `const toIso = (epoch: number | undefined): string | null =>` (L232-239)
 
-### fn `export async function checkVersionIdle(deps: IdleCheckDeps = {}): Promise<IdleCheckResult>` (L272-328)
+### fn `export async function checkVersionIdle(deps: IdleCheckDeps = {}): Promise<IdleCheckResult>` (L272-329)
 - @brief Runs the idle-gated automatic version check.
 - @details Resolution order: disabled-flag short-circuit (REQ-083; zero
 network calls, zero cache writes) -> idle gate (skip with `status: "idle"`
@@ -2009,9 +2036,9 @@ while `idle_time_epoch` is in the future and `force` is not set, REQ-121)
 -> `probeLatestVersion` registry probe -> outcome reporting and idle-window
 selection: newer -> green stderr `Available Version: <latest> | Installed
 Version: <current>` plus an upgrade command and a 3600 s window (REQ-123,
-REQ-124); registry-reached-but-current -> red stderr no-newer notice and a
-86400 s window; any failure -> red stderr error notice and a 86400 s
-window. The cache is refreshed after every executed probe; cache write
+REQ-124); registry-reached-but-current -> no output: a current version is
+not an error (REQ-124) and still gets an 86400 s window; any failure -> red
+stderr error notice and a 86400 s window. The cache is refreshed after every executed probe; cache write
 failures never throw. Never blocks the caller's error path: never throws.
 - @param deps {IdleCheckDeps} Optional dependency overrides; production defaults when omitted.
 - @return {Promise<IdleCheckResult>} Outcome with the persisted idle deadline.
@@ -2022,25 +2049,25 @@ failures never throw. Never blocks the caller's error path: never throws.
 - @see persistIdleCache
 - @satisfies REQ-120, REQ-121, REQ-122, REQ-123, REQ-124
 
-- type `export type ManagementCommandName = "--ver" | "--version" | "--upgrade" | "--uninstall";` (L331)
-### iface `export interface PackageManagerDeps` (L339-344)
+- type `export type ManagementCommandName = "--ver" | "--version" | "--upgrade" | "--uninstall";` (L332)
+### iface `export interface PackageManagerDeps` (L340-345)
 - @brief Injectable child-process surface for package-manager commands.
 - @details `spawn` defaults to `node:child_process` `spawnSync`; `logger`
 defaults to the stderr `Logger`. Injection keeps the management commands
 deterministic and side-effect free under test (DES-022).
 
-### iface `export interface ManagementCommandOptions` (L352-357)
+### iface `export interface ManagementCommandOptions` (L353-358)
 - @brief Options consumed by the management command handlers.
 - @details `currentVersion` backs the `--ver`/`--version` output and the
 forced online check; `home` scopes the enabled-CLI settings read performed
 by the post-upgrade skill installation.
 
-### iface `export interface ManagementCommandDeps extends PackageManagerDeps` : PackageManagerDeps (L364-369)
+### iface `export interface ManagementCommandDeps extends PackageManagerDeps` : PackageManagerDeps (L365-370)
 - @brief Aggregated dependency surface of the management dispatch.
 - @details Combines the package-manager injection surface with the idle-check
 injection surface and an injectable stdout sink used by the version print.
 
-### fn `export function parseManagementCommand(` (L382-393)
+### fn `export function parseManagementCommand(` (L383-394)
 - @brief Detects an exact single-token management command in a raw argv array.
 - @details Returns the canonical name only when the post-bin argv is exactly
 one of `--ver`, `--version`, `--upgrade`, `--uninstall`; any other shape
@@ -2051,7 +2078,7 @@ dispatch stays untouched.
 - @note Complexity: O(1). Pure.
 - @satisfies PRJ-003, REQ-120, REQ-125, REQ-127
 
-### fn `export function runPackageManagerCommand(` (L408-410)
+### fn `export function runPackageManagerCommand(` (L409-411)
 - @brief Runs one package-manager command as a child process with inherited stdio.
 - @details Spawns `command[0]` with the remaining tokens, inheriting stdio so
 npm/npx output streams through unchanged; on Windows the spawn runs through
@@ -2064,9 +2091,9 @@ stderr and returns exit code 1; otherwise the child exit code propagates
 - @return {number} Child exit code, or 1 when spawning failed.
 - @satisfies REQ-125, REQ-127, REQ-128
 
-### fn `const reportSpawnFailure = (message: string): number =>` (L414-418)
+### fn `const reportSpawnFailure = (message: string): number =>` (L415-419)
 
-### fn `export function runPostUpgradeSkillInstall(` (L449-451)
+### fn `export function runPostUpgradeSkillInstall(` (L450-452)
 - @brief Refreshes installed skills through the upgraded package after `--upgrade`.
 - @details Mirrors the reference skills CLI post-upgrade hook: when at least
 one CLI is enabled in the persisted settings, spawns
@@ -2081,7 +2108,7 @@ successful no-op returning 0.
 - @see runPackageManagerCommand
 - @satisfies REQ-126
 
-### fn `export async function runVersionCommand(` (L472-474)
+### fn `export async function runVersionCommand(` (L473-475)
 - @brief Handles `--ver`/`--version`: forced online check plus version print.
 - @details Awaits exactly one idle-gate-bypassing `checkVersionIdle` run
 (force: true) so the colored availability diagnostics land on stderr before
@@ -2093,7 +2120,7 @@ stdout and returns 0 (REQ-120, REQ-122, REQ-123, REQ-124).
 - @see checkVersionIdle
 - @satisfies REQ-120
 
-### fn `export function runUpgradeCommand(` (L499-501)
+### fn `export function runUpgradeCommand(` (L500-502)
 - @brief Handles `--upgrade`: reinstall the latest package, then refresh skills.
 - @details Runs `npm install -g mcp-google-map@latest` with inherited stdio
 and propagates a non-zero exit code unchanged; on success chains
@@ -2106,7 +2133,7 @@ and propagates a non-zero exit code unchanged; on success chains
 - @see runPostUpgradeSkillInstall
 - @satisfies REQ-125, REQ-126
 
-### fn `export function runUninstallCommand(deps: ManagementCommandDeps = {}): number` (L521-523)
+### fn `export function runUninstallCommand(deps: ManagementCommandDeps = {}): number` (L522-524)
 - @brief Handles `--uninstall`: remove the globally installed package.
 - @details Runs `npm uninstall -g mcp-google-map` with inherited stdio and
 returns the child exit code (spawn failures map to 1 with the manual
@@ -2117,7 +2144,7 @@ responsibility of the existing `uninstall` subcommand.
 - @see runPackageManagerCommand
 - @satisfies REQ-127
 
-### fn `export async function runManagementCommand(` (L539-542)
+### fn `export async function runManagementCommand(` (L540-543)
 - @brief Dispatches one management command to its handler.
 - @details Single dispatch surface for the CLI entry intercept:
 `--ver`/`--version` -> `runVersionCommand` (async); `--upgrade` ->
@@ -2146,17 +2173,17 @@ responsibility of the existing `uninstall` subcommand.
 |`isFiniteNumber`|fn||193-204|const isFiniteNumber = (value: unknown): value is number =>|
 |`persistIdleCache`|fn||225-229|export function persistIdleCache(|
 |`toIso`|fn||232-239|const toIso = (epoch: number | undefined): string | null =>|
-|`checkVersionIdle`|fn||272-328|export async function checkVersionIdle(deps: IdleCheckDep...|
-|`ManagementCommandName`|type||331||
-|`PackageManagerDeps`|iface||339-344|export interface PackageManagerDeps|
-|`ManagementCommandOptions`|iface||352-357|export interface ManagementCommandOptions|
-|`ManagementCommandDeps`|iface||364-369|export interface ManagementCommandDeps extends PackageMan...|
-|`parseManagementCommand`|fn||382-393|export function parseManagementCommand(|
-|`runPackageManagerCommand`|fn||408-410|export function runPackageManagerCommand(|
-|`reportSpawnFailure`|fn||414-418|const reportSpawnFailure = (message: string): number =>|
-|`runPostUpgradeSkillInstall`|fn||449-451|export function runPostUpgradeSkillInstall(|
-|`runVersionCommand`|fn||472-474|export async function runVersionCommand(|
-|`runUpgradeCommand`|fn||499-501|export function runUpgradeCommand(|
-|`runUninstallCommand`|fn||521-523|export function runUninstallCommand(deps: ManagementComma...|
-|`runManagementCommand`|fn||539-542|export async function runManagementCommand(|
+|`checkVersionIdle`|fn||272-329|export async function checkVersionIdle(deps: IdleCheckDep...|
+|`ManagementCommandName`|type||332||
+|`PackageManagerDeps`|iface||340-345|export interface PackageManagerDeps|
+|`ManagementCommandOptions`|iface||353-358|export interface ManagementCommandOptions|
+|`ManagementCommandDeps`|iface||365-370|export interface ManagementCommandDeps extends PackageMan...|
+|`parseManagementCommand`|fn||383-394|export function parseManagementCommand(|
+|`runPackageManagerCommand`|fn||409-411|export function runPackageManagerCommand(|
+|`reportSpawnFailure`|fn||415-419|const reportSpawnFailure = (message: string): number =>|
+|`runPostUpgradeSkillInstall`|fn||450-452|export function runPostUpgradeSkillInstall(|
+|`runVersionCommand`|fn||473-475|export async function runVersionCommand(|
+|`runUpgradeCommand`|fn||500-502|export function runUpgradeCommand(|
+|`runUninstallCommand`|fn||522-524|export function runUninstallCommand(deps: ManagementComma...|
+|`runManagementCommand`|fn||540-543|export async function runManagementCommand(|
 

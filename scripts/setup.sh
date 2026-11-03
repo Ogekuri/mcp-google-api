@@ -20,4 +20,4 @@ echo
 echo "Setup complete. Next steps:"
 echo "  npm run build            # compile to dist/ (or: npm run verify for the full pipeline)"
 echo "  node dist/cli.js doctor  # local self-check (no network)"
-echo "  node dist/cli.js --stdio # run MCP server (stdio)"
+echo "  node dist/cli.js start --stdio # run MCP server (stdio)"

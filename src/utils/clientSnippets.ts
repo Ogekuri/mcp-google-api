@@ -62,9 +62,10 @@ const SNIPPET_CLIENT_TARGETS: Readonly<Record<SnippetClient, string>> = {
 
 /**
  * @brief Renders a valid MCP-client registration snippet without writing files.
- * @details stdio transport: launcher `npx` -> `npx -y mcp-google-map --stdio`;
- * `bin` -> installed `mcp-google-map --stdio`; `node` -> `node <commandPath>
- * --stdio` and throws when `commandPath` is missing. HTTP transport: emits
+ * @details stdio transport: launcher `npx` -> `npx -y mcp-google-map start
+ * --stdio`; `bin` -> installed `mcp-google-map start --stdio`; `node` ->
+ * `node <commandPath> start --stdio` and throws when `commandPath` is
+ * missing. HTTP transport: emits
  * `{ url: "http://<host>:<port>/mcp" }`. The `env` block embeds
  * `API_KEY_PLACEHOLDER` by default; a provided `envKey` switches the value to
  * the literal `${<envKey>}` and adds a note that variable expansion is
@@ -88,7 +89,7 @@ export function renderClientSnippet(options: SnippetOptions = {}): SnippetResult
     const host = options.host ?? SNIPPET_DEFAULT_HOST;
     const port = options.port ?? SNIPPET_DEFAULT_PORT;
     entry = { url: `http://${host}:${port}/mcp` };
-    notes.push(`Start the server first: mcp-google-map --host ${host} --port ${port}.`);
+    notes.push(`Start the server first: mcp-google-map start --host ${host} --port ${port}.`);
   } else {
     const launcher = options.launcher ?? "npx";
     if (launcher === "node" && !options.commandPath) {
@@ -97,10 +98,10 @@ export function renderClientSnippet(options: SnippetOptions = {}): SnippetResult
     const command = launcher === "npx" ? "npx" : launcher === "bin" ? "mcp-google-map" : "node";
     const args =
       launcher === "npx"
-        ? ["-y", "mcp-google-map", "--stdio"]
+        ? ["-y", "mcp-google-map", "start", "--stdio"]
         : launcher === "bin"
-          ? ["--stdio"]
-          : [options.commandPath as string, "--stdio"];
+          ? ["start", "--stdio"]
+          : [options.commandPath as string, "start", "--stdio"];
     if (launcher === "npx") {
       notes.push("The npx launcher runs the published package; npm must be available on PATH.");
     }

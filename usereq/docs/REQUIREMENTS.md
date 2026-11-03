@@ -68,7 +68,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 ### 2.1 Project Functions
 - **PRJ-001**: MUST expose 18 Google Maps MCP tools: maps_geocode, maps_reverse_geocode, maps_search_nearby, maps_search_places, maps_place_details, maps_directions, maps_distance_matrix, maps_elevation, maps_timezone, maps_weather, maps_explore_area, maps_plan_route, maps_compare_places, maps_air_quality, maps_static_map, maps_batch_geocode, maps_search_along_route, maps_local_rank_tracker.
 - **PRJ-002**: MUST serve tool calls over both stdio transport and Streamable HTTP transport at endpoint path `/mcp`.
-- **PRJ-003**: MUST provide a standalone CLI with commands: `doctor`, `exec <tool> [params]`, `batch-geocode`, `setup`, `snippet`, `enable <cli>`, `disable <cli>`, `install`, `uninstall`, `show`, default server-start, and management flags `--upgrade`, `--uninstall`, `--ver`, `--version`.
+- **PRJ-003**: MUST provide a standalone CLI with commands: `doctor`, `exec <tool> [params]`, `batch-geocode`, `setup`, `snippet`, `enable <cli>`, `disable <cli>`, `install`, `uninstall`, `show`, server start via `start` or `run`, and management flags `--upgrade`, `--uninstall`, `--ver`, `--version`.
 - **PRJ-004**: MUST provide composite tools (explore-area, plan-route, compare-places, search-along-route, local-rank-tracker) that chain geocoding, search, details, and routing calls internally.
 - **PRJ-005**: MUST support per-request and per-session Google Maps API keys so concurrent HTTP clients use isolated credentials.
 - **PRJ-006**: MUST allow restricting exposed tools via the `GOOGLE_MAPS_ENABLED_TOOLS` comma-separated allowlist environment variable resolved through the central typed configuration.
@@ -249,12 +249,15 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-076**: MUST read one address per line for `batch-geocode` from `--input` file or stdin when `--input -`, rejecting empty input with exit 1.
 - **REQ-077**: MUST bound `batch-geocode` concurrency between 1 and 50 (default 20), print a JSON summary with counts and per-address results, and write progress to stderr only when `--output` is set.
 - **REQ-078**: MUST write `batch-geocode` results to `--output` file when given, otherwise stdout, and exit 1 when any address failed.
-- **REQ-079**: MUST start the MCP server in stdio mode when `--stdio` is passed, otherwise in HTTP mode, applying `--apikey` and `--env-file` before startup.
-- **REQ-080**: MUST log a warning instead of failing when the default server-start command runs in HTTP mode without an API key.
+- **REQ-079**: MUST start the MCP server from the `start` and `run` commands in stdio mode when `--stdio` is passed, otherwise in HTTP mode, applying `--apikey` and `--env-file` before startup.
+- **REQ-080**: MUST log a warning instead of failing when the `start` or `run` server-start command runs in HTTP mode without an API key.
 - **REQ-087**: MUST run `setup` non-interactively: no prompts, no Google API calls, no writes unless an explicit write option is passed.
 - **REQ-088**: MUST create `.env` from `.env.example` in `setup` only with explicit write authorization and only when the target file is absent, never overwriting existing files.
 - **REQ-092**: MUST print valid JSON MCP-client registration snippets for stdio and HTTP to stdout in `snippet`, writing no file.
 - **REQ-093**: MUST embed literal placeholder values in snippets by default; `--env-key` MUST emit variable references documented as client-specific.
+- **REQ-129**: MUST print the `--help` text on stdout and exit 0 when no command argument is supplied, without starting any server.
+- **REQ-130**: MUST print the application version adjacent to the first `mcp-google-map` line in help output.
+- **REQ-131**: MUST list in the help text the management commands `--upgrade`, `--uninstall`, `--ver`, and `--version`, each with a description.
 
 #### Automatic Update Check
 - **REQ-082**: MUST run an automatic update check by default at server startup in stdio and HTTP modes, comparing the running version against the latest `mcp-google-map` version published on the npm registry, subject to the idle cache gate (REQ-121).
@@ -268,7 +271,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-121**: MUST gate the automatic update check with an idle cache file at `~/.cache/mcp-google-map/check_version_idle-time.json`, skipping the registry request while its `idle_time_epoch` is in the future.
 - **REQ-122**: MUST persist cache fields `last_success_epoch`, `last_success_human`, `idle_time_epoch`, and `idle_time_human` (ISO-8601 UTC) after each executed check, tolerating missing or malformed cache content.
 - **REQ-123**: MUST set the idle window to 3600 seconds when a newer version is found and 86400 seconds otherwise.
-- **REQ-124**: MUST report each executed check on stderr only: `Available Version: <latest> | Installed Version: <current>` plus an upgrade command when newer, a no-newer-version notice when current, and an error notice on failure.
+- **REQ-124**: MUST report each executed check on stderr only: `Available Version: <latest> | Installed Version: <current>` plus an upgrade command when newer and an error notice on failure; it MUST emit no output when no newer version exists.
 - **REQ-125**: MUST implement `--upgrade` to run `npm install -g mcp-google-map@latest` as a child process with inherited stdio, propagating its exit code.
 - **REQ-126**: MUST, after a successful `--upgrade` with at least one enabled CLI, run the upgraded package's `install` child command refreshing skills and MCP registrations.
 - **REQ-127**: MUST implement `--uninstall` to run `npm uninstall -g mcp-google-map` as a child process with inherited stdio, propagating its exit code.
@@ -294,7 +297,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-111**: `enable <cli>` MUST add and `disable <cli>` MUST remove the resolved CLI name in the persisted enabled set; both MUST be idempotent.
 - **REQ-112**: MUST resolve MCP configuration files: pi `~/.pi/agent/mcp.json`, openclaw `~/.openclaw/openclaw.json`, codex `~/.codex/config.toml` (`mcp_servers` table), antigravity `~/.gemini/settings.json`, claude `~/.claude.json` (JSON `mcpServers` map).
 - **REQ-113**: MUST resolve skills directories: pi `~/.pi/agent/skills`, openclaw `~/.openclaw/workspace/skills`, codex `~/.codex/skills`, antigravity `~/.gemini/config/skills`, claude `~/.claude/skills`.
-- **REQ-114**: `install` MUST register per enabled CLI the stdio entry `mcp-google-map` launching `npx -y mcp-google-map --stdio`, embedding the resolved `GOOGLE_MAPS_API_KEY` when set, and install every manifest skill.
+- **REQ-114**: `install` MUST register per enabled CLI the stdio entry `mcp-google-map` launching `npx -y mcp-google-map start --stdio`, embedding the resolved `GOOGLE_MAPS_API_KEY` when set, and install every manifest skill.
 - **REQ-115**: `uninstall` MUST remove per enabled CLI the `mcp-google-map` MCP entry and managed skill directories; absent entries MUST count as removed without failure.
 - **REQ-116**: `install` and `uninstall` MUST process enabled CLIs only, report per-CLI counts, continue on per-CLI failures, and exit 1 when any failure occurs.
 - **REQ-117**: `show` MUST print a CLI Configuration table with columns CLI, Enabled, MCP Config Path, Skills Config Path covering all five supported CLIs in registry order.
@@ -326,3 +329,4 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-014**: MUST verify PRJ-010/REQ-092/REQ-093 by running `npm test` (`tests/snippet.unit.test.ts`): snippets parse as JSON, default placeholders, `--env-key` references, no file writes.
 - **TST-015**: MUST verify PRJ-011/REQ-087/REQ-088 by running `npm test` (`tests/setupCommand.unit.test.ts`): no prompts, no network, authorized creation only, existing files preserved.
 - **TST-016**: MUST verify REQ-009/REQ-095/REQ-096 by running `npm test` (`tests/httpLifecycle.unit.test.ts`): invalid port marks startup failed, zero listening instances exit non-zero, signals close sessions and socket.
+- **TST-017**: MUST verify REQ-079/REQ-129/REQ-130/REQ-131 by running `npm test` (`tests/cliSpawn.unit.test.ts`): spawned CLI asserts `start` boots the HTTP server from an explicit env file, and no command prints help with the version header and management commands on stdout with exit 0.

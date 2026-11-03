@@ -13,4 +13,4 @@ fi
 HOST="${MCP_SERVER_HOST:-127.0.0.1}"
 PORT="${MCP_SERVER_PORT:-3000}"
 
-exec node dist/cli.js --host "$HOST" --port "$PORT" "$@"
+exec node dist/cli.js start --host "$HOST" --port "$PORT" "$@"

@@ -256,9 +256,9 @@ export function persistIdleCache(
  * -> `probeLatestVersion` registry probe -> outcome reporting and idle-window
  * selection: newer -> green stderr `Available Version: <latest> | Installed
  * Version: <current>` plus an upgrade command and a 3600 s window (REQ-123,
- * REQ-124); registry-reached-but-current -> red stderr no-newer notice and a
- * 86400 s window; any failure -> red stderr error notice and a 86400 s
- * window. The cache is refreshed after every executed probe; cache write
+ * REQ-124); registry-reached-but-current -> no output: a current version is
+ * not an error (REQ-124) and still gets an 86400 s window; any failure -> red
+ * stderr error notice and a 86400 s window. The cache is refreshed after every executed probe; cache write
  * failures never throw. Never blocks the caller's error path: never throws.
  * @param deps {IdleCheckDeps} Optional dependency overrides; production defaults when omitted.
  * @return {Promise<IdleCheckResult>} Outcome with the persisted idle deadline.
@@ -296,9 +296,10 @@ export async function checkVersionIdle(deps: IdleCheckDeps = {}): Promise<IdleCh
       logger.error(red(`Version check error: ${probe.message}`));
       break;
     case "current":
+      // Not an error: the running version is already the latest published
+      // one. REQ-124 forbids output here; only the idle window refreshes.
       lastSuccess = now();
       result.currentVersion = probe.currentVersion;
-      logger.error(red("Version check: no newer version available."));
       break;
     case "newer": {
       lastSuccess = now();

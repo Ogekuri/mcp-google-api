@@ -11,4 +11,4 @@ if [ ! -f dist/cli.js ]; then
 fi
 
 # stdout is reserved for JSON-RPC: all server logs already go to stderr
-exec node dist/cli.js --stdio "$@"
+exec node dist/cli.js start --stdio "$@"

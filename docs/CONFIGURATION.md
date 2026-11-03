@@ -42,7 +42,7 @@ Any command also accepts `--env-file <path>`: it loads exactly that file (exit 1
 ### stdio (predefinito per client locali)
 
 ```bash
-scripts/start-mcp.sh            # node dist/cli.js --stdio
+scripts/start-mcp.sh            # node dist/cli.js start --stdio
 ```
 
 stdout è riservato ai messaggi JSON-RPC; tutti i log del server vanno su stderr.
@@ -68,7 +68,7 @@ Voce stdio per `~/.pi/agent/mcp.json` (utente) o `.pi/mcp.json` (progetto, richi
   "mcpServers": {
     "maps": {
       "command": "node",
-      "args": ["/percorso/assoluto/a/mcp-google-map/dist/cli.js", "--stdio"],
+      "args": ["/percorso/assoluto/a/mcp-google-map/dist/cli.js", "start", "--stdio"],
       "env": { "GOOGLE_MAPS_API_KEY": "${GOOGLE_MAPS_API_KEY}" }
     }
   }
@@ -76,15 +76,15 @@ Voce stdio per `~/.pi/agent/mcp.json` (utente) o `.pi/mcp.json` (progetto, richi
 ```
 
 - `${VAR}` espande variabili d'ambiente: la chiave non resta cablata nel file di configurazione.
-- `pi mcp add maps -- node /percorso/assoluto/a/mcp-google-map/dist/cli.js --stdio` registra da terminale; `/reload` in sessione dopo modifiche esterne; `/mcp` ispeziona la connessione.
+- `pi mcp add maps -- node /percorso/assoluto/a/mcp-google-map/dist/cli.js start --stdio` registra da terminale; `/reload` in sessione dopo modifiche esterne; `/mcp` ispeziona la connessione.
 
 ### OpenClaw
 
 ```bash
-openclaw mcp set maps '{"command":"node","args":["/percorso/assoluto/a/mcp-google-map/dist/cli.js","--stdio"],"env":{"GOOGLE_MAPS_API_KEY":"AIza..."},"description":"Google Maps MCP"}'
+openclaw mcp set maps '{"command":"node","args":["/percorso/assoluto/a/mcp-google-map/dist/cli.js","start","--stdio"],"env":{"GOOGLE_MAPS_API_KEY":"AIza..."},"description":"Google Maps MCP"}'
 ```
 
-- Alternativa senza installazione: `"command":"npx","args":["-y","mcp-google-map","--stdio"]`.
+- Alternativa senza installazione: `"command":"npx","args":["-y","mcp-google-map","start","--stdio"]`.
 - Ricaricare il gateway o riavviare la sessione agente dopo la modifica; `openclaw mcp list` / `openclaw mcp show maps` per verificare.
 
 ### Prerequisiti chiave e API Google
@@ -96,8 +96,8 @@ openclaw mcp set maps '{"command":"node","args":["/percorso/assoluto/a/mcp-googl
 ## Comandi CLI
 
 ```bash
-node dist/cli.js --stdio                                          # stdio server
-node dist/cli.js --port 3000 --host 127.0.0.1                     # HTTP server (loopback default)
+node dist/cli.js start --stdio                                    # stdio server
+node dist/cli.js start --port 3000 --host 127.0.0.1                # HTTP server (loopback default)
 node dist/cli.js setup --write-env                                # onboarding: checks + .env scaffold (no network)
 node dist/cli.js exec search-places '{"query":"pizzeria Torino"}' # one tool call (params is a JSON string)
 node dist/cli.js doctor                                           # local diagnostics (no network)

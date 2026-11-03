@@ -55,7 +55,7 @@ export interface CliOperationResult {
 
 /**
  * @brief Build the stdio MCP-server registration entry.
- * @details Launcher `npx -y mcp-google-map --stdio`; `env` embeds
+ * @details Launcher `npx -y mcp-google-map start --stdio`; `env` embeds
  * `GOOGLE_MAPS_API_KEY` only when resolved at install time, matching the
  * prebuilt-package-first Quick Start.
  * @param apiKey {string | undefined} Resolved Google Maps API key.
@@ -71,7 +71,7 @@ export function buildServerRegistration(apiKey: string | undefined): {
   if (apiKey !== undefined && apiKey.length > 0) {
     env.GOOGLE_MAPS_API_KEY = apiKey;
   }
-  return { command: "npx", args: ["-y", MCP_SERVER_NAME, "--stdio"], env };
+  return { command: "npx", args: ["-y", MCP_SERVER_NAME, "start", "--stdio"], env };
 }
 
 /**

@@ -98,11 +98,11 @@ npm install -g mcp-google-map
 mcp-google-map setup --write-env   # scaffold .env in the current directory (never overwrites)
 $EDITOR .env                       # set GOOGLE_MAPS_API_KEY
 mcp-google-map doctor               # local self-check: Node, package, key, config (no network)
-mcp-google-map --stdio             # MCP server over stdio
-mcp-google-map                      # MCP server over Streamable HTTP at http://127.0.0.1:3000/mcp
+mcp-google-map start --stdio        # MCP server over stdio
+mcp-google-map start                # MCP server over Streamable HTTP at http://127.0.0.1:3000/mcp
 ```
 
-One-shot alternative without a global install: `npx -y mcp-google-map --stdio`.
+One-shot alternative without a global install: `npx -y mcp-google-map start --stdio`.
 
 ### From source (this repository) — cross-platform, no bash required
 
@@ -111,8 +111,8 @@ git clone https://github.com/Ogekuri/mcp-google-map.git
 cd mcp-google-map
 npm ci                             # install dependencies from the lockfile
 npm run build                       # tsup -> dist/ (ESM)
-node dist/cli.js --stdio            # MCP server over stdio
-node dist/cli.js --host 127.0.0.1 --port 3000   # Streamable HTTP at /mcp
+node dist/cli.js start --stdio            # MCP server over stdio
+node dist/cli.js start --host 127.0.0.1 --port 3000   # Streamable HTTP at /mcp
 ```
 
 On Linux/macOS the bash helpers in `scripts/` wrap the same commands (`scripts/setup.sh`, `scripts/build.sh`, `scripts/start-mcp.sh`, `scripts/start-http.sh`, `scripts/test.sh`); each helper fails with remediation guidance instead of chaining implicit installs or builds. On Windows use the `npm`/`node` commands above.
@@ -124,7 +124,7 @@ MCP client registration over stdio works cross-platform with plain `node`:
   "mcpServers": {
     "mcp-google-map": {
       "command": "node",
-      "args": ["/absolute/path/to/mcp-google-map/dist/cli.js", "--stdio"],
+      "args": ["/absolute/path/to/mcp-google-map/dist/cli.js", "start", "--stdio"],
       "env": { "GOOGLE_MAPS_API_KEY": "AIza..." }
     }
   }
@@ -155,8 +155,8 @@ mcp-google-map snippet --transport http --port 3100              # HTTP URL snip
 All commands work through the `mcp-google-map` binary (npm install) or `node dist/cli.js` (from source).
 
 ```bash
-mcp-google-map --stdio                                  # MCP server over stdio
-mcp-google-map --host 127.0.0.1 --port 3000             # MCP server over Streamable HTTP at /mcp (loopback default)
+mcp-google-map start --stdio                            # MCP server over stdio
+mcp-google-map start --host 127.0.0.1 --port 3000       # MCP server over Streamable HTTP at /mcp (loopback default)
 mcp-google-map setup --write-env                        # onboarding: readiness checks + .env scaffold (no network, no prompts)
 mcp-google-map doctor                                   # local self-check: Node, package, key, config, tool profiles (no network)
 mcp-google-map doctor --live --apikey "AIza..."         # also probes Geocoding, Places (New), Routes (billable calls)
@@ -178,7 +178,7 @@ mcp-google-map snippet --client cursor                  # print an MCP client re
 - `snippet` prints a valid `mcpServers` JSON registration to stdout (guidance notes on stderr) and never writes or edits configuration files; by default it embeds a literal placeholder, and `--env-key NAME` emits a `${NAME}` reference whose expansion is client-specific.
 - `--env-file <path>` loads exactly the given environment file for any command and exits 1 with a JSON error when the file is missing (no implicit `.env` fallback).
 - `enable <cli>` / `disable <cli>` manage the persisted enabled-CLI set at `~/.config/mcp-google-map/config.json`; accepted names (case-insensitive): `pi`, `openclaw`, `codex`, `antigravity`, `claude`; unsupported names exit 2 listing the supported ones.
-- `install` registers for every enabled CLI the stdio server entry `mcp-google-map` (`npx -y mcp-google-map --stdio`, embedding the resolved `GOOGLE_MAPS_API_KEY` when set) and installs every bundled skill; `uninstall` is the reciprocal removal. Per-CLI targets: pi `~/.pi/agent/mcp.json` + `~/.pi/agent/skills`, openclaw `~/.openclaw/openclaw.json` + `~/.openclaw/workspace/skills`, codex `~/.codex/config.toml` (`mcp_servers` table) + `~/.codex/skills`, antigravity `~/.gemini/settings.json` + `~/.gemini/config/skills`, claude `~/.claude.json` + `~/.claude/skills`. Existing unrelated configuration entries are always preserved.
+- `install` registers for every enabled CLI the stdio server entry `mcp-google-map` (`npx -y mcp-google-map start --stdio`, embedding the resolved `GOOGLE_MAPS_API_KEY` when set) and installs every bundled skill; `uninstall` is the reciprocal removal. Per-CLI targets: pi `~/.pi/agent/mcp.json` + `~/.pi/agent/skills`, openclaw `~/.openclaw/openclaw.json` + `~/.openclaw/workspace/skills`, codex `~/.codex/config.toml` (`mcp_servers` table) + `~/.codex/skills`, antigravity `~/.gemini/settings.json` + `~/.gemini/config/skills`, claude `~/.claude.json` + `~/.claude/skills`. Existing unrelated configuration entries are always preserved.
 - `show` prints two human-readable tables: CLI Configuration (CLI, Enabled, MCP Config Path, Skills Config Path for all five CLIs) and Installation Status (Type, Name, CLI, Enabled, Installed with OK/MISSING/STALE per enabled CLI).
 - HTTP mode starts even without an API key and logs a warning; stdio mode and the CLI commands require a key (`--apikey` or `GOOGLE_MAPS_API_KEY`). When no HTTP instance can start (invalid or taken port), the process exits non-zero.
 
@@ -220,14 +220,14 @@ pi reads MCP servers from `~/.pi/agent/mcp.json` (user) or `.pi/mcp.json` (proje
   "mcpServers": {
     "maps": {
       "command": "node",
-      "args": ["/absolute/path/to/mcp-google-map/dist/cli.js", "--stdio"],
+      "args": ["/absolute/path/to/mcp-google-map/dist/cli.js", "start", "--stdio"],
       "env": { "GOOGLE_MAPS_API_KEY": "${GOOGLE_MAPS_API_KEY}" }
     }
   }
 }
 ```
 
-- From a terminal: `pi mcp add maps -- node /absolute/path/to/mcp-google-map/dist/cli.js --stdio` (add `--env GOOGLE_MAPS_API_KEY=...` to pass the key).
+- From a terminal: `pi mcp add maps -- node /absolute/path/to/mcp-google-map/dist/cli.js start --stdio` (add `--env GOOGLE_MAPS_API_KEY=...` to pass the key).
 - `${GOOGLE_MAPS_API_KEY}` expands the environment variable on the fly: the key never stays hard-coded in the configuration file.
 - After editing `mcp.json` outside the session, run `/reload` in pi; `/mcp` inspects status, tools, and connection errors.
 - Tools appear with the `mcp__<server>__` prefix: `mcp__maps__maps_geocode`, `mcp__maps__maps_search_places`, ...
@@ -237,10 +237,10 @@ pi reads MCP servers from `~/.pi/agent/mcp.json` (user) or `.pi/mcp.json` (proje
 OpenClaw manages MCP servers in `~/.openclaw/openclaw.json` through its CLI (verified on OpenClaw 2026.4.21):
 
 ```bash
-openclaw mcp set maps '{"command":"node","args":["/absolute/path/to/mcp-google-map/dist/cli.js","--stdio"],"env":{"GOOGLE_MAPS_API_KEY":"AIza..."},"description":"Google Maps: Places API (New), geocoding, routes, weather"}'
+openclaw mcp set maps '{"command":"node","args":["/absolute/path/to/mcp-google-map/dist/cli.js","start","--stdio"],"env":{"GOOGLE_MAPS_API_KEY":"AIza..."},"description":"Google Maps: Places API (New), geocoding, routes, weather"}'
 ```
 
-- Without a local install: use `"command":"npx","args":["-y","mcp-google-map","--stdio"]` (runs the published npm package).
+- Without a local install: use `"command":"npx","args":["-y","mcp-google-map","start","--stdio"]` (runs the published npm package).
 - After the change, reload the gateway or restart the agent session so the new server gets connected.
 - Inspect and remove: `openclaw mcp list`, `openclaw mcp show maps`, `openclaw mcp unset maps`.
 - The OpenClaw agent can install and configure the server on its own (shell + `openclaw mcp set`); creating the API key in Google Cloud Console remains a human task.

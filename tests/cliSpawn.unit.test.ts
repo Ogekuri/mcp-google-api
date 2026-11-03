@@ -184,6 +184,26 @@ test("existing --env-file <path> (space form) reaches the command identically", 
   }
 });
 
+test("no command prints the help text and exits 0 without starting a server", async () => {
+  // Arrange: bare invocation (no subcommand) with the update check disabled.
+  // Act:
+  const result = await spawnCli([]);
+  // Assert: REQ-129 (help instead of a server start, exit 0), REQ-130 (version
+  // adjacent to the first mcp-google-map line), REQ-131 (management commands
+  // documented in the help text).
+  assert.equal(result.code, 0, `bare invocation must exit 0; stderr:\n${result.stderr}`);
+  assert.equal(result.stderr, "");
+  assert.match(result.stdout, /mcp-google-map v\d+\.\d+\.\d+/);
+  assert.equal(result.stdout.includes("Usage: mcp-google-map <command>"), true);
+  assert.equal(result.stdout.includes("--upgrade"), true);
+  assert.equal(result.stdout.includes("--uninstall"), true);
+  assert.equal(result.stdout.includes("--ver"), true);
+  assert.equal(result.stdout.includes("--version"), true);
+  // REQ-129: nothing was started (no server banner on any stream).
+  assert.equal(result.stdout.includes("Google Maps MCP Server"), false);
+  assert.equal(result.stderr.includes("Google Maps MCP Server"), false);
+});
+
 test("HTTP server applies --env-file before startup and stops orderly on SIGTERM", async (t) => {
   const port = await findFreePort();
   assert.ok(port > 0);
@@ -195,7 +215,7 @@ test("HTTP server applies --env-file before startup and stops orderly on SIGTERM
     "utf-8"
   );
 
-  const child = spawn(process.execPath, [TSX_CLI, CLI_ENTRY, "--env-file=" + envPath], {
+  const child = spawn(process.execPath, [TSX_CLI, CLI_ENTRY, "start", "--env-file=" + envPath], {
     cwd: PROJECT_ROOT,
     env: { ...process.env, MCP_AUTO_UPDATE_DISABLED: "1" },
     stdio: ["ignore", "pipe", "pipe"],

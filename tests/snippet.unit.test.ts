@@ -13,7 +13,7 @@ test("default snippet renders a valid JSON npx stdio registration with a literal
   };
   const entry = parsed.mcpServers["mcp-google-map"];
   assert.equal(entry.command, "npx");
-  assert.deepEqual(entry.args, ["-y", "mcp-google-map", "--stdio"]);
+  assert.deepEqual(entry.args, ["-y", "mcp-google-map", "start", "--stdio"]);
   assert.equal(entry.env.GOOGLE_MAPS_API_KEY, API_KEY_PLACEHOLDER);
   assert.equal(entry.env.GOOGLE_MAPS_API_KEY.includes("${"), false);
   assert.ok(snippet.notes.some((note) => note.includes("never writes or edits configuration files")));
@@ -27,7 +27,7 @@ test("node launcher requires a command path and embeds it when provided", () => 
     mcpServers: Record<string, { command: string; args: string[] }>;
   };
   assert.equal(parsed.mcpServers["mcp-google-map"].command, "node");
-  assert.deepEqual(parsed.mcpServers["mcp-google-map"].args, ["/abs/path/dist/cli.js", "--stdio"]);
+  assert.deepEqual(parsed.mcpServers["mcp-google-map"].args, ["/abs/path/dist/cli.js", "start", "--stdio"]);
 });
 
 test("bin launcher renders the installed binary command", () => {
@@ -36,7 +36,7 @@ test("bin launcher renders the installed binary command", () => {
     mcpServers: Record<string, { command: string; args: string[] }>;
   };
   assert.equal(parsed.mcpServers["mcp-google-map"].command, "mcp-google-map");
-  assert.deepEqual(parsed.mcpServers["mcp-google-map"].args, ["--stdio"]);
+  assert.deepEqual(parsed.mcpServers["mcp-google-map"].args, ["start", "--stdio"]);
 });
 
 test("http transport renders the /mcp URL with host and port overrides", () => {
