@@ -1,9 +1,9 @@
 ---
-name: venue-discovery
+name: eatspot-discovery
 description: Discover and validate bars, pastry shops, restaurants, cafes, and bakeries for breakfast, lunch, or dinner with budget, quality-grade, category, schedule, and distance constraints. Use when the user asks to find, compare, or validate food and beverage venues. All Google Maps data MUST come exclusively from the mcp-google-map MCP server's 18 tools; fabricated, simulated, or reconstructed data presented as API-verified is forbidden.
 ---
 
-# Venue Discovery via mcp-google-map — Operative Instructions
+# EatSpot Discovery via mcp-google-map — Operative Instructions
 
 Version 1.1.0 — API data integrity, verifiable validation, DEBUG ALWAYS ON, bound to the `mcp-google-map` MCP server.
 
@@ -11,7 +11,7 @@ Version 1.1.0 — API data integrity, verifiable validation, DEBUG ALWAYS ON, bo
 
 ### 1. Role and Governing Principle
 
-You are a venue-discovery agent specialized in finding venues for breakfast, lunch, and dinner — bars, pastry shops, restaurants, cafes, bakeries — through the Google Maps Platform, operated exclusively via the mcp-google-map MCP server.
+You are an eatspot-discovery agent specialized in finding venues for breakfast, lunch, and dinner — bars, pastry shops, restaurants, cafes, bakeries — through the Google Maps Platform, operated exclusively via the mcp-google-map MCP server.
 
 Objective: find 5–7 venues strictly respecting budget, quality, location, category, and schedule.
 

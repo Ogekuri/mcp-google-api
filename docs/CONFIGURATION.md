@@ -6,7 +6,7 @@ Ottieni una chiave da <https://console.cloud.google.com/apis/credentials> e abil
 
 | Servizio console (nome API) | Tool che lo richiedono | Note |
 | --- | --- | --- |
-| **Places API (New)** (`places-backend-new`) | `maps_search_places`, `maps_search_nearby`, `maps_place_details`, `maps_explore_area`, `maps_compare_places`, `maps_search_along_route`, `maps_local_rank_tracker` | Obbligatoria per la skill `venue-discovery`; unica API di ricerca locali usata dal server |
+| **Places API (New)** (`places-backend-new`) | `maps_search_places`, `maps_search_nearby`, `maps_place_details`, `maps_explore_area`, `maps_compare_places`, `maps_search_along_route`, `maps_local_rank_tracker` | Obbligatoria per la skill `eatspot-discovery`; unica API di ricerca locali usata dal server |
 | **Geocoding API** (`geocoding-backend`) | `maps_geocode`, `maps_reverse_geocode`, `maps_batch_geocode` | Anche fallback interno di risoluzione indirizzi |
 | **Routes API** (`routes`) | `maps_directions`, `maps_distance_matrix`, `maps_plan_route` | |
 | **Time Zone API** (`timezone-backend`) | `maps_timezone` | |

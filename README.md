@@ -13,7 +13,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for **Google 
 
 Supported transports: **stdio** (local MCP clients) and **Streamable HTTP**.
 
-> Ships the **venue-discovery** agent skill (`src/resources/skills/`) for budget-, quality-, category-, and schedule-validated venue search.
+> Ships the **eatspot-discovery** agent skill (`src/resources/skills/`) for budget-, quality-, category-, and schedule-validated venue search.
 
 </p>
 
@@ -43,7 +43,7 @@ Supported transports: **stdio** (local MCP clients) and **Streamable HTTP**.
 - **Per-request credentials** — key resolution from `X-Google-Maps-API-Key` or `Authorization: Bearer` headers, session key, or `GOOGLE_MAPS_API_KEY` environment.
 - **Standalone CLI** — `doctor` self-checks, `exec <tool>` one-shot calls, `batch-geocode` with bounded concurrency.
 - **Automatic update check** — at server startup the server compares its version against the latest npm release and prints an upgrade notice on stderr; it never blocks startup and can be disabled with `MCP_AUTO_UPDATE_DISABLED=1` (see [Configuration prerequisites](#configuration-prerequisites)).
-- **Venue-discovery skill** — server-side `priceLevels`/`minRating`/`strictTypeFiltering` filters and raw payloads back the bundled `venue-discovery` skill (`src/resources/skills/`).
+- **EatSpot Discovery skill** — server-side `priceLevels`/`minRating`/`strictTypeFiltering` filters and raw payloads back the bundled `eatspot-discovery` skill (`src/resources/skills/`).
 
 ## Requirements
 
@@ -81,7 +81,7 @@ gcloud services enable places-backend-new.googleapis.com \
 
 ### Notes
 
-- For minimal venue-discovery use, **Places API (New)** + **Geocoding API** suffice; enable the others only for the corresponding tools (or limit exposure with `GOOGLE_MAPS_ENABLED_TOOLS`).
+- For minimal eatspot-discovery use, **Places API (New)** + **Geocoding API** suffice; enable the others only for the corresponding tools (or limit exposure with `GOOGLE_MAPS_ENABLED_TOOLS`).
 - **Maps Grounding Lite** and **Geolocation API** are **not required** by this server: the former belongs to Google's hosted MCP (`mapstools.googleapis.com`), the latter is used by no tool (there is no `ip_geolocate` in this fork).
 - The legacy **Places API** is not needed: the server uses Places API (New) exclusively.
 - Weather API and Air Quality API have limited regional coverage: outside coverage, the tool returns an unsupported-location error message.
@@ -273,7 +273,7 @@ mcp-google-map/
 
 - [docs/TOOLS.md](docs/TOOLS.md) — tool catalog and parameters
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — environment variables, transports, API key
-- [src/resources/skills/](src/resources/skills/) — bundled `venue-discovery` agent skill (budget filters, FieldMask, raw payload)
+- [src/resources/skills/](src/resources/skills/) — bundled `eatspot-discovery` agent skill (budget filters, FieldMask, raw payload)
 
 ## Development
 
