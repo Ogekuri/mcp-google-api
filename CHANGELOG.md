@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.7.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.6.0..v0.7.0) - 2026-11-03
+### 🚜  Changes
+- gate server start on start/run, no-command help, silent version check [useReq] *(cli)*
+  - REQUIREMENTS: PRJ-003/REQ-079/REQ-080/REQ-114/REQ-124 updated; REQ-129/130/131 and TST-017 added.
+  - cli.ts: server runs only via start/run; bare invocation prints help with mcp-google-map v<version> header and --upgrade/--uninstall/--ver/--version epilog.
+  - upgradeManager: no stderr output when no newer version exists (not an error).
+  - clientSnippets/cliInstaller: stdio registrations launch 'mcp-google-map start --stdio'.
+  - Scripts, README, CONFIGURATION docs, and spawn/snippet tests aligned; npm test 103 pass, tsc/eslint clean.
+
 ## [0.6.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.5.0..v0.6.0) - 2026-11-02
 ### ⛰️  Features
 - add --upgrade/--uninstall/--ver/--version with idle-gated version check [useReq] *(upgradeManager)*
@@ -137,9 +146,11 @@
 - \[0.4.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.4.0
 - \[0.5.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.5.0
 - \[0.6.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.6.0
+- \[0.7.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.7.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.2.0..v0.3.0
 [0.4.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.3.0..v0.4.0
 [0.5.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.4.0..v0.5.0
 [0.6.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.5.0..v0.6.0
+[0.7.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.6.0..v0.7.0
