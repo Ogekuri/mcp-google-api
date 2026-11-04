@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.13.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.11.0..v0.13.0) - 2026-11-04
+### 🚜  Changes
+- restrict package build to master version-tag release workflow [useReq] *(ci)*
+  - Activate the package build only on a canonical version tag whose commit
+  - is reachable from master (PKG-008, PKG-009, PKG-026):
+  - ci.yml: drop build/pack/tarball-install/doctor smoke steps from push/PR
+  - CI, which now runs lockfile install, typecheck, and unit tests only.
+  - release.yml: build, pack, install the tarball into a temporary
+  - environment, and run the no-Google doctor smoke check inside the
+  - master-gated build-release job before npm publish (PKG-021).
+  - tests/ciContract.unit.test.ts: re-target the workflow contract suite to
+  - the new trigger/build placement and add release ordering assertions.
+  - REQUIREMENTS.md: sharpen PKG-008, retarget PKG-021, add PKG-026/TST-020.
+
 ## [0.11.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.10.0..v0.11.0) - 2026-11-04
 ### 🐛  Bug Fixes
 - document geocode payload contract and bounded debug capture [useReq] *(skills)*
@@ -241,7 +255,7 @@
 - \[0.9.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.9.0
 - \[0.10.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.10.0
 - \[0.11.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.11.0
-- \[0.12.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.12.0
+- \[0.13.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.13.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.2.0..v0.3.0
@@ -253,4 +267,4 @@
 [0.9.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.8.0..v0.9.0
 [0.10.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.9.0..v0.10.0
 [0.11.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.10.0..v0.11.0
-[0.12.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.11.0..v0.12.0
+[0.13.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.11.0..v0.13.0
