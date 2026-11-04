@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.11.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.10.0..v0.11.0) - 2026-11-04
+### 🐛  Bug Fixes
+- document geocode payload contract and bounded debug capture [useReq] *(skills)*
+  - eatspot-discovery skill v1.2.0 fixes two concrete agent-run failures:
+  - Section 13.1 now documents the real flat maps_geocode payload and
+  - forbids dereferencing the internal {success,data} envelope (root
+  - cause of TypeError on response.data.location during debug-register
+  - aggregation).
+  - Section D9 adds a mandatory bounded-capture procedure with declared
+  - TRUNCATED payloads and register-entry integrity rules (re-execute
+  - missing entries; mark NOT_ACCESSIBLE), preventing loss of executed
+  - call records on size-limit aborts.
+  - manifest.json version synced to 1.2.0; new contract unit test
+  - tests/eatspotSkillContract.unit.test.ts guards both rules.
+
+### 🚜  Changes
+- append skill debug overlays only on install --debug-skills [useReq] *(skills)*
+  - Move eatspot-discovery debug instructions into DEBUG.md
+  - Add optional manifest debug overlay and layout-aware skill sync
+  - Append overlay only with install --debug-skills; show accepts both modes
+  - Post-upgrade and api-key reinstalls never append the overlay
+  - Requirements: REQ-152..REQ-160, REQ-126, DES-020, PRJ-012/013, TST-018/019
+- BREAKING CHANGE: config-file-only settings, human-readable api-key, auto-update [useReq] *(cli)*
+  - REQ-083/DES-018/DES-023/DES-024: configuration comes only from
+  - ~/.config/mcp-google-map/config.json ({enabled, apiKey, autoUpdate});
+  - startup resolves the API key from settings (default empty key) and the
+  - auto-update check only runs when the autoUpdate flag is true (default on).
+  - New auto-update enable|disable|1|0 command persists the flag. Env-var
+  - configuration and connector env/key embedding removed (REQ-114, REQ-142).
+  - api-key prints a human-readable operation report (REQ-137..139).
+  - install/exec/batch-geocode drop --apikey and read the settings key.
+  - Verified: tsc --noEmit clean; eslint clean; npm test 110/110 passing.
+- gate --upgrade on a latest-version necessity check [useReq] *(upgrade)*
+  - REQ-144..147: --upgrade first runs a forced registry probe bypassing the idle gate.
+  - Already-latest installs print the version on stdout and exit 0 with no child spawn.
+  - Newer or undeterminable outcomes proceed with the npm update, post-upgrade install,
+  - and stdout summary. Updates REQUIREMENTS.md, WORKFLOW.md (TRACE-L, EDGE-07, external
+  - boundaries), and regenerated REFERENCES.md. Verified: tsc --noEmit clean; npm test
+  - 110/110 passing (upgradeManager suite exercises the proceed path).
+
 ## [0.10.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.9.0..v0.10.0) - 2026-11-03
 ### ⛰️  Features
 - add api-key command, install placeholder, and stdio key guard [useReq] *(api-key)*
@@ -200,6 +240,7 @@
 - \[0.8.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.8.0
 - \[0.9.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.9.0
 - \[0.10.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.10.0
+- \[0.11.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.11.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.2.0..v0.3.0
@@ -210,3 +251,4 @@
 [0.8.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.7.0..v0.8.0
 [0.9.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.8.0..v0.9.0
 [0.10.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.9.0..v0.10.0
+[0.11.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.10.0..v0.11.0
