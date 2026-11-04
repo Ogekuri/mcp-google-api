@@ -1,10 +1,9 @@
-# Continuous Integration: install + typecheck + unit tests + built-tarball smoke
-# on every push and pull_request, across Linux, macOS, and Windows.
+# Continuous Integration: install + typecheck + unit tests on every push and
+# pull_request, across Linux, macOS, and Windows. The package build, tarball
+# packing, installed-package smoke check, and publish run exclusively in the
+# tag-triggered release workflow (release.yml), gated on master (PKG-026).
 # Live e2e tests (tests/smoke.test.ts) are intentionally excluded: they require
 # a paid GOOGLE_MAPS_API_KEY and are run manually via `npm run test:e2e`.
-# The packed tarball is installed into the runner environment (temporary
-# global install) and smoke-checked with `doctor` local mode: zero Google API
-# calls, so the installed package is verified without credentials.
 name: CI
 
 on:
@@ -40,17 +39,3 @@ jobs:
 
       - name: Unit tests (mocked, no API key required)
         run: npm test
-
-      - name: Build package
-        run: npm run build
-
-      - name: Pack tarball
-        run: npm pack
-
-      - name: Install packed tarball into temporary environment
-        run: npm install -g ./mcp-google-map-*.tgz
-
-      - name: Installed-package smoke test (no Google API calls)
-        run: mcp-google-map doctor
-        env:
-          GOOGLE_MAPS_API_KEY: ci-smoke-placeholder-key

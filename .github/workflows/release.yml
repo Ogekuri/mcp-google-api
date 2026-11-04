@@ -1,7 +1,13 @@
-# Release (npm): publish to npm and create the GitHub Release, triggered only by
-# canonical version tags whose commit is reachable from master.
-# Verification guarantee: `npm publish` runs the `prepublishOnly` lifecycle hook
-# (typecheck + unit tests + build) defined in package.json (PKG-005).
+# Release (npm): build, verify, publish to npm and create the GitHub Release,
+# triggered only by canonical version tags whose commit is reachable from
+# master (PKG-008, PKG-009). The package build and tarball packing run
+# exclusively here, never in the CI workflow (PKG-026). Before publishing, the
+# packed tarball is installed into the runner environment (temporary global
+# install) and smoke-checked with `doctor` local mode: zero Google API calls,
+# so the installed package is verified without credentials (PKG-021).
+# Additional verification guarantee: `npm publish` runs the `prepublishOnly`
+# lifecycle hook (typecheck + unit tests + build) defined in package.json
+# (PKG-005).
 name: Release (npm)
 
 on:
@@ -66,6 +72,20 @@ jobs:
 
       - name: Build if present
         run: npm run build --if-present
+
+      # Release-only package artifact verification (PKG-026, PKG-021): the
+      # packed tarball is installed into the runner environment and smoke-checked
+      # with `doctor` local mode before anything is published.
+      - name: Pack npm tarball for verification
+        run: npm pack
+
+      - name: Install packed tarball into temporary environment
+        run: npm install -g ./mcp-google-map-*.tgz
+
+      - name: Installed-package smoke test (no Google API calls)
+        run: mcp-google-map doctor
+        env:
+          GOOGLE_MAPS_API_KEY: release-smoke-placeholder-key
 
       - name: Remove private package flag
         run: npm pkg delete private

@@ -101,7 +101,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-005**: MUST define a `prepublishOnly` script in `package.json` that runs the version guard, typecheck, unit tests, and build before any `npm publish`.
 - **PKG-006**: MUST set one identical non-`0.0.0` semantic version across `package.json`, `package-lock.json`, and the `README.md` title for every published release.
 - **PKG-007**: MUST print only the distribution package name `mcp-google-map` in user-facing doctor messages.
-- **PKG-008**: MUST trigger the release workflow only on pushed tags matching `v[0-9]+.[0-9]+.[0-9]+` whose commit is reachable from `master`, publishing the verified build.
+- **PKG-008**: MUST trigger the release workflow only on pushed tags matching `v[0-9]+.[0-9]+.[0-9]+` whose commit is reachable from `master`, building, verifying, and publishing the package.
 - **PKG-009**: MUST gate release jobs on a branch check that requires the tagged commit on `origin/master` before any build or publish step.
 - **PKG-010**: MUST publish the package to npm from the release workflow with provenance attestation and `--access public` using `NPM_TOKEN`.
 - **PKG-011**: MUST generate the GitHub Release body from a commit-based changelog (`mode: COMMIT`) categorizing commits by conventional-commit title prefix, with the category set, ignore labels, transformer, ASC `mergedAt` sort, and compare-link template.
@@ -114,11 +114,12 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-018**: MUST document in `README.md` the migration of the HTTP default bind from `0.0.0.0` to loopback `127.0.0.1`, including the `--host 0.0.0.0` opt-in.
 - **PKG-019**: MUST provide a single `npm run verify` pipeline (typecheck, unit tests, build) and keep helper scripts free of implicit chained install/build steps.
 - **PKG-020**: MUST document developer setup using lockfile-based `npm ci` and cross-platform npm commands in `README.md`.
-- **PKG-021**: MUST install the packed tarball into a temporary CI environment and run the installed `doctor` local smoke check without Google API calls.
+- **PKG-021**: MUST install the packed tarball into a temporary environment and run the installed `doctor` local smoke check without Google API calls in the release workflow before publishing.
 - **PKG-022**: MUST keep every documented example consistent with supported CLI flags, headers, and transports.
 - **PKG-023**: MUST document `enable`, `disable`, `install`, `uninstall`, and `show` commands with supported CLI targets in README.md.
 - **PKG-024**: MUST ship `src/resources/skills` inside the published npm package so `install` and `show` resolve manifest skills from installed packages.
 - **PKG-025**: MUST document the `api-key` command as the only API-key configuration path and the stdio startup key guard in README.md.
+- **PKG-026**: MUST restrict GitHub Actions package build and tarball packing to the release workflow triggered by a version tag gated on master (PKG-008, PKG-009).
 
 ## 3. Requirements
 
@@ -362,3 +363,4 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-017**: MUST verify REQ-079/REQ-129/REQ-130/REQ-131 by running `npm test` (`tests/cliSpawn.unit.test.ts`): spawned CLI asserts `start` boots the HTTP server from an explicit env file, and no command prints help with the version header and management commands on stdout with exit 0.
 - **TST-018**: MUST verify REQ-152/REQ-154/REQ-155/REQ-156/REQ-157/REQ-158 by running `npm test` (`tests/skillDebugInstall.unit.test.ts`): temp-directory installs assert plain mode excludes the debug file, debug mode appends it once across reruns, and `show` reports OK for both modes.
 - **TST-019**: MUST verify REQ-153/REQ-160 by running `npm test` (`tests/eatspotSkillContract.unit.test.ts`): the packaged `SKILL.md` carries no debug section while the packaged debug file carries the register, capture, and provenance rules.
+- **TST-020**: MUST verify PKG-008/PKG-009/PKG-021/PKG-026 by running `npm test` (`tests/ciContract.unit.test.ts`): CI excludes package build/pack/smoke steps; the release workflow builds, verifies, and publishes only behind the master tag gate.
