@@ -12,9 +12,10 @@
  *   tests only; it MUST NOT build, pack, install, or smoke-check the package (PKG-004,
  *   PKG-026).
  * - The release workflow is the only place where the package is built, verified, and
- *   published, gated on a canonical version tag whose commit is reachable from master
- *   (PKG-008, PKG-009), with the tarball install and `doctor` smoke check executed
- *   before publishing (PKG-021).
+ *   published, in exactly one integrated job (PKG-027) gated on a canonical version
+ *   tag whose commit is reachable from master (PKG-008, PKG-009); a non-master tag
+ *   fails the gate before any install/build/pack/publish step (PKG-028), and the
+ *   tarball install and `doctor` smoke check run before publishing (PKG-021).
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -75,14 +76,26 @@ test("Release workflow is triggered only by a canonical version tag push", () =>
   assert.equal(workflow.includes("'v[0-9]+.[0-9]+.[0-9]+'"), true);
 });
 
-test("Release workflow gates the build job on the tagged master commit", () => {
-  // PKG-009: a check-branch job resolves the tagged commit's reachability on
-  // origin/master and the build-release job runs only on a positive outcome.
+test("Release workflow gates the single integrated job on the tagged master commit", () => {
+  // PKG-009/PKG-027/PKG-028: exactly one release job hosts the branch gate,
+  // build, verification, and publish. No separate or parallel release jobs
+  // exist, and the gate command precedes every dependency install, build,
+  // pack, and publish step, so a tag not reachable from origin/master (e.g.
+  // a tag on develop) fails before anything builds.
   const workflow = readWorkflow(RELEASE_WORKFLOW_PATH);
-  assert.equal(workflow.includes("check-branch:"), true);
+  assert.equal(workflow.includes("check-branch:"), false);
+  assert.equal(workflow.includes("needs: check-branch"), false);
   assert.equal(workflow.includes("git branch -r --contains ${GITHUB_SHA} | grep -q \"origin/master\""), true);
-  assert.equal(workflow.includes("needs: check-branch"), true);
-  assert.equal(workflow.includes("if: needs.check-branch.outputs.is_master == 'true'"), true);
+  const gateIdx = workflow.indexOf("git branch -r --contains");
+  const installIdx = workflow.indexOf("run: npm ci");
+  const buildIdx = workflow.indexOf("run: npm run build");
+  const packIdx = workflow.indexOf("run: npm pack");
+  const publishIdx = workflow.indexOf("run: npm publish --provenance --access public");
+  assert.notEqual(installIdx, -1);
+  assert.equal(gateIdx < installIdx, true);
+  assert.equal(gateIdx < buildIdx, true);
+  assert.equal(gateIdx < packIdx, true);
+  assert.equal(gateIdx < publishIdx, true);
 });
 
 test("Release workflow builds, verifies, and publishes the package before release assets", () => {

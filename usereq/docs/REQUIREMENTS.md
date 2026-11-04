@@ -102,7 +102,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-006**: MUST set one identical non-`0.0.0` semantic version across `package.json`, `package-lock.json`, and the `README.md` title for every published release.
 - **PKG-007**: MUST print only the distribution package name `mcp-google-map` in user-facing doctor messages.
 - **PKG-008**: MUST trigger the release workflow only on pushed tags matching `v[0-9]+.[0-9]+.[0-9]+` whose commit is reachable from `master`, building, verifying, and publishing the package.
-- **PKG-009**: MUST gate release jobs on a branch check that requires the tagged commit on `origin/master` before any build or publish step.
+- **PKG-009**: MUST gate the single release job (PKG-027) on a branch check that requires the tagged commit on `origin/master` before any build or publish step.
 - **PKG-010**: MUST publish the package to npm from the release workflow with provenance attestation and `--access public` using `NPM_TOKEN`.
 - **PKG-011**: MUST generate the GitHub Release body from a commit-based changelog (`mode: COMMIT`) categorizing commits by conventional-commit title prefix, with the category set, ignore labels, transformer, ASC `mergedAt` sort, and compare-link template.
 - **PKG-012**: MUST attach the npm package tarball (not raw sources) as the GitHub Release asset, failing the release on unmatched files.
@@ -120,6 +120,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-024**: MUST ship `src/resources/skills` inside the published npm package so `install` and `show` resolve manifest skills from installed packages.
 - **PKG-025**: MUST document the `api-key` command as the only API-key configuration path and the stdio startup key guard in README.md.
 - **PKG-026**: MUST restrict GitHub Actions package build and tarball packing to the release workflow triggered by a version tag gated on master (PKG-008, PKG-009).
+- **PKG-027**: MUST run the release pipeline (branch gate, build, verification, publish, changelog, GitHub Release) in exactly one workflow job with no parallel or separate release jobs.
+- **PKG-028**: MUST fail the release job before any dependency install, build, pack, or publish step when the tagged commit is not reachable from `origin/master`, so `develop` tags never build.
 
 ## 3. Requirements
 
@@ -363,4 +365,4 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-017**: MUST verify REQ-079/REQ-129/REQ-130/REQ-131 by running `npm test` (`tests/cliSpawn.unit.test.ts`): spawned CLI asserts `start` boots the HTTP server from an explicit env file, and no command prints help with the version header and management commands on stdout with exit 0.
 - **TST-018**: MUST verify REQ-152/REQ-154/REQ-155/REQ-156/REQ-157/REQ-158 by running `npm test` (`tests/skillDebugInstall.unit.test.ts`): temp-directory installs assert plain mode excludes the debug file, debug mode appends it once across reruns, and `show` reports OK for both modes.
 - **TST-019**: MUST verify REQ-153/REQ-160 by running `npm test` (`tests/eatspotSkillContract.unit.test.ts`): the packaged `SKILL.md` carries no debug section while the packaged debug file carries the register, capture, and provenance rules.
-- **TST-020**: MUST verify PKG-008/PKG-009/PKG-021/PKG-026 by running `npm test` (`tests/ciContract.unit.test.ts`): CI excludes package build/pack/smoke steps; the release workflow builds, verifies, and publishes only behind the master tag gate.
+- **TST-020**: MUST verify PKG-008/PKG-009/PKG-021/PKG-026/PKG-027/PKG-028 by running `npm test` (`tests/ciContract.unit.test.ts`): CI excludes build/pack/smoke steps; the single release job gates, builds, verifies, and publishes behind the integrated master check.
