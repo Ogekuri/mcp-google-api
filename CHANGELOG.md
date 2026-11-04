@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.14.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.13.0..v0.14.0) - 2026-11-04
+### 🚜  Changes
+- BREAKING CHANGE: rename npm release workflow file to release-npm.yml [useReq] *(ci)*
+  - Rename .github/workflows/release.yml to .github/workflows/release-npm.yml
+  - as mandated by new PKG-029; the single master-tag-gated release job
+  - (PKG-008/PKG-009/PKG-027/PKG-028) is unchanged in content.
+  - Update the ci.yml header comment to reference the new workflow file name.
+  - Point tests/ciContract.unit.test.ts at release-npm.yml and extend TST-020
+  - to cover PKG-029.
+  - REQUIREMENTS.md: add PKG-029, refresh structure tree and TST-020 mapping.
+- collapse release into single master-tag-gated job [useReq] *(ci)*
+  - requirements: PKG-009 gates the single release job; add PKG-027 (exactly one integrated release job) and PKG-028 (fail before any install/build/pack/publish when tag not on origin/master, so develop tags never build); update TST-020
+  - release.yml: merge check-branch into one release job; master-reachability gate is the first step and exits 1 before npm ci/build/pack/publish; no parallel or separate release jobs remain
+  - tests: ciContract gate test verifies the single-job contract and gate-before-build ordering
+
 ## [0.13.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.11.0..v0.13.0) - 2026-11-04
 ### 🚜  Changes
 - restrict package build to master version-tag release workflow [useReq] *(ci)*
@@ -256,6 +271,7 @@
 - \[0.10.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.10.0
 - \[0.11.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.11.0
 - \[0.13.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.13.0
+- \[0.14.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.14.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.2.0..v0.3.0
@@ -268,3 +284,4 @@
 [0.10.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.9.0..v0.10.0
 [0.11.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.10.0..v0.11.0
 [0.13.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.11.0..v0.13.0
+[0.14.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.13.0..v0.14.0
