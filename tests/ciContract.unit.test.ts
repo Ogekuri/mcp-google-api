@@ -1,7 +1,7 @@
 /**
  * @file Static contract suite for the GitHub Actions workflow definitions.
  * @details UUT: the tracked workflow YAML contracts themselves (`.github/workflows/ci.yml`,
- * `.github/workflows/release.yml`) — the behavior contract IS the file content, so the
+ * `.github/workflows/release-npm.yml`) — the behavior contract IS the file content, so the
  * suite reads the tracked, immutable inputs directly. Level 0 (atomic static assertions;
  * no internal call-graph dependencies). External dependencies to isolate: none beyond
  * `node:fs` reads of repository-tracked files (deterministic by design; no network,
@@ -15,7 +15,8 @@
  *   published, in exactly one integrated job (PKG-027) gated on a canonical version
  *   tag whose commit is reachable from master (PKG-008, PKG-009); a non-master tag
  *   fails the gate before any install/build/pack/publish step (PKG-028), and the
- *   tarball install and `doctor` smoke check run before publishing (PKG-021).
+ *   tarball install and `doctor` smoke check run before publishing (PKG-021). The npm release
+ *   pipeline is defined in the `.github/workflows/release-npm.yml` file (PKG-029).
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -25,7 +26,7 @@ import { fileURLToPath } from "node:url";
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CI_WORKFLOW_PATH = join(PROJECT_ROOT, ".github", "workflows", "ci.yml");
-const RELEASE_WORKFLOW_PATH = join(PROJECT_ROOT, ".github", "workflows", "release.yml");
+const RELEASE_WORKFLOW_PATH = join(PROJECT_ROOT, ".github", "workflows", "release-npm.yml");
 
 /**
  * @brief Loads a GitHub Actions workflow definition as text for contract assertions.

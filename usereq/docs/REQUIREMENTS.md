@@ -22,7 +22,7 @@ Project file/folder structure (evidence: repository tree):
 
 ```
 mcp-google-map/
-├── .github/workflows/           # GitHub Actions: ci.yml (push/PR checks), release.yml (tag releases)
+├── .github/workflows/           # GitHub Actions: ci.yml (push/PR checks), release-npm.yml (npm tag releases)
 ├── docs/                        # Usage docs (CONFIGURATION.md, TOOLS.md)
 ├── scripts/                     # Shell helpers: build.sh, setup.sh, start-http.sh, start-mcp.sh, test.sh
 ├── src/
@@ -122,6 +122,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-026**: MUST restrict GitHub Actions package build and tarball packing to the release workflow triggered by a version tag gated on master (PKG-008, PKG-009).
 - **PKG-027**: MUST run the release pipeline (branch gate, build, verification, publish, changelog, GitHub Release) in exactly one workflow job with no parallel or separate release jobs.
 - **PKG-028**: MUST fail the release job before any dependency install, build, pack, or publish step when the tagged commit is not reachable from `origin/master`, so `develop` tags never build.
+- **PKG-029**: MUST define the npm release workflow in the file `.github/workflows/release-npm.yml` implementing the PKG-008 tag-triggered release pipeline.
 
 ## 3. Requirements
 
@@ -365,4 +366,4 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-017**: MUST verify REQ-079/REQ-129/REQ-130/REQ-131 by running `npm test` (`tests/cliSpawn.unit.test.ts`): spawned CLI asserts `start` boots the HTTP server from an explicit env file, and no command prints help with the version header and management commands on stdout with exit 0.
 - **TST-018**: MUST verify REQ-152/REQ-154/REQ-155/REQ-156/REQ-157/REQ-158 by running `npm test` (`tests/skillDebugInstall.unit.test.ts`): temp-directory installs assert plain mode excludes the debug file, debug mode appends it once across reruns, and `show` reports OK for both modes.
 - **TST-019**: MUST verify REQ-153/REQ-160 by running `npm test` (`tests/eatspotSkillContract.unit.test.ts`): the packaged `SKILL.md` carries no debug section while the packaged debug file carries the register, capture, and provenance rules.
-- **TST-020**: MUST verify PKG-008/PKG-009/PKG-021/PKG-026/PKG-027/PKG-028 by running `npm test` (`tests/ciContract.unit.test.ts`): CI excludes build/pack/smoke steps; the single release job gates, builds, verifies, and publishes behind the integrated master check.
+- **TST-020**: MUST verify PKG-008/PKG-009/PKG-021/PKG-026/PKG-027/PKG-028/PKG-029 by running `npm test` (`tests/ciContract.unit.test.ts`): CI excludes build/pack/smoke steps; the release job gates, builds, verifies, and publishes behind the integrated master check defined in `release-npm.yml`.

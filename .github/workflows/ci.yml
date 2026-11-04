@@ -1,7 +1,7 @@
 # Continuous Integration: install + typecheck + unit tests on every push and
 # pull_request, across Linux, macOS, and Windows. The package build, tarball
 # packing, installed-package smoke check, and publish run exclusively in the
-# tag-triggered release workflow (release.yml), gated on master (PKG-026).
+# tag-triggered release workflow (release-npm.yml), gated on master (PKG-026).
 # Live e2e tests (tests/smoke.test.ts) are intentionally excluded: they require
 # a paid GOOGLE_MAPS_API_KEY and are run manually via `npm run test:e2e`.
 name: CI
