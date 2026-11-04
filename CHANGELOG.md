@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.15.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.14.0..v0.15.0) - 2026-11-04
+### 🚜  Changes
+- remove CI automation and release-time testing [useReq] *(ci)*
+  - Delete .github/workflows/ci.yml and PKG-004: no push/PR automation.
+  - Release pipeline keeps gate, build, pack, publish, changelog, release;
+  - typecheck, unit tests, and the doctor smoke check are removed
+  - (PKG-021 deleted; PKG-005/008/027 updated).
+  - package.json prepublishOnly now runs version guard + build only.
+  - tests/ciContract.unit.test.ts rewritten per TST-020: asserts ci.yml
+  - absence, master-gate ordering, and no test/smoke steps in release-npm.yml.
+  - Development-phase minimum verification stays local via npm scripts
+  - (PKG-019: typecheck, test, verify).
+
 ## [0.14.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.13.0..v0.14.0) - 2026-11-04
 ### 🚜  Changes
 - BREAKING CHANGE: rename npm release workflow file to release-npm.yml [useReq] *(ci)*
@@ -272,6 +285,7 @@
 - \[0.11.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.11.0
 - \[0.13.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.13.0
 - \[0.14.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.14.0
+- \[0.15.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.15.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.2.0..v0.3.0
@@ -285,3 +299,4 @@
 [0.11.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.10.0..v0.11.0
 [0.13.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.11.0..v0.13.0
 [0.14.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.13.0..v0.14.0
+[0.15.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.14.0..v0.15.0
