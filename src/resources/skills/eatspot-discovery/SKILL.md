@@ -5,7 +5,7 @@ description: Discover and validate bars, pastry shops, restaurants, cafes, and b
 
 # EatSpot Discovery via mcp-google-map — Operative Instructions
 
-Version 1.1.0 — API data integrity, verifiable validation, DEBUG ALWAYS ON, bound to the `mcp-google-map` MCP server.
+Version 1.2.0 — API data integrity, verifiable validation, bounded DEBUG capture, DEBUG ALWAYS ON, bound to the `mcp-google-map` MCP server.
 
 ## PART I — CORE
 
@@ -196,6 +196,8 @@ THIS SECTION HAS PRIORITY OVER ANY OUTPUT FORMAT OR SEARCH STRATEGY.
 
 `maps_search_places` returns transformed results (`name`, `place_id`, `formatted_address`, `geometry.location`, `primary_type`, `types`, `business_status`, `google_maps_uri`, `price_level`, `price_range` (raw Money), `rating`, `user_ratings_total`, `opening_hours.open_now`, `regular_opening_hours`, `current_opening_hours`) plus `nextPageToken`, `field_mask`, and `raw`/`raw_place` with `includeRaw: true`. Structure examples describe the shape only; never use them as real data.
 
+`maps_geocode` returns the flat first-result payload `{ "location": { "lat": <number>, "lng": <number> }, "formatted_address": "<string>", "place_id": "<string>" }`; the call fails with an error text when zero results are returned. Every mcp-google-map tool returns its interpreted payload directly as the response text: the server-internal `{ "success", "data" }` envelope is never exposed to MCP clients. Dereferencing `data`, `success`, or `error` on a returned payload is FORBIDDEN: those fields are never sent, so the read yields undefined values that MUST NOT feed the debug register. Resolve centers with `maps_geocode` and read `location.lat`/`location.lng` directly from that payload.
+
 #### 13.2 Raw-reconstruction prohibition
 
 It is categorically forbidden to modify a raw payload to: fit the price to the budget; fit the economic level to the requested filter; increase review counts; simplify `primary_type`; replace `name` with a plain string; convert Money objects to plain numbers; add information not returned; reconstruct opening periods; transform non-Places data into Places API data. Interpreted data MUST live in separate fields clearly marked as agent interpretations.
@@ -295,9 +297,13 @@ When a response for Place ID `ChIJY2oWYByu0hIRZXOOaToUTA8` arrives, verify value
 
 For every `maps_search_places` call record: `priceLevels` actually sent; `minRating` actually sent; `includedType` actually used; `strictTypeFiltering` when present. If `priceLevels` admits only INEXPENSIVE and MODERATE, register as an anomaly any EXPENSIVE candidate in the response; do not force-normalize it; do not declare a call validly filtered when it was only simulated.
 
-### D9. Completeness control
+### D9. Completeness control and bounded capture
 
 The debug MUST preserve all accessible payloads within response-size limits. Declare partial payloads and truncated records explicitly; never present a partial response as complete. Do not deduplicate raw records: deduplication concerns final selection, not the call register.
+
+Bounded capture: before persisting any register entry, apply the strictest serialized-size limit in force in the execution environment (response limits, tool-result limits, intermediate-storage limits). When the serialized `raw_response` exceeds that limit, persist a declared truncation instead of the full payload: keep the validation-relevant segment — for `maps_search_places`, `raw_place` of ALL returned results (never a subset of results) plus each result's `name`, `place_id`, `rating`, and `user_ratings_total` — and add an explicit truncation declaration naming the omitted parts (reviews, photos, editorial summaries) and the kept ranges. The declaration is agent metadata inside the register entry (e.g. `"raw_response_note": "TRUNCATED: reviews/photos/editorial omitted; all N results kept"`); it MUST never be presented as API data.
+
+Register-entry integrity: before emitting the final JSON array, verify that every referenced register entry exists and holds the recorded payload. When an entry is missing — interrupted capture, size-limit abort, or lost intermediate state — re-execute the tool call; never dereference fields of a missing entry and never reconstruct the payload. When re-execution is impossible, emit the entry with `raw_response: null`, `raw_accessibility: "NOT_ACCESSIBLE"`, anomaly `API_RESPONSE_NOT_ACCESSIBLE`, and the concrete interruption reason in `error`.
 
 ### D10. Final output
 
