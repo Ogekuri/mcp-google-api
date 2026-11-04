@@ -27,11 +27,10 @@ import {
 import { describeToolsProfile } from "./utils/toolProfiles.js";
 import { renderClientSnippet, type SnippetClient, type SnippetOptions } from "./utils/clientSnippets.js";
 import { ApiKeyManager } from "./utils/apiKeyManager.js";
-import { isUnsetApiKey, loadCliSettings, loadConfiguredApiKey, saveCliSettings } from "./utils/cliSettings.js";
+import { loadCliSettings, loadConfiguredApiKey, saveCliSettings } from "./utils/cliSettings.js";
 import { resolveCliTarget, supportedCliNames } from "./utils/cliTargets.js";
 import {
   installEnabledCliResources,
-  resolveInstallApiKey,
   resolveSkillsResourcesRoot,
   uninstallEnabledCliResources,
   type CliOperationResult,
@@ -113,7 +112,7 @@ export interface ServerStartupOutcome {
  * and returns the aggregate outcome. Default bind host is loopback
  * `127.0.0.1` (REQ-008). Complexity O(instances).
  * @param port {number | undefined} `--port` override written to `MCP_SERVER_PORT`.
- * @param apiKey {string | undefined} `--apikey` override written to `GOOGLE_MAPS_API_KEY`.
+ * @param apiKey {string | undefined} Startup API key injected into `ApiKeyManager` from the persisted settings (REQ-142).
  * @param host {string | undefined} `--host` override written to `MCP_SERVER_HOST`.
  * @return {Promise<ServerStartupOutcome>} Per-run counts plus listening servers.
  * @see installShutdownHandlers
@@ -124,13 +123,12 @@ export async function startServer(
   apiKey?: string,
   host?: string
 ): Promise<ServerStartupOutcome> {
-  // Override environment variables with CLI arguments if provided
+  // Override environment variables with CLI arguments if provided; the API
+  // key is injected into the key manager, never into the environment (DES-006).
   if (port) {
     process.env.MCP_SERVER_PORT = port.toString();
   }
-  if (apiKey) {
-    process.env.GOOGLE_MAPS_API_KEY = apiKey;
-  }
+  ApiKeyManager.getInstance().setDefaultApiKey(apiKey);
   if (host) {
     process.env.MCP_SERVER_HOST = host;
   }
@@ -926,13 +924,14 @@ export function runEnableDisableCliCommand(
 /**
  * @brief Saves the Google Maps API key in the persisted settings and refreshes enabled-CLI registrations.
  * @details Validates the key first (REQ-020 format via `ApiKeyManager`),
- * rejecting empty, whitespace-only, or malformed input with a JSON stderr
- * error and non-zero exit before any write (REQ-137); persists the key as
- * the settings `apiKey` field atomically (REQ-136, DES-023); then runs the
- * install operation for every enabled CLI embedding the newly persisted key
- * with REQ-116 and REQ-119 semantics (REQ-138). Prints exactly one JSON
- * object on stdout containing the masked key (DES-016), the settings path,
- * and the per-CLI install summaries and errors (REQ-139).
+ * rejecting empty, whitespace-only, or malformed input with a human-readable
+ * stderr error and non-zero exit before any write (REQ-137); persists the key
+ * as the settings `apiKey` field atomically (REQ-136, DES-023); then runs the
+ * install operation for every enabled CLI with REQ-116 and REQ-119 semantics
+ * (REQ-138). Prints a human-readable operation report on stdout (REQ-139,
+ * human-readable exception to PRJ-008): the configured-key confirmation with
+ * the DES-016 masked key, then one line per processed CLI with its install
+ * result, or the enable hint when zero CLIs are enabled.
  * @param key {string | undefined} Raw key argument from the command line.
  * @param options {object} `{ home?, resourcesRoot, streams? }`; streams default to process streams.
  * @return {number} Exit code: 0 on success or zero enabled CLIs, 1 on validation, persistence, or install failure.
@@ -949,65 +948,87 @@ export function runApiKeyCommand(
   const trimmed = (key ?? "").trim();
   if (!ApiKeyManager.getInstance().isValidApiKeyFormat(trimmed)) {
     streams.stderr.write(
-      JSON.stringify(
-        {
-          success: false,
-          error:
-            "Invalid Google Maps API key. Expected 20-50 characters of letters, digits, hyphens, or underscores. Usage: mcp-google-map api-key <your-api-key>",
-        },
-        null,
-        2
-      ) + "\n"
+      "api-key: invalid Google Maps API key. Expected 20-50 characters of letters, digits, hyphens, or underscores.\n" +
+        "Usage: mcp-google-map api-key <your-api-key>\n"
     );
     return 1;
   }
-  let settingsPath: string;
   try {
     const settings = loadCliSettings(options.home);
     settings.apiKey = trimmed;
-    settingsPath = saveCliSettings(settings, options.home);
+    saveCliSettings(settings, options.home);
   } catch (error: unknown) {
-    streams.stderr.write(
-      JSON.stringify({ success: false, error: error instanceof Error ? error.message : String(error) }, null, 2) + "\n"
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    streams.stderr.write(`api-key: failed to persist the API key: ${message}\n`);
     return 1;
   }
+  streams.stdout.write(`API key configured (${maskSecret(trimmed)}).\n`);
   let install: CliOperationResult;
   try {
-    install = installEnabledCliResources({ home: options.home, apiKey: trimmed, resourcesRoot: options.resourcesRoot });
+    install = installEnabledCliResources({ home: options.home, resourcesRoot: options.resourcesRoot });
   } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    streams.stderr.write(`api-key: install failed: ${message}\n`);
+    return 1;
+  }
+  if (install.summaries.length === 0 && install.errors.length === 0) {
+    streams.stdout.write("No CLI agent enabled. Run 'mcp-google-map enable <cli name>' first.\n");
+    return 0;
+  }
+  for (const summary of install.summaries) {
+    streams.stdout.write(
+      `${summary.cli}: MCP connector installed (server entries: ${summary.server}, skills: ${summary.skills}).\n`
+    );
+  }
+  for (const error of install.errors) {
+    streams.stdout.write(`${error}\n`);
+  }
+  return install.errors.length > 0 ? 1 : 0;
+}
+
+/**
+ * @brief Enables or disables the automatic update check in the persisted settings.
+ * @details Accepts `enable`, `disable`, `1`, `0` case-insensitively (REQ-148)
+ * and persists the resolved boolean into the settings `autoUpdate` field
+ * atomically before printing any result (REQ-149, DES-024). Prints a
+ * human-readable confirmation on stdout (REQ-150, human-readable exception to
+ * PRJ-008). A missing or non-accepted value prints a human-readable stderr
+ * error listing the accepted values and persists nothing (REQ-151).
+ * @param rawState {string | undefined} Raw state argument from the command line.
+ * @param options {object} `{ home?, streams? }`; streams default to process streams.
+ * @return {number} Exit code: 0 on success, 1 on an invalid value or persistence failure.
+ * @see loadCliSettings
+ * @see saveCliSettings
+ * @satisfies REQ-148, REQ-149, REQ-150, REQ-151
+ */
+export function runAutoUpdateCommand(
+  rawState: string | undefined,
+  options: { home?: string; streams?: ExecStreams } = {}
+): number {
+  const streams = options.streams ?? { stdout: process.stdout, stderr: process.stderr };
+  const normalized = (rawState ?? "").trim().toLowerCase();
+  let enabled: boolean;
+  if (normalized === "enable" || normalized === "1") {
+    enabled = true;
+  } else if (normalized === "disable" || normalized === "0") {
+    enabled = false;
+  } else {
     streams.stderr.write(
-      JSON.stringify(
-        {
-          success: false,
-          apiKey: maskSecret(trimmed),
-          settingsPath,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        null,
-        2
-      ) + "\n"
+      `auto-update: invalid value "${rawState ?? ""}". Accepted values: enable, disable, 1, 0.\n`
     );
     return 1;
   }
-  const zeroEnabled = install.summaries.length === 0 && install.errors.length === 0;
-  streams.stdout.write(
-    JSON.stringify(
-      {
-        success: install.errors.length === 0,
-        command: "api-key",
-        apiKey: maskSecret(trimmed),
-        settingsPath,
-        ...(zeroEnabled
-          ? { message: "API key saved. No CLI enabled. Use 'mcp-google-map enable <cli name>' first." }
-          : {}),
-        install: { operation: "install", summaries: install.summaries, errors: install.errors },
-      },
-      null,
-      2
-    ) + "\n"
-  );
-  return install.errors.length > 0 ? 1 : 0;
+  try {
+    const settings = loadCliSettings(options.home);
+    settings.autoUpdate = enabled;
+    saveCliSettings(settings, options.home);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    streams.stderr.write(`auto-update: failed to persist the setting: ${message}\n`);
+    return 1;
+  }
+  streams.stdout.write(enabled ? "Auto-update check enabled.\n" : "Auto-update check disabled.\n");
+  return 0;
 }
 
 /**
@@ -1018,7 +1039,7 @@ export function runApiKeyCommand(
  * exits 0 (REQ-119). Diagnostics ride in the JSON `errors` array so stdout
  * stays the single machine-readable channel (PRJ-008).
  * @param operation {"install" | "uninstall"} Requested reciprocal operation.
- * @param options {object} `{ home?, apiKey?, resourcesRoot, streams? }`.
+ * @param options {object} `{ home?, resourcesRoot, streams? }`.
  * @return {number} Exit code: 0 on success or zero enabled CLIs, 1 on failures.
  * @see installEnabledCliResources
  * @see uninstallEnabledCliResources
@@ -1026,7 +1047,7 @@ export function runApiKeyCommand(
  */
 export function runInstallUninstallCommand(
   operation: "install" | "uninstall",
-  options: { home?: string; apiKey?: string; resourcesRoot: string; streams?: ExecStreams }
+  options: { home?: string; resourcesRoot: string; streams?: ExecStreams }
 ): number {
   const streams = options.streams ?? { stdout: process.stdout, stderr: process.stderr };
   if (loadCliSettings(options.home).enabled.length === 0) {
@@ -1048,7 +1069,7 @@ export function runInstallUninstallCommand(
   try {
     result =
       operation === "install"
-        ? installEnabledCliResources({ home: options.home, apiKey: options.apiKey, resourcesRoot: options.resourcesRoot })
+        ? installEnabledCliResources({ home: options.home, resourcesRoot: options.resourcesRoot })
         : uninstallEnabledCliResources({ home: options.home, resourcesRoot: options.resourcesRoot });
   } catch (error: unknown) {
     streams.stderr.write(
@@ -1131,7 +1152,7 @@ if (isRunDirectly || isMainModule) {
   } else {
     /**
      * @brief Applies the shared server-start options to a yargs builder.
-     * @details Declares `--port`, `--host`, `--apikey`, and `--stdio` with
+     * @details Declares `--port`, `--host`, and `--stdio` with
      * environment-derived defaults plus the server-mode examples. Shared
      * verbatim by the `start` and `run` commands so both expose an identical
      * option surface (PRJ-003). Complexity O(1).
@@ -1152,12 +1173,6 @@ if (isRunDirectly || isMainModule) {
           description: "Hostname to bind the server to (default 127.0.0.1 loopback; 0.0.0.0 for all interfaces)",
           default: process.env.MCP_SERVER_HOST || "127.0.0.1",
         })
-        .option("apikey", {
-          alias: "k",
-          type: "string",
-          description: "Google Maps API key",
-          default: process.env.GOOGLE_MAPS_API_KEY,
-        })
         .option("stdio", {
           type: "boolean",
           description: "Use stdio transport instead of HTTP",
@@ -1165,7 +1180,6 @@ if (isRunDirectly || isMainModule) {
         })
         .example([
           ["$0 start", "Start HTTP server with default settings"],
-          ['$0 start --port 3000 --apikey "your_api_key"', "Start HTTP with custom port and API key"],
           ["$0 start --host 0.0.0.0 --port 3000", "Start HTTP accessible from all interfaces"],
           ["$0 start --stdio", "Start in stdio mode (for MCP clients)"],
           ["$0 run --stdio", "Alias: run the server in stdio mode"],
@@ -1176,44 +1190,33 @@ if (isRunDirectly || isMainModule) {
 
     /**
      * @brief Server-start handler shared by the `start` and `run` commands.
-     * @details Applies `--apikey` to the environment, resolves the effective
-     * key with priority `--apikey` flag, `GOOGLE_MAPS_API_KEY` environment
-     * (placeholder counts as unset), then the persisted settings key promoted
-     * into the environment (REQ-142); fires the idle-gated automatic update
-     * check fire-and-forget (REQ-082; never blocks startup), then starts
+     * @details Resolves the effective API key exclusively from the persisted
+     * settings key (REQ-142) and injects it into `ApiKeyManager` (DES-006);
+     * fires the idle-gated automatic update check fire-and-forget only when
+     * the persisted `autoUpdate` setting enables it (REQ-082, REQ-083,
+     * DES-024; never blocks startup), then starts
      * stdio mode when `--stdio` is passed — exiting 1 with a stderr JSON
      * error naming the `api-key` command when no key resolves (REQ-143) —
  * otherwise HTTP mode via `startServer`, exiting 1 when zero instances
      * listen (REQ-095). HTTP mode without an API key logs a warning and still
      * starts (REQ-080).
-     * @param argv {ServerCommandArgs} Parsed options: `--port`, `--host`, `--apikey`, `--stdio`.
+     * @param argv {ServerCommandArgs} Parsed options: `--port`, `--host`, `--stdio`.
      * @return {Promise<void>} Resolves when stdio mode stops; HTTP mode persists.
      * @satisfies REQ-079, REQ-080, REQ-082, REQ-095, REQ-142, REQ-143
      */
     const runServerCommand = async (argv: ServerCommandArgs): Promise<void> => {
-      if (argv.apikey) {
-        process.env.GOOGLE_MAPS_API_KEY = argv.apikey;
-      }
+      // REQ-142: the effective key resolves exclusively from the persisted
+      // settings (`api-key` command); empty and placeholder values are unset.
+      // Injected into the key manager so every default-key consumer sees it.
+      const effectiveApiKey = loadConfiguredApiKey();
+      ApiKeyManager.getInstance().setDefaultApiKey(effectiveApiKey);
 
-      // REQ-142 effective-key resolution: --apikey flag (applied above),
-      // then GOOGLE_MAPS_API_KEY (placeholder counts as unset), then the key
-      // persisted by the `api-key` command. A persisted key is promoted into
-      // the environment so every default-key consumer sees it.
-      let effectiveApiKey = isUnsetApiKey(process.env.GOOGLE_MAPS_API_KEY)
-        ? undefined
-        : process.env.GOOGLE_MAPS_API_KEY;
-      if (effectiveApiKey === undefined) {
-        const persistedApiKey = loadConfiguredApiKey();
-        if (persistedApiKey !== undefined) {
-          process.env.GOOGLE_MAPS_API_KEY = persistedApiKey;
-          effectiveApiKey = persistedApiKey;
-        }
-      }
-
-      // Automatic update check (enabled by default), idle-gated to keep it
-      // non-invasive: at most one registry request per idle window.
+      // REQ-082/REQ-083: the idle-gated update check runs only when the
+      // persisted settings enable it (DES-024, enabled by default).
       // Fire-and-forget so it never blocks startup; diagnostics on stderr.
-      void checkVersionIdle({ currentVersion: packageVersion }).catch(() => undefined);
+      if (loadCliSettings().autoUpdate) {
+        void checkVersionIdle({ currentVersion: packageVersion }).catch(() => undefined);
+      }
 
       const tools = filterTools(serverConfigs[0].tools);
 
@@ -1225,7 +1228,7 @@ if (isRunDirectly || isMainModule) {
             JSON.stringify(
               {
                 error:
-                  "Google Maps API key is not configured. Run 'mcp-google-map api-key <your-api-key>' to configure it, or pass --apikey / set GOOGLE_MAPS_API_KEY.",
+                  "Google Maps API key is not configured. Run 'mcp-google-map api-key <your-api-key>' to configure it.",
               },
               null,
               2
@@ -1245,7 +1248,7 @@ if (isRunDirectly || isMainModule) {
 
         if (effectiveApiKey === undefined) {
           Logger.log("⚠️  Google Maps API Key not found!");
-          Logger.log("   Run 'mcp-google-map api-key <your-api-key>' to configure it, or set GOOGLE_MAPS_API_KEY / pass --apikey");
+          Logger.log("   Run 'mcp-google-map api-key <your-api-key>' to configure it.");
           Logger.log("");
         }
 
@@ -1454,6 +1457,29 @@ if (isRunDirectly || isMainModule) {
         }
       )
       .command(
+        "auto-update <state>",
+        "Enable or disable the automatic update check in the persisted configuration",
+        (yargs) =>
+          yargs
+            .positional("state", {
+              type: "string",
+              describe: "New state: enable or disable (1 and 0 accepted)",
+            })
+            .option("home", {
+              type: "string",
+              description: "Home-directory override for the settings file (default: user home)",
+            })
+            .example([[
+              "$0 auto-update disable",
+              "Disable the automatic update check in the persisted configuration",
+            ]]),
+        (argv) => {
+          process.exitCode = runAutoUpdateCommand(argv.state as string | undefined, {
+            home: argv.home as string | undefined,
+          });
+        }
+      )
+      .command(
         "api-key <key>",
         "Save the Google Maps API key in the user settings and refresh every enabled CLI registration",
         (yargs) =>
@@ -1483,25 +1509,12 @@ if (isRunDirectly || isMainModule) {
               type: "string",
               description: "Home-directory override for CLI configuration paths (default: user home)",
             })
-            .option("apikey", {
-              alias: "k",
-              type: "string",
-              description:
-                "Google Maps API key embedded in the registered entry (priority: this flag, persisted api-key settings, GOOGLE_MAPS_API_KEY)",
-            })
             .example([["$0 install", "Register the server and skills in every enabled CLI"]]),
         (argv) => {
-          // REQ-140 install-time key resolution: flag > persisted settings
-          // key > environment; the REQ-141 placeholder is embedded when
-          // nothing resolves.
-          const config = resolveRuntimeConfig(process.env, { envFile: extractEnvFileOption(process.argv) });
+          // REQ-114: registrations carry no key or environment setup; the
+          // registered server reads its configuration file at startup (REQ-142).
           process.exitCode = runInstallUninstallCommand("install", {
             home: argv.home as string | undefined,
-            apiKey: resolveInstallApiKey({
-              flagKey: argv.apikey as string | undefined,
-              envKey: config.apiKey,
-              home: argv.home as string | undefined,
-            }),
             resourcesRoot: resolveSkillsResourcesRoot(resolve(__dirname, "..")),
           });
         }
@@ -1553,12 +1566,6 @@ if (isRunDirectly || isMainModule) {
               type: "string",
               describe: "JSON parameters string",
             })
-            .option("apikey", {
-              alias: "k",
-              type: "string",
-              description: "Google Maps API key",
-              default: process.env.GOOGLE_MAPS_API_KEY,
-            })
             .example([
               ['$0 exec geocode \'{"address":"Tokyo Tower"}\'', "Geocode an address"],
               [
@@ -1569,11 +1576,14 @@ if (isRunDirectly || isMainModule) {
             ]);
         },
         async (argv) => {
-          if (!argv.apikey) {
+          // CTN-002/REQ-142: exec resolves the key from the persisted settings only.
+          const apiKey = loadConfiguredApiKey();
+          if (!apiKey) {
             process.stderr.write(
               JSON.stringify(
                 {
-                  error: "GOOGLE_MAPS_API_KEY not set. Use --apikey or set GOOGLE_MAPS_API_KEY environment variable.",
+                  error:
+                    "Google Maps API key is not configured. Run 'mcp-google-map api-key <your-api-key>' to configure it.",
                 },
                 null,
                 2
@@ -1584,7 +1594,7 @@ if (isRunDirectly || isMainModule) {
           }
           try {
             const params = argv.params ? JSON.parse(argv.params as string) : {};
-            process.exitCode = await runExecCommand(argv.tool as string, params, argv.apikey as string);
+            process.exitCode = await runExecCommand(argv.tool as string, params, apiKey);
           } catch (error: any) {
             process.stderr.write(JSON.stringify({ error: error.message }, null, 2) + "\n");
             process.exitCode = 1;
@@ -1613,12 +1623,6 @@ if (isRunDirectly || isMainModule) {
               describe: "Max parallel requests",
               default: 20,
             })
-            .option("apikey", {
-              alias: "k",
-              type: "string",
-              description: "Google Maps API key",
-              default: process.env.GOOGLE_MAPS_API_KEY,
-            })
             .example([
               ["$0 batch-geocode -i addresses.txt", "Geocode to stdout"],
               ["$0 batch-geocode -i addresses.txt -o results.json", "Geocode to file"],
@@ -1626,8 +1630,10 @@ if (isRunDirectly || isMainModule) {
             ]);
         },
         async (argv) => {
-          if (!argv.apikey) {
-            console.error("Error: GOOGLE_MAPS_API_KEY not set. Use --apikey or set env var.");
+          // CTN-002/REQ-142: batch-geocode resolves the key from the persisted settings only.
+          const apiKey = loadConfiguredApiKey();
+          if (!apiKey) {
+            console.error("Error: Google Maps API key is not configured. Run 'mcp-google-map api-key <your-api-key>'.");
             process.exit(1);
           }
 
@@ -1657,7 +1663,7 @@ if (isRunDirectly || isMainModule) {
             process.exit(1);
           }
 
-          const searcher = new PlacesSearcher(argv.apikey as string);
+          const searcher = new PlacesSearcher(apiKey);
           const concurrency = Math.min(Math.max(argv.concurrency as number, 1), 50);
           const results: any[] = [];
           let completed = 0;

@@ -141,7 +141,8 @@ export class RoutesService {
   private apiKey: string;
 
   constructor(apiKey?: string) {
-    this.apiKey = apiKey || process.env.GOOGLE_MAPS_API_KEY || "";
+    // Only the explicitly provided key is accepted; empty aborts below (REQ-019).
+    this.apiKey = apiKey || "";
     if (!this.apiKey) {
       throw new Error("Google Maps API Key is required");
     }

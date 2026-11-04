@@ -16,7 +16,7 @@ This document MUST follow these authoring rules (LLM-first, normative SRS):
   - Do NOT add YAML front matter or in-document revision history; use git history / CHANGELOG.md for change tracking.
 
 ### 1.2 Project Scope
-`mcp-google-map` (v0.0.0, GPL-3.0) is a Model Context Protocol (MCP) server exposing 18 Google Maps tools (geocoding, Places API (New), Routes, Weather, Air Quality, Time Zone, Elevation, Static Maps) to AI agents over stdio or Streamable HTTP, plus a standalone CLI (`doctor`, `exec`, `batch-geocode`, `setup`, `snippet`, `enable`, `disable`, `install`, `uninstall`, `show`, `api-key`). Boundaries: read-only Google API queries only; no persistence, no caching layer, no user management, no write operations.
+`mcp-google-map` (v0.0.0, GPL-3.0) is a Model Context Protocol (MCP) server exposing 18 Google Maps tools (geocoding, Places API (New), Routes, Weather, Air Quality, Time Zone, Elevation, Static Maps) to AI agents over stdio or Streamable HTTP, plus a standalone CLI (`doctor`, `exec`, `batch-geocode`, `setup`, `snippet`, `enable`, `disable`, `auto-update <enable|disable|1|0>`, `install`, `uninstall`, `show`, `api-key`). Boundaries: read-only Google API queries only; no persistence, no caching layer, no user management, no write operations.
 
 Project file/folder structure (evidence: repository tree):
 
@@ -68,12 +68,12 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 ### 2.1 Project Functions
 - **PRJ-001**: MUST expose 18 Google Maps MCP tools: maps_geocode, maps_reverse_geocode, maps_search_nearby, maps_search_places, maps_place_details, maps_directions, maps_distance_matrix, maps_elevation, maps_timezone, maps_weather, maps_explore_area, maps_plan_route, maps_compare_places, maps_air_quality, maps_static_map, maps_batch_geocode, maps_search_along_route, maps_local_rank_tracker.
 - **PRJ-002**: MUST serve tool calls over both stdio transport and Streamable HTTP transport at endpoint path `/mcp`.
-- **PRJ-003**: MUST provide a standalone CLI with commands: `doctor`, `exec <tool> [params]`, `batch-geocode`, `setup`, `snippet`, `enable <cli>`, `disable <cli>`, `install`, `uninstall`, `show`, `api-key <key>`, server start via `start` or `run`, and management flags `--upgrade`, `--uninstall`, `--ver`, `--version`.
+- **PRJ-003**: MUST provide a standalone CLI with commands: `doctor`, `exec <tool> [params]`, `batch-geocode`, `setup`, `snippet`, `enable <cli>`, `disable <cli>`, `auto-update <enable|disable|1|0>`, `install`, `uninstall`, `show`, `api-key <key>`, server start via `start` or `run`, and management flags `--upgrade`, `--uninstall`, `--ver`, `--version`.
 - **PRJ-004**: MUST provide composite tools (explore-area, plan-route, compare-places, search-along-route, local-rank-tracker) that chain geocoding, search, details, and routing calls internally.
 - **PRJ-005**: MUST support per-request and per-session Google Maps API keys so concurrent HTTP clients use isolated credentials.
 - **PRJ-006**: MUST allow restricting exposed tools via the `GOOGLE_MAPS_ENABLED_TOOLS` comma-separated allowlist environment variable resolved through the central typed configuration.
 - **PRJ-007**: MUST provide CLI batch geocoding of address files or stdin with bounded concurrency and JSON summary output.
-- **PRJ-008**: MUST report machine-readable JSON results on stdout and diagnostics on stderr in all CLI modes except the human-readable `show` report tables.
+- **PRJ-008**: MUST report machine-readable JSON results on stdout and diagnostics on stderr in all CLI modes except the human-readable `show` report tables and the `api-key`/`auto-update` operation reports.
 - **PRJ-015**: MUST provide CLI commands `enable <cli>`, `disable <cli>`, `install`, `uninstall`, and `show` managing MCP-server registration and packaged skill installation across supported CLI agents.
 - **PRJ-009**: MUST provide machine-readable tool/API dependency profiles covering all 18 tools, including the tool dependencies of composite tools.
 - **PRJ-010**: MUST provide a `snippet` CLI command that prints valid MCP-client registration snippets without modifying any client configuration file.
@@ -84,7 +84,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 
 ### 2.2 Project Constraints
 - **CTN-001**: MUST declare all tools read-only, non-destructive, idempotent, and open-world via MCP tool annotations (evidence: `MAPS_TOOL_ANNOTATIONS`, `src/config.ts`).
-- **CTN-002**: MUST require a Google Maps API key from environment `GOOGLE_MAPS_API_KEY`, CLI `--apikey`, persisted user settings (REQ-142), or per-request HTTP header before any tool call executes.
+- **CTN-002**: MUST require a Google Maps API key from the persisted user settings (REQ-142) or a per-request HTTP header before any tool call executes.
 - **CTN-003**: MUST reserve stdio-mode stdout exclusively for JSON-RPC frames, dropping non-JSON stdout writes.
 - **CTN-004**: MUST default Places API result language to English (`languageCode: "en"`).
 - **CTN-005**: MUST run on Node.js `>= 22`, declared in `package.json` `engines` and enforced identically by the `doctor` local check.
@@ -108,8 +108,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-012**: MUST attach the npm package tarball (not raw sources) as the GitHub Release asset, failing the release on unmatched files.
 - **PKG-013**: MUST disable GitHub auto-generated release notes when the commit-based changelog is used.
 - **PKG-014**: MUST pin the release Node.js version and disable dependency caching in release builds.
-- **PKG-015**: MUST document in `README.md` and `docs/CONFIGURATION.md` MCP-client registration for pi CLI and OpenClaw with complete working stdio examples, including key-expansion and post-change reload notes.
-- **PKG-016**: MUST document configuration prerequisites in `README.md` and `docs/CONFIGURATION.md`: single `GOOGLE_MAPS_API_KEY`, enabled Google services, minimal operational subset, `GOOGLE_MAPS_ENABLED_TOOLS`, and post-install `doctor` verification.
+- **PKG-015**: MUST document in `README.md` and `docs/CONFIGURATION.md` MCP-client registration for pi CLI and OpenClaw with complete working stdio examples, including post-change reload notes.
+- **PKG-016**: MUST document configuration prerequisites in `README.md` and `docs/CONFIGURATION.md`: single Google Maps API key configured via `api-key`, enabled Google services, minimal operational subset, `GOOGLE_MAPS_ENABLED_TOOLS`, and post-install `doctor` verification.
 - **PKG-017**: MUST fail `npm publish` via the `prepublishOnly` guard when the `package.json` version is `0.0.0`-based or carries a prerelease or build suffix.
 - **PKG-018**: MUST document in `README.md` the migration of the HTTP default bind from `0.0.0.0` to loopback `127.0.0.1`, including the `--host 0.0.0.0` opt-in.
 - **PKG-019**: MUST provide a single `npm run verify` pipeline (typecheck, unit tests, build) and keep helper scripts free of implicit chained install/build steps.
@@ -118,7 +118,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-022**: MUST keep every documented example consistent with supported CLI flags, headers, and transports.
 - **PKG-023**: MUST document `enable`, `disable`, `install`, `uninstall`, and `show` commands with supported CLI targets in README.md.
 - **PKG-024**: MUST ship `src/resources/skills` inside the published npm package so `install` and `show` resolve manifest skills from installed packages.
-- **PKG-025**: MUST document the `api-key` command, the install-time key resolution with placeholder embedding, and the stdio startup key guard in README.md.
+- **PKG-025**: MUST document the `api-key` command as the only API-key configuration path and the stdio startup key guard in README.md.
 
 ## 3. Requirements
 
@@ -128,7 +128,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **DES-003**: MUST instantiate a new `PlacesSearcher` per tool invocation using `getCurrentApiKey()` from the request context.
 - **DES-004**: MUST create a dedicated `McpServer` instance and `StreamableHTTPServerTransport` per HTTP session initialization (`src/core/BaseMcpServer.ts`).
 - **DES-005**: MUST implement API key resolution priority: `X-Google-Maps-API-Key` header, then `Authorization: Bearer`, then session key, then default key (`ApiKeyManager.getApiKey`).
-- **DES-006**: MUST propagate per-request API keys via `AsyncLocalStorage` (`runWithContext`/`getCurrentApiKey`) with fallback to `process.env.GOOGLE_MAPS_API_KEY`.
+- **DES-006**: MUST propagate per-request API keys via `AsyncLocalStorage` (`runWithContext`/`getCurrentApiKey`) with fallback to the startup default key configured from the persisted settings.
 - **DES-007**: MUST have facade methods return `{ success: false, error }` objects instead of throwing, except composite methods (`resolveLocation`, `planRoute`, `comparePlaces`, `exploreArea` data errors) which throw.
 - **DES-008**: MUST have every tool ACTION return `{ content: [{ type: "text", ... }], isError }`; failures set `isError: true` with the error text.
 - **DES-009**: MUST call Routes API via native `fetch` against `https://routes.googleapis.com` with `X-Goog-Api-Key` and `X-Goog-FieldMask` headers (`RoutesService`).
@@ -137,15 +137,16 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **DES-012**: MUST map legacy travel-mode names driving/walking/bicycling/transit to Routes API DRIVE/WALK/BICYCLE/TRANSIT, defaulting unknown modes to DRIVE.
 - **DES-013**: MUST prefer place IDs over coordinates when converting resolved locations to Routes waypoints, because Routes snaps coordinates to roads (`toRouteWaypoint`, `src/services/PlacesSearcher.ts`).
 - **DES-014**: MUST implement doctor self-checks decoupled from server startup with injectable tool runner, Node version, and configuration dependencies for testing (`runDoctor`, `src/cli.ts`).
-- **DES-015**: MUST resolve runtime configuration (API key, host, port, enabled tools, update flag, env file) in one typed resolver consumed by every CLI command.
+- **DES-015**: MUST resolve runtime configuration (host, port, enabled tools, env file) in one typed resolver consumed by CLI commands; the API key and update flag resolve from the persisted settings.
 - **DES-016**: MUST mask secret values via a single masking helper in every diagnostic, doctor, and setup report.
 - **DES-017**: MUST implement per-CLI target adapters for pi, openclaw, codex, antigravity, and claude resolving each MCP configuration file and skills destination directory from an injectable home root.
-- **DES-018**: MUST persist the enabled-CLI set as `{ "enabled": [<cli>...] }` JSON at `~/.config/mcp-google-map/config.json`, tolerating missing or malformed content and writing atomically; the optional `apiKey` field follows DES-023.
+- **DES-018**: MUST persist `{ "enabled": [<cli>...], "apiKey": "", "autoUpdate": true }` JSON at `~/.config/mcp-google-map/config.json`, tolerating missing or malformed content and writing atomically; `apiKey` follows DES-023 and `autoUpdate` follows DES-024.
 - **DES-021**: MUST derive the enabled-CLI settings directory from the distribution program name `mcp-google-map`; shared or generic directories such as `~/.config/skills/` MUST NOT be used.
 - **DES-019**: MUST apply MCP-server registration through read-modify-write preserving every unrelated configuration entry, with atomic temporary-file replacement.
 - **DES-020**: MUST synchronize packaged skills into CLI skills destinations copying all packaged files with overwrite and pruning stale files inside managed skill directories only.
 - **DES-022**: MUST implement the idle-gated version check and self-upgrade commands in a dedicated module with injectable clock, filesystem, fetch, logger, and child-process dependencies.
-- **DES-023**: MUST persist the user-configured Google Maps API key as the `apiKey` field of the DES-018 settings file, reusing atomic write and malformed-content tolerance; the install placeholder value loads as unset.
+- **DES-023**: MUST persist the user-configured Google Maps API key as the `apiKey` field of the DES-018 settings file, reusing atomic write and malformed-content tolerance; unset keys persist and load as the empty string, and the legacy install placeholder value loads as unset.
+- **DES-024**: MUST persist the automatic-update enablement as the boolean `autoUpdate` field of the DES-018 settings file; missing or malformed content loads as enabled.
 
 ### 3.2 Functions
 
@@ -172,7 +173,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 #### API Key Handling
 - **REQ-016**: MUST resolve the request API key from the `X-Google-Maps-API-Key` header with top priority when present.
 - **REQ-017**: MUST resolve the request API key from a `Bearer` token in the `Authorization` header when no `X-Google-Maps-API-Key` header is present.
-- **REQ-018**: MUST fall back to the session API key, then the default key (`GOOGLE_MAPS_API_KEY`), when no header key is supplied.
+- **REQ-018**: MUST fall back to the session API key, then the startup default key configured from the persisted settings, when no header key is supplied.
 - **REQ-019**: MUST abort tool construction with error "Google Maps API Key is required" when the resolved key is empty in any API client constructor.
 - **REQ-020**: SHOULD validate API key format as 20-50 characters of `[A-Za-z0-9_-]` via `ApiKeyManager.isValidApiKeyFormat`.
 
@@ -251,7 +252,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-076**: MUST read one address per line for `batch-geocode` from `--input` file or stdin when `--input -`, rejecting empty input with exit 1.
 - **REQ-077**: MUST bound `batch-geocode` concurrency between 1 and 50 (default 20), print a JSON summary with counts and per-address results, and write progress to stderr only when `--output` is set.
 - **REQ-078**: MUST write `batch-geocode` results to `--output` file when given, otherwise stdout, and exit 1 when any address failed.
-- **REQ-079**: MUST start the MCP server from the `start` and `run` commands in stdio mode when `--stdio` is passed, otherwise in HTTP mode, applying `--apikey` and `--env-file` before startup.
+- **REQ-079**: MUST start the MCP server from the `start` and `run` commands in stdio mode when `--stdio` is passed, otherwise in HTTP mode, applying `--env-file` before startup.
 - **REQ-080**: MUST log a warning instead of failing when the `start` or `run` server-start command runs in HTTP mode without an API key.
 - **REQ-087**: MUST run `setup` non-interactively: no prompts, no Google API calls, no writes unless an explicit write option is passed.
 - **REQ-088**: MUST create `.env` from `.env.example` in `setup` only with explicit write authorization and only when the target file is absent, never overwriting existing files.
@@ -260,15 +261,15 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-129**: MUST print the `--help` text on stdout and exit 0 when no command argument is supplied, without starting any server.
 - **REQ-130**: MUST print the application version adjacent to the first `mcp-google-map` line in help output.
 - **REQ-131**: MUST list in the help text the management commands `--upgrade`, `--uninstall`, `--ver`, and `--version`, each with a description.
-- **REQ-142**: `start`/`run` MUST resolve the effective API key with priority `--apikey` flag, `GOOGLE_MAPS_API_KEY` environment, then persisted settings key, treating the placeholder value as unset at each level.
+- **REQ-142**: `start`/`run` MUST resolve the effective API key exclusively from the persisted settings key (REQ-136), treating empty and placeholder values as unset.
 - **REQ-143**: `start`/`run` with `--stdio` MUST exit 1 before creating any server when REQ-142 resolves no key, printing a stderr JSON error naming the `api-key` command.
 
 #### Automatic Update Check
 - **REQ-082**: MUST run an automatic update check by default at server startup in stdio and HTTP modes, comparing the running version against the latest `mcp-google-map` version published on the npm registry, subject to the idle cache gate (REQ-121).
-- **REQ-083**: MUST skip the automatic update check and make no registry network calls when `MCP_AUTO_UPDATE_DISABLED` is set to `1`, `true`, or `yes` case-insensitively.
+- **REQ-083**: MUST skip the automatic update check and make no registry network calls when the persisted settings `autoUpdate` field is false (DES-024).
 - **REQ-084**: MUST report a newer available npm version on stderr only, including current version, latest version, and an upgrade command.
 - **REQ-085**: MUST NOT block server startup on the automatic update check and MUST tolerate registry, network, and malformed-response failures with stderr diagnostics only.
-- **REQ-086**: MUST document `MCP_AUTO_UPDATE_DISABLED` in `.env.example` and `docs/CONFIGURATION.md`, stating that the automatic update check is enabled by default.
+- **REQ-086**: MUST document the `auto-update` command and the settings `autoUpdate` field in `README.md` and `docs/CONFIGURATION.md`, stating that the automatic update check is enabled by default.
 
 #### Self-Upgrade and Version Reporting
 - **REQ-120**: MUST provide top-level `--ver` and `--version` commands that force one online latest-version check bypassing the idle gate and print the installed version to stdout with exit code 0.
@@ -287,7 +288,11 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-144**: `--upgrade` MUST first run one online npm-registry latest-version check comparing the installed version, bypassing the idle cache gate, before spawning any child process.
 - **REQ-145**: When the pre-upgrade check reports no newer version, `--upgrade` MUST print on stdout that the installed version is the latest available including the version number, terminate with exit code 0, and spawn no child process.
 - **REQ-146**: `--upgrade` MUST proceed with the REQ-125 package update, the REQ-126 post-upgrade install, and the REQ-132 summary exactly when the pre-upgrade check reports a newer available version.
-- **REQ-147**: When the pre-upgrade check cannot determine a newer version (`MCP_AUTO_UPDATE_DISABLED` set, installed version unknown, or probe failure), `--upgrade` MUST proceed with the package update.
+- **REQ-147**: When the pre-upgrade check cannot determine a newer version (installed version unknown or probe failure), `--upgrade` MUST proceed with the package update.
+- **REQ-148**: The `auto-update <value>` command MUST accept `enable`, `disable`, `1`, and `0` case-insensitively, resolving to the boolean automatic-update enablement.
+- **REQ-149**: `auto-update` MUST persist the resolved boolean into the DES-018 settings `autoUpdate` field with an atomic write before printing any result.
+- **REQ-150**: `auto-update` MUST print on stdout a human-readable confirmation naming the resulting automatic-update state and exit 0.
+- **REQ-151**: `auto-update` MUST reject a missing or non-accepted value with a human-readable stderr error listing the accepted values, exiting non-zero without persisting anything.
 
 #### Skill Resources
 - **REQ-097**: Each skill MUST provide a `SKILL.md` with YAML front matter `name` (1-64 lowercase ASCII letters, digits, hyphens, matching the directory name) and non-empty `description`.
@@ -309,18 +314,16 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-111**: `enable <cli>` MUST add and `disable <cli>` MUST remove the resolved CLI name in the persisted enabled set; both MUST be idempotent.
 - **REQ-112**: MUST resolve MCP configuration files: pi `~/.pi/agent/mcp.json`, openclaw `~/.openclaw/openclaw.json`, codex `~/.codex/config.toml` (`mcp_servers` table), antigravity `~/.gemini/settings.json`, claude `~/.claude.json` (JSON `mcpServers` map).
 - **REQ-113**: MUST resolve skills directories: pi `~/.pi/agent/skills`, openclaw `~/.openclaw/workspace/skills`, codex `~/.codex/skills`, antigravity `~/.gemini/config/skills`, claude `~/.claude/skills`.
-- **REQ-114**: `install` MUST register per enabled CLI the stdio entry `mcp-google-map` launching `npx -y mcp-google-map start --stdio`, embedding the install-time resolved key (REQ-140, REQ-141), and install every manifest skill.
+- **REQ-114**: `install` MUST register per enabled CLI the stdio entry `mcp-google-map` launching `npx -y mcp-google-map start --stdio` with no API-key environment setup, and install every manifest skill.
 - **REQ-115**: `uninstall` MUST remove per enabled CLI the `mcp-google-map` MCP entry and managed skill directories; absent entries MUST count as removed without failure.
 - **REQ-116**: `install` and `uninstall` MUST process enabled CLIs only, report per-CLI counts, continue on per-CLI failures, and exit 1 when any failure occurs.
 - **REQ-117**: `show` MUST print a CLI Configuration table with columns CLI, Enabled, MCP Config Path, Skills Config Path covering all five supported CLIs in registry order.
 - **REQ-118**: `show` MUST print an Installation Status table with columns Type, Name, CLI, Enabled, Installed listing the server and each manifest skill per enabled CLI with OK, MISSING, or STALE status.
 - **REQ-119**: `install` and `uninstall` with zero enabled CLIs MUST print the enable hint and exit 0; `show` MUST always print the CLI Configuration table.
 - **REQ-136**: `api-key <key>` MUST persist the supplied Google Maps API key into the DES-018 user settings file before running any install operation.
-- **REQ-137**: `api-key` MUST reject empty, whitespace-only, or REQ-020-invalid keys with a JSON stderr error and non-zero exit, persisting nothing.
-- **REQ-138**: after persisting, `api-key` MUST run the install operation for every enabled CLI embedding the newly persisted key, applying REQ-116 and REQ-119 semantics.
-- **REQ-139**: `api-key` MUST print exactly one JSON object on stdout containing the masked key (DES-016), the settings path, and the install summaries and errors.
-- **REQ-140**: `install` MUST resolve the embedded key with priority `--apikey` flag, persisted settings key, then `GOOGLE_MAPS_API_KEY` environment, treating the placeholder value as unset at each level.
-- **REQ-141**: `install` MUST embed the literal placeholder constant as `GOOGLE_MAPS_API_KEY` when REQ-140 resolves no key; the placeholder text MUST name the `api-key` command.
+- **REQ-137**: `api-key` MUST reject empty, whitespace-only, or REQ-020-invalid keys with a human-readable stderr error and non-zero exit, persisting nothing.
+- **REQ-138**: after persisting, `api-key` MUST run the install operation for every enabled CLI, applying REQ-116 and REQ-119 semantics.
+- **REQ-139**: `api-key` MUST print on stdout a human-readable report stating the configured key masked per DES-016 and one line per processed CLI with its install result.
 
 ### 3.3 Known Limitations (True State)
 - **LIM-001**: `maps_search_nearby` may return fewer than 20 results when client-side `openNow`/`minRating` filters discard matches post-query.

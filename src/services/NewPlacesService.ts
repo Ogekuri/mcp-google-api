@@ -124,7 +124,8 @@ export class NewPlacesService {
     "nextPageToken",
   ].join(",");
   constructor(apiKey?: string) {
-    this.apiKey = apiKey || process.env.GOOGLE_MAPS_API_KEY || "";
+    // Only the explicitly provided key is accepted; empty aborts below (REQ-019).
+    this.apiKey = apiKey || "";
     this.client = new PlacesClient({ apiKey: this.apiKey });
 
     if (!this.apiKey) {

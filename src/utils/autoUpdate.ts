@@ -1,18 +1,21 @@
 /**
  * @fileoverview Automatic npm-registry update check executed at MCP server
  * startup (stdio and HTTP modes).
- * @details Default-enabled behavior (REQ-082); opt-out via the
- * `MCP_AUTO_UPDATE_DISABLED` environment variable (REQ-083). Fire-and-forget
- * contract: the check never throws, never blocks the caller, performs at most
- * one outbound HTTPS GET, and writes exclusively to stderr (REQ-084, REQ-085).
+ * @details Default-enabled behavior (REQ-082); opt-out via the persisted
+ * settings `autoUpdate` field (DES-024, REQ-083), evaluated by the startup
+ * call site before invoking the check. Fire-and-forget contract: the check
+ * never throws, never blocks the caller, performs at most one outbound HTTPS
+ * GET, and writes exclusively to stderr (REQ-084, REQ-085).
  */
 
 import { Logger } from "../index.js";
 
 /**
- * Environment variable that disables the automatic update check.
- * Inverse-polarity counterpart of an enable-style variable: unset/empty means
- * enabled (default), a truthy value means disabled.
+ * @brief Legacy environment variable recognized only on explicitly injected disable maps.
+ * @details No production call site passes an environment to the checker, so
+ * this variable has no effect on the running server (REQ-083: the disable
+ * decision comes from the persisted settings `autoUpdate` field, DES-024).
+ * The constant survives solely for the injected `deps.env` test seam.
  */
 export const AUTO_UPDATE_DISABLED_ENV = "MCP_AUTO_UPDATE_DISABLED";
 
@@ -40,8 +43,9 @@ export interface AutoUpdateLogger {
 /**
  * @brief Dependency injection surface of `checkForUpdates`.
  * @details Every field is optional; omitted fields resolve to production
- * defaults (`process.env`, global `fetch`, `Logger`). Injection exists to keep
- * unit tests deterministic and network-free (TST-011).
+ * defaults (global `fetch`, `Logger`; no environment input is consulted by
+ * default, REQ-083). Injection exists to keep unit tests deterministic and
+ * network-free (TST-011).
  */
 export interface AutoUpdateCheckerDeps {
   /** Running package version (e.g. from `package.json`); no default. */
@@ -52,7 +56,7 @@ export interface AutoUpdateCheckerDeps {
   registryBaseUrl?: string;
   /** Fetch implementation used for the registry GET. Default: global `fetch`. */
   fetchImpl?: typeof fetch;
-  /** Environment map consulted for `AUTO_UPDATE_DISABLED_ENV`. Default: `process.env`. */
+  /** Explicitly injected disable map consumed by tests only; production call sites MUST leave it undefined (REQ-083). */
   env?: Record<string, string | undefined>;
   /** Diagnostics sink. Default: `Logger` (stderr). */
   logger?: AutoUpdateLogger;
@@ -84,8 +88,11 @@ export type LatestVersionProbe =
 
 /**
  * @brief Probes the npm registry for the latest published package version.
- * @details Logging-free resolution order: disabled-flag short-circuit (REQ-083,
- * zero network calls) -> running-version guard (missing `currentVersion` ->
+ * @details Logging-free resolution order: disable-injection short-circuit
+ * (only when an explicit `deps.env` disable map is supplied; production
+ * supplies none, so the effective gate is the persisted settings field,
+ * REQ-083, DES-024; zero network calls) -> running-version guard (missing
+ * `currentVersion` ->
  * `unknown-version`, zero network calls) -> single
  * `GET {registry}/{package}/latest` with `timeoutMs` deadline ->
  * `response.ok` and `payload.version` validation -> `isNewerVersion` gate.
@@ -100,8 +107,8 @@ export type LatestVersionProbe =
 export async function probeLatestVersion(
   deps: AutoUpdateCheckerDeps = {}
 ): Promise<LatestVersionProbe> {
-  const env = deps.env ?? process.env;
-  if (isAutoUpdateDisabled(env)) {
+  const env = deps.env;
+  if (env !== undefined && isAutoUpdateDisabled(env)) {
     return { status: "disabled" };
   }
   const currentVersion = deps.currentVersion;
@@ -141,11 +148,14 @@ export async function probeLatestVersion(
 }
 
 /**
- * @brief Evaluates the disable flag for the automatic update check.
- * @details Reads `AUTO_UPDATE_DISABLED_ENV` from the given environment map and
- * matches values `1`, `true`, `yes` case-insensitively after trimming; any
- * other value (including unset, empty, `0`, `false`) keeps the check enabled.
- * @param env {Record<string, string | undefined>} Environment map to inspect. Defaults to `process.env`.
+ * @brief Evaluates an explicitly injected disable map for the automatic update check.
+ * @details Reads `AUTO_UPDATE_DISABLED_ENV` from the given map and matches
+ * values `1`, `true`, `yes` case-insensitively after trimming; any other
+ * value (including unset, empty, `0`, `false`) keeps the check enabled.
+ * Injection seam only: production call sites never pass a map, so the
+ * effective disable decision is the persisted settings `autoUpdate` field
+ * (REQ-083, DES-024).
+ * @param env {Record<string, string | undefined>} Explicitly injected map; tests supply it, production MUST NOT.
  * @return {boolean} True when the update check is disabled; false when enabled.
  * @satisfies REQ-083
  * @note Complexity: O(1). Pure; no side effects.

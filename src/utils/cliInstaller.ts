@@ -12,13 +12,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import {
-  INSTALL_API_KEY_PLACEHOLDER,
-  isUnsetApiKey,
-  loadCliSettings,
-  loadConfiguredApiKey,
-  MCP_SERVER_NAME,
-} from "./cliSettings.js";
+import { loadCliSettings, MCP_SERVER_NAME } from "./cliSettings.js";
 import {
   applyServerRegistration,
   CLI_TARGETS,
@@ -61,52 +55,15 @@ export interface CliOperationResult {
 
 /**
  * @brief Build the stdio MCP-server registration entry.
- * @details Launcher `npx -y mcp-google-map start --stdio`; `env` always embeds
- * `GOOGLE_MAPS_API_KEY`: the resolved install-time key, or the literal
- * placeholder inviting the `api-key` command when no key resolves (REQ-141).
- * Key resolution priority is owned by `resolveInstallApiKey` (REQ-140).
- * @param apiKey {string | undefined} Install-time resolved Google Maps API key.
+ * @details Launcher `npx -y mcp-google-map start --stdio` with no `env`
+ * payload: the registered server resolves its API key from its own
+ * configuration file at startup (REQ-142), so CLI registrations never embed
+ * keys or environment setup (REQ-114).
  * @return {object} Registration entry consumed by every supported CLI.
- * @see resolveInstallApiKey
- * @satisfies REQ-114, REQ-140, REQ-141
+ * @satisfies REQ-114
  */
-export function buildServerRegistration(apiKey: string | undefined): {
-  command: string;
-  args: string[];
-  env: Record<string, string>;
-} {
-  const env: Record<string, string> = {
-    GOOGLE_MAPS_API_KEY: isUnsetApiKey(apiKey) ? INSTALL_API_KEY_PLACEHOLDER : (apiKey as string),
-  };
-  return { command: "npx", args: ["-y", MCP_SERVER_NAME, "start", "--stdio"], env };
-}
-
-/**
- * @brief Resolve the API key embedded by `install` into CLI configurations.
- * @details Priority (REQ-140): explicit `--apikey` flag, then the persisted
- * user-settings key (`api-key` command), then the `GOOGLE_MAPS_API_KEY`
- * environment value; the placeholder marker counts as unset at every level,
- * so a placeholder never re-embeds itself. Pure aside from the settings-file
- * read; complexity O(1).
- * @param options {object} `{ flagKey?, envKey?, home? }`.
- * @return {string | undefined} Resolved key; undefined when nothing resolves.
- * @see loadConfiguredApiKey
- * @see isUnsetApiKey
- * @satisfies REQ-140
- */
-export function resolveInstallApiKey(options: {
-  flagKey?: string;
-  envKey?: string;
-  home?: string;
-}): string | undefined {
-  if (!isUnsetApiKey(options.flagKey)) {
-    return options.flagKey;
-  }
-  const persisted = loadConfiguredApiKey(options.home);
-  if (persisted !== undefined) {
-    return persisted;
-  }
-  return isUnsetApiKey(options.envKey) ? undefined : options.envKey;
+export function buildServerRegistration(): { command: string; args: string[] } {
+  return { command: "npx", args: ["-y", MCP_SERVER_NAME, "start", "--stdio"] };
 }
 
 /**
@@ -169,22 +126,22 @@ export function loadSkillsManifest(resourcesRoot: string): ManifestSkill[] {
 /**
  * @brief Install the MCP server entry and every manifest skill per enabled CLI.
  * @details For each enabled CLI in settings order: registers the stdio entry
- * via `applyServerRegistration` (embedding the resolved key or the REQ-141
- * placeholder), then synchronizes each manifest skill directory
- * `<resourcesRoot>/<skill-id>` into `<skillsDir>/<skill-id>`.
+ * via `applyServerRegistration` (no key or environment payload; the server
+ * reads its configuration file at startup, REQ-142), then synchronizes each
+ * manifest skill directory `<resourcesRoot>/<skill-id>` into
+ * `<skillsDir>/<skill-id>`.
  * Failures are collected per CLI and remaining CLIs still run.
- * @param options {object} `{ home?, apiKey, resourcesRoot }`.
+ * @param options {object} `{ home?, resourcesRoot }`.
  * @return {CliOperationResult} Per-CLI summaries and failure diagnostics.
  * @throws {Error} When the skills manifest cannot be loaded (all CLIs fail).
- * @satisfies REQ-114, REQ-116, REQ-140, REQ-141
+ * @satisfies REQ-114, REQ-116
  */
 export function installEnabledCliResources(options: {
   home?: string;
-  apiKey: string | undefined;
   resourcesRoot: string;
 }): CliOperationResult {
   const manifest = loadSkillsManifest(options.resourcesRoot);
-  const entry = buildServerRegistration(options.apiKey);
+  const entry = buildServerRegistration();
   const result: CliOperationResult = { summaries: [], errors: [] };
   for (const cli of loadCliSettings(options.home).enabled) {
     const target = CLI_TARGETS[cli as CliTargetId];

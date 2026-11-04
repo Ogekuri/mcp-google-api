@@ -56,8 +56,8 @@ export class GoogleMapsTools {
 
   constructor(apiKey?: string) {
     this.client = new Client({});
-    // Use provided API key, or fall back to environment variable
-    this.apiKey = apiKey || process.env.GOOGLE_MAPS_API_KEY || "";
+    // Only the explicitly provided key is accepted; empty aborts below (REQ-019).
+    this.apiKey = apiKey || "";
     if (!this.apiKey) {
       throw new Error("Google Maps API Key is required");
     }

@@ -1,6 +1,5 @@
 import { config as dotenvConfig } from "dotenv";
 import { existsSync } from "fs";
-import { isAutoUpdateDisabled } from "./autoUpdate.js";
 
 /**
  * @brief Minimum Node.js major version required by `package.json` `engines`.
@@ -38,6 +37,8 @@ export interface RuntimeConfigOverrides {
   host?: string;
   port?: number;
   envFile?: string;
+  /** Injected automatic-update disable state; defaults to false (check enabled, DES-024). */
+  autoUpdateDisabled?: boolean;
 }
 
 /** @brief Origin tag attached to each resolved configuration field. */
@@ -71,12 +72,13 @@ export interface ResolvedRuntimeConfig {
  * as-is; environment string parsed with `Number` and left undefined when not a
  * finite integer (raw preserved in `portRaw`). `enabledToolsRaw` keeps the
  * trimmed `GOOGLE_MAPS_ENABLED_TOOLS` string; empty string normalizes to
- * undefined. `autoUpdateDisabled` delegates to `isAutoUpdateDisabled`. Pure:
+ * undefined. `autoUpdateDisabled` defaults to false (check enabled) unless
+ * overridden via `overrides.autoUpdateDisabled`; the persisted-settings
+ * enablement is wired by callers (DES-024, REQ-083). Pure:
  * reads inputs only, mutates nothing. Complexity O(1).
  * @param env {Record<string, string | undefined>} Environment map; defaults to `process.env`.
  * @param overrides {RuntimeConfigOverrides} Flag-derived overrides; defaults to none.
  * @return {ResolvedRuntimeConfig} Fully typed configuration with per-field sources.
- * @see isAutoUpdateDisabled
  * @see validateHttpEndpoint
  * @satisfies DES-015
  */
@@ -117,7 +119,7 @@ export function resolveRuntimeConfig(
     portSource,
     enabledToolsRaw,
     enabledToolsSource: enabledToolsRaw ? "environment" : "default",
-    autoUpdateDisabled: isAutoUpdateDisabled(env),
+    autoUpdateDisabled: overrides.autoUpdateDisabled === true,
     envFile: overrides.envFile,
   };
 }
