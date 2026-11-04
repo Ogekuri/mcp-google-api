@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILL_PATH = join(PROJECT_ROOT, "src", "resources", "skills", "eatspot-discovery", "SKILL.md");
+const DEBUG_PATH = join(PROJECT_ROOT, "src", "resources", "skills", "eatspot-discovery", "DEBUG.md");
 const MANIFEST_PATH = join(PROJECT_ROOT, "src", "resources", "skills", "manifest.json");
 
 /**
@@ -16,6 +17,16 @@ const MANIFEST_PATH = join(PROJECT_ROOT, "src", "resources", "skills", "manifest
  */
 function readSkillDoc(): string {
   return readFileSync(SKILL_PATH, "utf-8");
+}
+
+/**
+ * @brief Loads the packaged debug overlay document as text.
+ * @details The overlay is installed only with `--debug-skills`; the file is
+ * read directly so the suite verifies its packaged content (REQ-153).
+ * @return {string} Raw Markdown text of the debug overlay document.
+ */
+function readDebugDoc(): string {
+  return readFileSync(DEBUG_PATH, "utf-8");
 }
 
 /**
@@ -67,7 +78,7 @@ test("eatspot skill forbids dereferencing the internal success/data envelope", (
 });
 
 test("eatspot skill debug register applies bounded raw-payload capture with declared truncation", () => {
-  const d9 = section(readSkillDoc(), "### D9");
+  const d9 = section(readDebugDoc(), "### D9");
   assert.match(d9, /serialized-size limit/i);
   assert.match(d9, /TRUNCATED/);
   assert.match(d9, /`raw_place` of ALL returned results/);
@@ -75,7 +86,7 @@ test("eatspot skill debug register applies bounded raw-payload capture with decl
 });
 
 test("eatspot skill re-executes calls when a register entry is missing", () => {
-  const d9 = section(readSkillDoc(), "### D9");
+  const d9 = section(readDebugDoc(), "### D9");
   assert.match(d9, /Register-entry integrity/);
   assert.match(d9, /re-execute the tool call/);
   assert.match(d9, /never dereference fields of a missing entry/);
@@ -90,4 +101,23 @@ test("packaged manifest version matches the skill declaration", () => {
   const entry = manifest.skills.find((skill) => skill["id"] === "eatspot-discovery");
   assert.notEqual(entry, undefined, "Manifest must index the eatspot-discovery skill");
   assert.equal(entry && entry["version"], declared && declared[1]);
+});
+
+test("eatspot skill keeps every debug instruction out of the packaged core document", () => {
+  const skillText = readSkillDoc();
+  const debugText = readDebugDoc();
+
+  assert.equal(skillText.includes("## PART II"), false, "core document must not embed the debug part");
+  assert.equal(skillText.includes("DEBUG_ENABLED"), false, "core document must not enable DEBUG");
+  assert.equal(/^### D\d/m.test(skillText), false, "core document must not carry debug sections");
+  assert.match(debugText, /## PART II — DEBUG/);
+  assert.match(debugText, /DEBUG_ENABLED = TRUE/);
+  assert.equal(/^### D\d+\./m.test(debugText), true, "debug overlay must carry the debug sections");
+});
+
+test("packaged manifest declares the debug overlay of the eatspot skill", () => {
+  const manifest = readManifest();
+  const entry = manifest.skills.find((skill) => skill["id"] === "eatspot-discovery");
+  assert.notEqual(entry, undefined, "Manifest must index the eatspot-discovery skill");
+  assert.equal(entry && entry["debug"], "DEBUG.md");
 });

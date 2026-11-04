@@ -126,11 +126,12 @@ function buildCliRows(home?: string): string[][] {
  * @brief Build the Installation Status table rows.
  * @details Emits rows only for enabled CLIs: one `Server` row for the
  * managed `mcp-google-map` entry plus one `Skill` row per manifest skill,
- * each with OK / MISSING / STALE detection.
+ * each with OK / MISSING / STALE detection. Skill comparison accepts both
+ * the plain and the debug-overlay-extended installed `SKILL.md` (REQ-158).
  * @param home {string | undefined} Home-directory override.
  * @param resourcesRoot {string} Packaged skills resources root.
  * @return {string[][]} `(Type, Name, CLI, Enabled, Installed)` rows.
- * @satisfies REQ-118
+ * @satisfies REQ-118, REQ-158
  */
 function buildInstallRows(home: string | undefined, resourcesRoot: string): string[][] {
   const enabled = loadCliSettings(home).enabled;
@@ -152,7 +153,9 @@ function buildInstallRows(home: string | undefined, resourcesRoot: string): stri
         skill.id,
         target.id,
         "yes",
-        compareSkillTree(join(resourcesRoot, skill.id), join(target.skillsDir(home), skill.id)),
+        compareSkillTree(join(resourcesRoot, skill.id), join(target.skillsDir(home), skill.id), {
+          ...(skill.debugPath === undefined ? {} : { debugPath: skill.debugPath }),
+        }),
       ]);
     }
   }

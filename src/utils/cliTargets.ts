@@ -8,13 +8,16 @@
  * the `mcpServers["mcp-google-map"]` entry preserving every unrelated key;
  * the TOML target (codex) appends or removes the `[mcp_servers.<name>]`
  * table without touching other tables. Skill synchronization copies packaged
- * skill directories with overwrite and prunes stale files inside managed
- * skill directories only, preserving unmanaged destination entries. Paths
+ * skill content with overwrite and prunes stale files inside managed
+ * skill directories only, preserving unmanaged destination entries; a skill's
+ * declared debug overlay is excluded as a standalone file and is appended to
+ * the installed `SKILL.md` only when debug skills are requested. Paths
  * adopted from the reference `skills` installer targets.
- * @satisfies DES-017, DES-019, DES-020, REQ-110, REQ-112, REQ-113
+ * @satisfies DES-017, DES-019, DES-020, REQ-110, REQ-112, REQ-113, REQ-155, REQ-156, REQ-157, REQ-158
  */
 
 import {
+  appendFileSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -417,28 +420,64 @@ function listFilesRecursive(root: string): string[] {
 }
 
 /**
+ * @brief Relative POSIX name of the skill document that receives the debug overlay.
+ * @details Install appends the overlay after this file so the skill hosts a
+ * single operative document.
+ */
+const SKILL_DOCUMENT_FILE = "SKILL.md";
+
+/**
+ * @brief Skill content layout consumed by install synchronization and status comparison.
+ * @details `debugPath` names the packaged debug overlay file relative to the
+ * skill directory and is excluded from the synchronized tree in every mode
+ * (REQ-155). `includeDebug` appends the overlay content to the installed
+ * `SKILL.md` (REQ-156); the packaged document is always rewritten first, so
+ * repeated runs never duplicate the overlay (REQ-157). Status comparison
+ * accepts both the plain and the overlay-extended document (REQ-158).
+ * @satisfies REQ-155, REQ-156, REQ-157, REQ-158
+ */
+export interface SkillContentLayout {
+  debugPath?: string;
+  includeDebug?: boolean;
+}
+
+/**
  * @brief Synchronize one packaged skill directory into a destination.
- * @details Creates the destination, recursively copies every packaged file
- * with overwrite, then deletes destination files and directories absent from
- * the package — strictly inside the managed skill directory, so sibling
- * unmanaged skills are never touched. Pruning runs deepest-first.
+ * @details Creates the destination, recursively copies every packaged content
+ * file with overwrite while excluding any declared debug overlay, then deletes
+ * destination files and directories absent from the package — strictly inside
+ * the managed skill directory, so sibling unmanaged skills are never touched.
+ * Pruning runs deepest-first. When `layout.includeDebug` is true the overlay
+ * content is appended to the installed `SKILL.md` after the fresh copy.
  * @param source {string} Packaged skill directory containing `SKILL.md`.
  * @param destination {string} Target `<skillsDir>/<skill-id>` path.
+ * @param layout {SkillContentLayout} Debug overlay declaration; defaults to no overlay.
  * @return {void}
- * @throws {Error} When copying or pruning fails.
+ * @throws {Error} When copying, appending, or pruning fails.
  * @pre `source` MUST exist.
- * @post `destination` mirrors exactly the packaged skill tree.
- * @satisfies DES-020
+ * @post `destination` mirrors exactly the packaged content tree plus the optional debug overlay.
+ * @satisfies DES-020, REQ-155, REQ-156, REQ-157
  */
-export function syncSkillTree(source: string, destination: string): void {
+export function syncSkillTree(source: string, destination: string, layout: SkillContentLayout = {}): void {
   mkdirSync(destination, { recursive: true });
-  cpSync(source, destination, { recursive: true, force: true });
-  const expected = new Set(listFilesRecursive(source));
+  cpSync(source, destination, {
+    recursive: true,
+    force: true,
+    filter: (entry) =>
+      layout.debugPath === undefined || relative(source, entry).split("\\").join("/") !== layout.debugPath,
+  });
+  const expected = new Set(listFilesRecursive(source).filter((rel) => rel !== layout.debugPath));
   const existing = listFilesRecursive(destination);
   existing.sort((a, b) => b.length - a.length);
   for (const rel of existing) {
     if (expected.has(rel)) continue;
     rmSync(join(destination, rel), { recursive: true, force: true });
+  }
+  if (layout.includeDebug === true && layout.debugPath !== undefined) {
+    appendFileSync(
+      join(destination, ...SKILL_DOCUMENT_FILE.split("/")),
+      readFileSync(join(source, ...layout.debugPath.split("/")))
+    );
   }
 }
 
@@ -457,24 +496,38 @@ export function removeSkillDir(skillDir: string): void {
 
 /**
  * @brief Compare one packaged skill directory with its installed copy.
- * @details Every packaged regular file must exist in the destination with
- * identical bytes; extra destination files are ignored (staleness is judged
- * only on packaged content).
+ * @details Every packaged content file must exist in the destination with
+ * identical bytes; the declared debug overlay is ignored as a standalone file
+ * and the installed `SKILL.md` counts as matching when it equals either the
+ * packaged document or the packaged document plus the overlay content
+ * (REQ-158). Extra destination files are ignored (staleness is judged only on
+ * packaged content).
  * @param source {string} Packaged skill directory.
  * @param destination {string} Installed skill directory.
- * @return {string} `OK` when all packaged files match, `MISSING` when the
+ * @param layout {SkillContentLayout} Debug overlay declaration; defaults to no overlay.
+ * @return {string} `OK` when all packaged content matches, `MISSING` when the
  * package or destination is absent, `STALE` on byte mismatch.
+ * @satisfies REQ-118, REQ-158
  */
-export function compareSkillTree(source: string, destination: string): "OK" | "MISSING" | "STALE" {
-  const packaged = listFilesRecursive(source);
+export function compareSkillTree(
+  source: string,
+  destination: string,
+  layout: SkillContentLayout = {}
+): "OK" | "MISSING" | "STALE" {
+  const packaged = listFilesRecursive(source).filter((rel) => rel !== layout.debugPath);
   if (packaged.length === 0) return "MISSING";
   if (!existsSync(destination)) return "MISSING";
   for (const rel of packaged) {
     const target = join(destination, ...rel.split("/"));
     if (!existsSync(target)) return "MISSING";
-    if (readFileSync(target) .toString("utf-8") !== readFileSync(join(source, ...rel.split("/"))).toString("utf-8")) {
-      return "STALE";
+    const packagedText = readFileSync(join(source, ...rel.split("/"))).toString("utf-8");
+    const installedText = readFileSync(target).toString("utf-8");
+    if (installedText === packagedText) continue;
+    if (rel === SKILL_DOCUMENT_FILE && layout.debugPath !== undefined) {
+      const overlayText = readFileSync(join(source, ...layout.debugPath.split("/"))).toString("utf-8");
+      if (installedText === packagedText + overlayText) continue;
     }
+    return "STALE";
   }
   return "OK";
 }

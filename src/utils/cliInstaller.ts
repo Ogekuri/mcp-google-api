@@ -6,24 +6,29 @@
  * entry in that CLI's MCP configuration plus synchronizes every manifest
  * skill into that CLI's skills directory. Uninstallation is the exact
  * reciprocal operation. Per-CLI failures are collected without stopping the
- * remaining CLIs.
- * @satisfies PRJ-015, DES-020, REQ-114, REQ-115, REQ-116
+ * remaining CLIs. Each manifest skill MAY declare a debug overlay file that
+ * is installed only when debug skills are requested.
+ * @satisfies PRJ-015, DES-020, REQ-114, REQ-115, REQ-116, REQ-152, REQ-155, REQ-156
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { loadCliSettings, MCP_SERVER_NAME } from "./cliSettings.js";
 import {
   applyServerRegistration,
   CLI_TARGETS,
   type CliTargetId,
+  type SkillContentLayout,
   removeSkillDir,
   syncSkillTree,
 } from "./cliTargets.js";
 
 /**
  * @brief One manifest skill entry from `src/resources/skills/manifest.json`.
- * @details `id` names the packaged `<id>/` directory holding `SKILL.md`.
+ * @details `id` names the packaged `<id>/` directory holding `SKILL.md`;
+ * `debugPath` is the optional debug overlay path relative to that directory
+ * (REQ-152).
+ * @satisfies REQ-152
  */
 export interface ManifestSkill {
   id: string;
@@ -31,6 +36,7 @@ export interface ManifestSkill {
   version: string;
   path: string;
   description: string;
+  debugPath?: string;
 }
 
 /**
@@ -85,10 +91,14 @@ export function resolveSkillsResourcesRoot(packageRoot: string): string {
 
 /**
  * @brief Load and validate the packaged skills manifest.
+ * @details Validates each entry's `id`, `path`, and optional `debug` overlay;
+ * the overlay path is resolved relative to the skill directory. Malformed
+ * overlay declarations and missing referenced files fail the whole manifest.
  * @param resourcesRoot {string} Skills resources root directory.
  * @return {ManifestSkill[]} Manifest entries in file order.
  * @throws {Error} When the manifest is missing, malformed, or lists a missing
- * `SKILL.md` path.
+ * `SKILL.md` or debug overlay path.
+ * @satisfies REQ-152
  */
 export function loadSkillsManifest(resourcesRoot: string): ManifestSkill[] {
   const manifestPath = join(resourcesRoot, "manifest.json");
@@ -106,12 +116,20 @@ export function loadSkillsManifest(resourcesRoot: string): ManifestSkill[] {
     throw new Error(`skills manifest has no skills array: ${manifestPath}`);
   }
   return skills.map((entry) => {
-    const skill = entry as Partial<ManifestSkill>;
+    const skill = entry as Partial<ManifestSkill> & { debug?: unknown };
     if (typeof skill.id !== "string" || typeof skill.path !== "string") {
       throw new Error(`skills manifest entry is missing id or path: ${manifestPath}`);
     }
-    if (!existsSync(join(resourcesRoot, skill.path))) {
-      throw new Error(`manifest skill file not found: ${join(resourcesRoot, skill.path)}`);
+    const skillFile = join(resourcesRoot, skill.path);
+    if (!existsSync(skillFile)) {
+      throw new Error(`manifest skill file not found: ${skillFile}`);
+    }
+    if (skill.debug !== undefined && (typeof skill.debug !== "string" || skill.debug.trim() === "")) {
+      throw new Error(`manifest skill debug path is invalid: ${manifestPath}`);
+    }
+    const debugPath = typeof skill.debug === "string" ? skill.debug : undefined;
+    if (debugPath !== undefined && !existsSync(join(dirname(resolve(skillFile)), debugPath))) {
+      throw new Error(`manifest skill debug file not found: ${join(dirname(resolve(skillFile)), debugPath)}`);
     }
     return {
       id: skill.id,
@@ -119,8 +137,26 @@ export function loadSkillsManifest(resourcesRoot: string): ManifestSkill[] {
       version: skill.version ?? "",
       path: skill.path,
       description: skill.description ?? "",
+      ...(debugPath === undefined ? {} : { debugPath }),
     };
   });
+}
+
+/**
+ * @brief Build the install layout of one manifest skill.
+ * @details Resolves the declared debug overlay and whether its content must be
+ * appended to the installed `SKILL.md` (REQ-155, REQ-156). Skills without a
+ * declared overlay always resolve to the empty layout.
+ * @param skill {ManifestSkill} Manifest skill entry.
+ * @param includeDebug {boolean} True when `--debug-skills` was requested.
+ * @return {SkillContentLayout} Layout consumed by `syncSkillTree`.
+ * @satisfies REQ-155, REQ-156, REQ-157
+ */
+export function resolveSkillContentLayout(skill: ManifestSkill, includeDebug: boolean): SkillContentLayout {
+  return {
+    ...(skill.debugPath === undefined ? {} : { debugPath: skill.debugPath }),
+    includeDebug: includeDebug && skill.debugPath !== undefined,
+  };
 }
 
 /**
@@ -129,16 +165,19 @@ export function loadSkillsManifest(resourcesRoot: string): ManifestSkill[] {
  * via `applyServerRegistration` (no key or environment payload; the server
  * reads its configuration file at startup, REQ-142), then synchronizes each
  * manifest skill directory `<resourcesRoot>/<skill-id>` into
- * `<skillsDir>/<skill-id>`.
+ * `<skillsDir>/<skill-id>` with the resolved content layout: the declared
+ * debug overlay is excluded as a standalone file and appended to the installed
+ * `SKILL.md` only when `includeDebugSkills` is true.
  * Failures are collected per CLI and remaining CLIs still run.
- * @param options {object} `{ home?, resourcesRoot }`.
+ * @param options {object} `{ home?, resourcesRoot, includeDebugSkills? }`.
  * @return {CliOperationResult} Per-CLI summaries and failure diagnostics.
  * @throws {Error} When the skills manifest cannot be loaded (all CLIs fail).
- * @satisfies REQ-114, REQ-116
+ * @satisfies REQ-114, REQ-116, REQ-155, REQ-156, REQ-157
  */
 export function installEnabledCliResources(options: {
   home?: string;
   resourcesRoot: string;
+  includeDebugSkills?: boolean;
 }): CliOperationResult {
   const manifest = loadSkillsManifest(options.resourcesRoot);
   const entry = buildServerRegistration();
@@ -153,7 +192,11 @@ export function installEnabledCliResources(options: {
       applyServerRegistration(target, MCP_SERVER_NAME, entry, options.home);
       let skills = 0;
       for (const skill of manifest) {
-        syncSkillTree(join(options.resourcesRoot, skill.id), join(target.skillsDir(options.home), skill.id));
+        syncSkillTree(
+          join(options.resourcesRoot, skill.id),
+          join(target.skillsDir(options.home), skill.id),
+          resolveSkillContentLayout(skill, options.includeDebugSkills === true)
+        );
         skills += 1;
       }
       result.summaries.push({ cli: target.id, server: 1, skills });

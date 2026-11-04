@@ -928,7 +928,8 @@ export function runEnableDisableCliCommand(
  * stderr error and non-zero exit before any write (REQ-137); persists the key
  * as the settings `apiKey` field atomically (REQ-136, DES-023); then runs the
  * install operation for every enabled CLI with REQ-116 and REQ-119 semantics
- * (REQ-138). Prints a human-readable operation report on stdout (REQ-139,
+ * (REQ-138) and without the debug overlay (REQ-159). Prints a human-readable
+ * operation report on stdout (REQ-139,
  * human-readable exception to PRJ-008): the configured-key confirmation with
  * the DES-016 masked key, then one line per processed CLI with its install
  * result, or the enable hint when zero CLIs are enabled.
@@ -938,7 +939,7 @@ export function runEnableDisableCliCommand(
  * @see loadCliSettings
  * @see saveCliSettings
  * @see installEnabledCliResources
- * @satisfies REQ-136, REQ-137, REQ-138, REQ-139
+ * @satisfies REQ-136, REQ-137, REQ-138, REQ-139, REQ-159
  */
 export function runApiKeyCommand(
   key: string | undefined,
@@ -1036,18 +1037,21 @@ export function runAutoUpdateCommand(
  * @details Runs the requested operation over every enabled CLI, prints the
  * aggregate JSON result on stdout, and exits 1 when any per-CLI failure was
  * collected (REQ-116). With zero enabled CLIs prints the enable hint and
- * exits 0 (REQ-119). Diagnostics ride in the JSON `errors` array so stdout
- * stays the single machine-readable channel (PRJ-008).
+ * exits 0 (REQ-119). `install` forwards `includeDebugSkills` so each skill's
+ * declared debug overlay is appended to the installed `SKILL.md` only when
+ * REQ-154 `--debug-skills` is requested. Diagnostics ride in the JSON
+ * `errors` array so stdout stays the single machine-readable channel
+ * (PRJ-008).
  * @param operation {"install" | "uninstall"} Requested reciprocal operation.
- * @param options {object} `{ home?, resourcesRoot, streams? }`.
+ * @param options {object} `{ home?, resourcesRoot, includeDebugSkills?, streams? }`.
  * @return {number} Exit code: 0 on success or zero enabled CLIs, 1 on failures.
  * @see installEnabledCliResources
  * @see uninstallEnabledCliResources
- * @satisfies REQ-114, REQ-115, REQ-116, REQ-119
+ * @satisfies REQ-114, REQ-115, REQ-116, REQ-119, REQ-154, REQ-155, REQ-156
  */
 export function runInstallUninstallCommand(
   operation: "install" | "uninstall",
-  options: { home?: string; resourcesRoot: string; streams?: ExecStreams }
+  options: { home?: string; resourcesRoot: string; includeDebugSkills?: boolean; streams?: ExecStreams }
 ): number {
   const streams = options.streams ?? { stdout: process.stdout, stderr: process.stderr };
   if (loadCliSettings(options.home).enabled.length === 0) {
@@ -1069,7 +1073,11 @@ export function runInstallUninstallCommand(
   try {
     result =
       operation === "install"
-        ? installEnabledCliResources({ home: options.home, resourcesRoot: options.resourcesRoot })
+        ? installEnabledCliResources({
+            home: options.home,
+            resourcesRoot: options.resourcesRoot,
+            includeDebugSkills: options.includeDebugSkills === true,
+          })
         : uninstallEnabledCliResources({ home: options.home, resourcesRoot: options.resourcesRoot });
   } catch (error: unknown) {
     streams.stderr.write(
@@ -1509,13 +1517,22 @@ if (isRunDirectly || isMainModule) {
               type: "string",
               description: "Home-directory override for CLI configuration paths (default: user home)",
             })
-            .example([["$0 install", "Register the server and skills in every enabled CLI"]]),
+            .option("debug-skills", {
+              type: "boolean",
+              description: "Append each skill's packaged debug overlay to the installed SKILL.md",
+              default: false,
+            })
+            .example([
+              ["$0 install", "Register the server and skills in every enabled CLI"],
+              ["$0 install --debug-skills", "Also append the packaged debug overlay to every installed skill"],
+            ]),
         (argv) => {
           // REQ-114: registrations carry no key or environment setup; the
           // registered server reads its configuration file at startup (REQ-142).
           process.exitCode = runInstallUninstallCommand("install", {
             home: argv.home as string | undefined,
             resourcesRoot: resolveSkillsResourcesRoot(resolve(__dirname, "..")),
+            includeDebugSkills: argv.debugSkills === true,
           });
         }
       )

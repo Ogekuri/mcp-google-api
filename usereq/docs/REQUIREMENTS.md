@@ -39,7 +39,7 @@ mcp-google-map/
 │   ├── tools/
 │   │   └── maps/                # 18 MCP tool modules (NAME/DESCRIPTION/SCHEMA/ACTION)
 │   ├── resources/
-│   │   └── skills/              # LLM agent skills: manifest.json, README.md, <skill-id>/SKILL.md
+│   │   └── skills/              # LLM agent skills: manifest.json, README.md, <skill-id>/SKILL.md, <skill-id>/DEBUG.md
 │   └── utils/
 │       ├── apiKeyManager.ts     # ApiKeyManager singleton (key resolution priority)
 │       ├── autoUpdate.ts        # npm registry update check (stderr-only)
@@ -78,8 +78,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PRJ-009**: MUST provide machine-readable tool/API dependency profiles covering all 18 tools, including the tool dependencies of composite tools.
 - **PRJ-010**: MUST provide a `snippet` CLI command that prints valid MCP-client registration snippets without modifying any client configuration file.
 - **PRJ-011**: MUST provide a non-interactive `setup` CLI command that verifies local readiness without prompts or Google API calls.
-- **PRJ-012**: MUST ship LLM agent skills as self-contained English `SKILL.md` resources under `src/resources/skills/<skill-id>/`, exactly one skill per directory.
-- **PRJ-013**: MUST maintain `src/resources/skills/manifest.json` indexing every skill (id, name, version, language, path, description) plus `src/resources/skills/README.md` authoring conventions enabling new skills without source-code changes.
+- **PRJ-012**: MUST ship LLM agent skills as self-contained English `SKILL.md` resources under `src/resources/skills/<skill-id>/`, exactly one skill per directory, plus an optional `<skill-id>/DEBUG.md` debug overlay.
+- **PRJ-013**: MUST maintain `src/resources/skills/manifest.json` indexing every skill (id, name, version, language, path, description, optional `debug` overlay path) plus `src/resources/skills/README.md` authoring conventions enabling new skills without source-code changes.
 - **PRJ-014**: MUST ship the `eatspot-discovery` skill dedicated to discovering bars, pastry shops, restaurants, cafes, and bakeries.
 
 ### 2.2 Project Constraints
@@ -143,7 +143,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **DES-018**: MUST persist `{ "enabled": [<cli>...], "apiKey": "", "autoUpdate": true }` JSON at `~/.config/mcp-google-map/config.json`, tolerating missing or malformed content and writing atomically; `apiKey` follows DES-023 and `autoUpdate` follows DES-024.
 - **DES-021**: MUST derive the enabled-CLI settings directory from the distribution program name `mcp-google-map`; shared or generic directories such as `~/.config/skills/` MUST NOT be used.
 - **DES-019**: MUST apply MCP-server registration through read-modify-write preserving every unrelated configuration entry, with atomic temporary-file replacement.
-- **DES-020**: MUST synchronize packaged skills into CLI skills destinations copying all packaged files with overwrite and pruning stale files inside managed skill directories only.
+- **DES-020**: MUST synchronize packaged skills into CLI skills destinations copying packaged content files with overwrite and pruning stale files inside managed skill directories only, excluding any declared debug overlay file.
 - **DES-022**: MUST implement the idle-gated version check and self-upgrade commands in a dedicated module with injectable clock, filesystem, fetch, logger, and child-process dependencies.
 - **DES-023**: MUST persist the user-configured Google Maps API key as the `apiKey` field of the DES-018 settings file, reusing atomic write and malformed-content tolerance; unset keys persist and load as the empty string, and the legacy install placeholder value loads as unset.
 - **DES-024**: MUST persist the automatic-update enablement as the boolean `autoUpdate` field of the DES-018 settings file; missing or malformed content loads as enabled.
@@ -278,7 +278,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-123**: MUST set the idle window to 3600 seconds when a newer version is found and 86400 seconds otherwise.
 - **REQ-124**: MUST report each executed check on stderr only: `Available Version: <latest> | Installed Version: <current>` plus an upgrade command when newer and an error notice on failure; it MUST emit no output when no newer version exists.
 - **REQ-125**: MUST implement `--upgrade` to run `npm install -g mcp-google-map@latest` as a child process with inherited stdio, propagating its exit code.
-- **REQ-126**: MUST, after a successful `--upgrade` with at least one enabled CLI, run the upgraded package's `install` child command with captured stdout, refreshing skills and MCP registrations without echoing the child JSON summary.
+- **REQ-126**: MUST, after a successful `--upgrade` with at least one enabled CLI, run the upgraded package's `install` child command without `--debug-skills` with captured stdout, refreshing skills and MCP registrations without echoing the child JSON summary.
 - **REQ-127**: MUST implement `--uninstall` to run `npm uninstall -g mcp-google-map` as a child process with inherited stdio, propagating its exit code.
 - **REQ-128**: MUST print the manual package-manager command and return exit code 1 when a management child process fails to spawn.
 - **REQ-132**: MUST print on stdout a human-readable summary after a successful `--upgrade` package update stating the starting version, the updated version, and the post-upgrade install outcome.
@@ -304,10 +304,19 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-103**: The `eatspot-discovery` skill MUST define five quality grades A-E from `rating` and `user_ratings_total` thresholds plus per-grade `minRating` mapping (4.5 for A-B, 4.0 for C-E).
 - **REQ-104**: The `eatspot-discovery` skill MUST classify venues by `primary_type`/`types` preserving raw values and MUST verify meal-window compatibility through `regular_opening_hours`/`current_opening_hours`.
 - **REQ-105**: The `eatspot-discovery` skill MUST define geographic modes (3 km, 10 km, 20 km) and progressive grade search A through E stopping at five fully validated venues.
-- **REQ-106**: The `eatspot-discovery` skill MUST define output sections: search summary, validated venues, notes and limitations, and a debug JSON array logging every executed tool call with raw payloads separated from interpretations.
+- **REQ-106**: The `eatspot-discovery` skill MUST define output sections: search summary, validated venues, and notes and limitations.
 - **REQ-107**: The `eatspot-discovery` skill MUST instruct `includeRaw: true` for auditable `raw_place`/`raw` payload capture and MUST document that `pageToken` is forwarded but has no server-side effect.
 - **REQ-108**: The `eatspot-discovery` skill MUST retain a binding anti-fabrication regression case where a high-rating over-budget venue is excluded.
 - **REQ-109**: The `eatspot-discovery` skill MUST obtain its economic and quality filtering via REQ-027 and its audit payloads via REQ-030 and REQ-033.
+- **REQ-152**: A `manifest.json` skill entry MAY declare an optional `debug` path, relative to the skill directory, naming that skill's debug instructions file.
+- **REQ-153**: The `eatspot-discovery` skill MUST keep all debug-generation instructions in a dedicated packaged debug file and MUST keep `SKILL.md` free of them.
+- **REQ-154**: `install` MUST accept a `--debug-skills` boolean option defaulting to disabled.
+- **REQ-155**: `install` without `--debug-skills` MUST synchronize skill content files only, excluding every declared debug file.
+- **REQ-156**: `install` with `--debug-skills` MUST append the declared debug file content to the installed `SKILL.md` of every skill declaring one.
+- **REQ-157**: `install` MUST rewrite each installed `SKILL.md` from the packaged content before any debug append so repeated runs never duplicate the overlay.
+- **REQ-158**: `show` MUST report `OK` for a skill whose installed `SKILL.md` equals the packaged content or that content plus the declared debug file content.
+- **REQ-159**: `api-key` MUST run its post-persist install operation without the debug overlay.
+- **REQ-160**: The `eatspot-discovery` debug file MUST define the debug output section, the per-call JSON register schema, bounded raw capture, and provenance rules for every executed tool call.
 
 #### CLI Configuration Management
 - **REQ-110**: MUST resolve CLI names pi, openclaw, codex, antigravity, claude case-insensitively; unsupported names MUST fail listing supported names.
@@ -351,3 +360,5 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-015**: MUST verify PRJ-011/REQ-087/REQ-088 by running `npm test` (`tests/setupCommand.unit.test.ts`): no prompts, no network, authorized creation only, existing files preserved.
 - **TST-016**: MUST verify REQ-009/REQ-095/REQ-096 by running `npm test` (`tests/httpLifecycle.unit.test.ts`): invalid port marks startup failed, zero listening instances exit non-zero, signals close sessions and socket.
 - **TST-017**: MUST verify REQ-079/REQ-129/REQ-130/REQ-131 by running `npm test` (`tests/cliSpawn.unit.test.ts`): spawned CLI asserts `start` boots the HTTP server from an explicit env file, and no command prints help with the version header and management commands on stdout with exit 0.
+- **TST-018**: MUST verify REQ-152/REQ-154/REQ-155/REQ-156/REQ-157/REQ-158 by running `npm test` (`tests/skillDebugInstall.unit.test.ts`): temp-directory installs assert plain mode excludes the debug file, debug mode appends it once across reruns, and `show` reports OK for both modes.
+- **TST-019**: MUST verify REQ-153/REQ-160 by running `npm test` (`tests/eatspotSkillContract.unit.test.ts`): the packaged `SKILL.md` carries no debug section while the packaged debug file carries the register, capture, and provenance rules.

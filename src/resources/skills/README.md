@@ -9,8 +9,11 @@ src/resources/skills/
 ├── manifest.json              # machine-readable registry of all skills
 ├── README.md                  # this authoring guide
 └── <skill-id>/                # exactly one skill per directory
-    └── SKILL.md               # the skill (English, self-contained)
+    ├── SKILL.md               # the skill (English, self-contained)
+    └── DEBUG.md               # optional debug overlay (never part of SKILL.md)
 ```
+
+Debug instructions are never embedded in `SKILL.md`. A skill that needs a debug section ships it in a dedicated overlay file declared by the manifest `debug` field; `mcp-google-map install` copies content files only and appends the overlay to the installed `SKILL.md` solely when `--debug-skills` is passed. The default install therefore produces a skill with no debug instructions.
 
 ## SKILL.md format (Agent Skills compatible: pi, OpenClaw, and similar hosts)
 
@@ -24,8 +27,9 @@ src/resources/skills/
 ## Adding a new skill
 
 1. Create `src/resources/skills/<skill-id>/SKILL.md` following the format above.
-2. Append one entry to `manifest.json` (`id`, `name`, `version`, `language`, `path`, `description`, optional `adaptedFrom`). Keep `name` equal to `id` and `path` relative to this directory.
-3. Commit both changes together. No other project file needs to change.
+2. Optional: create `src/resources/skills/<skill-id>/DEBUG.md` holding every debug instruction, and declare it as `"debug": "DEBUG.md"` in the manifest entry. Keep `SKILL.md` free of debug instructions.
+3. Append one entry to `manifest.json` (`id`, `name`, `version`, `language`, `path`, `description`, optional `debug`, optional `adaptedFrom`). Keep `name` equal to `id`, `path` relative to this directory, and `debug` relative to the skill directory.
+4. Commit both changes together. No other project file needs to change.
 
 ## Registry entry schema
 
@@ -37,4 +41,5 @@ src/resources/skills/
 | `language` | yes | ISO language code of the skill body (`en` by policy). |
 | `path` | yes | Path of `SKILL.md` relative to this directory. |
 | `description` | yes | Short routing summary; consistent with the front-matter `description`. |
+| `debug` | no | Debug overlay path relative to the skill directory (convention: `DEBUG.md`); appended to the installed `SKILL.md` only with `install --debug-skills`. |
 | `adaptedFrom` | no | Provenance note when the skill derives from an external source document. |
