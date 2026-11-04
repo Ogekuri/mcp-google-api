@@ -1,4 +1,4 @@
-# Release (npm): ONE integrated release process — master gate, build, verify,
+# Release (npm): ONE integrated release process — master gate, build, pack,
 # publish, changelog, GitHub Release — all in a single workflow job
 # (PKG-027). Triggered only by canonical version tags (PKG-008); branch
 # pushes and pull requests never start it. The master-reachability check is
@@ -6,13 +6,9 @@
 # install, build, pack, or publish step when the tagged commit is not
 # reachable from origin/master, so a tag on develop never builds
 # (PKG-009, PKG-028). The package build and tarball packing run
-# exclusively here, never in the CI workflow (PKG-026). Before publishing,
-# the packed tarball is installed into the runner environment (temporary
-# global install) and smoke-checked with `doctor` local mode: zero Google
-# API calls, so the installed package is verified without credentials
-# (PKG-021). Additional verification guarantee: `npm publish` runs the
-# `prepublishOnly` lifecycle hook (typecheck + unit tests + build) defined
-# in package.json (PKG-005).
+# exclusively in this release workflow (PKG-026). No tests run in the
+# release pipeline; `npm publish` runs the `prepublishOnly` lifecycle hook
+# (version guard + build) defined in package.json (PKG-005).
 name: Release (npm)
 
 on:
@@ -30,8 +26,8 @@ env:
 
 jobs:
   # Single integrated release process (PKG-027): the branch gate, build,
-  # package verification, npm publish, changelog, and GitHub Release all run
-  # in this one job — no parallel or separate release jobs exist.
+  # pack, npm publish, changelog, and GitHub Release all run in this one
+  # job — no parallel or separate release jobs exist.
   release:
     runs-on: ubuntu-24.04
 
@@ -69,32 +65,20 @@ jobs:
       - name: Build if present
         run: npm run build --if-present
 
-      # Release-only package artifact verification (PKG-026, PKG-021): the
-      # packed tarball is installed into the runner environment and smoke-checked
-      # with `doctor` local mode before anything is published.
-      - name: Pack npm tarball for verification
+      # Release asset packed once (PKG-012): the built npm tarball, not raw
+      # sources. No tests run in the release pipeline; the development-phase
+      # minimum verification stays local (PKG-019).
+      - name: Pack npm tarball (release asset)
         run: npm pack
-
-      - name: Install packed tarball into temporary environment
-        run: npm install -g ./mcp-google-map-*.tgz
-
-      - name: Installed-package smoke test (no Google API calls)
-        run: mcp-google-map doctor
-        env:
-          GOOGLE_MAPS_API_KEY: release-smoke-placeholder-key
 
       - name: Remove private package flag
         run: npm pkg delete private
 
-      # npm publish triggers `prepublishOnly` (typecheck + unit tests + build).
+      # npm publish triggers `prepublishOnly` (version guard + build, PKG-005).
       - name: Publish package to npm
         run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      # Project adaptation: the release asset is the built npm tarball, not raw sources.
-      - name: Pack npm tarball (release asset)
-        run: npm pack
 
       - name: Build Changelog
         id: build_changelog

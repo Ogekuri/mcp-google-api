@@ -1,26 +1,27 @@
 /**
- * @file Static contract suite for the GitHub Actions workflow definitions.
- * @details UUT: the tracked workflow YAML contracts themselves (`.github/workflows/ci.yml`,
- * `.github/workflows/release-npm.yml`) — the behavior contract IS the file content, so the
- * suite reads the tracked, immutable inputs directly. Level 0 (atomic static assertions;
- * no internal call-graph dependencies). External dependencies to isolate: none beyond
- * `node:fs` reads of repository-tracked files (deterministic by design; no network,
- * no clock, no environment dependence).
+ * @file Static contract suite for the GitHub Actions release workflow contract.
+ * @details UUT: the tracked workflow YAML contract itself (`.github/workflows/release-npm.yml`)
+ * plus the enforced absence of the removed CI workflow (`.github/workflows/ci.yml`) — the
+ * behavior contract IS the file content, so the suite reads the tracked, immutable inputs
+ * directly. Level 0 (atomic static assertions; no internal call-graph dependencies).
+ * External dependencies to isolate: none beyond `node:fs` reads of repository-tracked files
+ * (deterministic by design; no network, no clock, no environment dependence).
  *
  * Contract under test (PKG mapping):
- * - CI runs on push/PR across three OSes with lockfile install, typecheck, and unit
- *   tests only; it MUST NOT build, pack, install, or smoke-check the package (PKG-004,
- *   PKG-026).
- * - The release workflow is the only place where the package is built, verified, and
- *   published, in exactly one integrated job (PKG-027) gated on a canonical version
- *   tag whose commit is reachable from master (PKG-008, PKG-009); a non-master tag
- *   fails the gate before any install/build/pack/publish step (PKG-028), and the
- *   tarball install and `doctor` smoke check run before publishing (PKG-021). The npm release
- *   pipeline is defined in the `.github/workflows/release-npm.yml` file (PKG-029).
+ * - The CI automation is removed: `.github/workflows/ci.yml` MUST NOT exist; the
+ *   development-phase minimum verification stays available as local npm commands on the
+ *   developer platform only (`npm run typecheck`, `npm test`, `npm run verify` per PKG-019).
+ * - The release workflow is the only GitHub Actions workflow: triggered by a canonical
+ *   version tag (PKG-008, PKG-029), one integrated job (PKG-027) gated on a tagged commit
+ *   reachable from master (PKG-009), failing before any install/build/pack/publish step
+ *   otherwise (PKG-028). Build and pack run exclusively here (PKG-026); the pipeline
+ *   defines NO typecheck, unit-test, verify, or smoke-check step (release-time testing
+ *   removed; PKG-019 keeps the minimum verification local). The npm release pipeline is
+ *   defined in `.github/workflows/release-npm.yml` (PKG-029).
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -34,39 +35,18 @@ const RELEASE_WORKFLOW_PATH = join(PROJECT_ROOT, ".github", "workflows", "releas
  * during the test run, so caching is unnecessary. Missing files fail the test.
  * @param absolutePath {string} Absolute workflow file path.
  * @return {string} Raw YAML text of the workflow file.
+ * @throws {Error} When the workflow file does not exist or cannot be read.
  */
 function readWorkflow(absolutePath: string): string {
   return readFileSync(absolutePath, "utf-8");
 }
 
-test("CI workflow locks the three-OS verification matrix", () => {
-  const workflow = readWorkflow(CI_WORKFLOW_PATH);
-  assert.equal(workflow.includes("ubuntu-latest"), true);
-  assert.equal(workflow.includes("macos-latest"), true);
-  assert.equal(workflow.includes("windows-latest"), true);
-  assert.equal(workflow.includes("fail-fast: false"), true);
-});
-
-test("CI workflow installs from the lockfile and runs the verification stages", () => {
-  const workflow = readWorkflow(CI_WORKFLOW_PATH);
-  assert.equal(workflow.includes("npm ci"), true);
-  assert.equal(workflow.includes("npm run typecheck"), true);
-  assert.equal(workflow.includes("npm test"), true);
-  // Live e2e suite must stay excluded from CI run steps (no API key, no Google calls;
-  // mentioning it in comments is allowed).
-  assert.equal(workflow.includes("run: npm run test:e2e"), false);
-});
-
-test("CI workflow MUST NOT build, pack, install, or smoke-check the package", () => {
-  // PKG-026: the package build and tarball packing are exclusive to the
-  // release workflow, so no CI step may build, pack, install the tarball,
-  // or run the installed-package doctor smoke check.
-  const workflow = readWorkflow(CI_WORKFLOW_PATH);
-  assert.equal(workflow.includes("run: npm run build"), false);
-  assert.equal(workflow.includes("run: npm pack"), false);
-  assert.equal(workflow.includes("npm install -g ./mcp-google-map-*.tgz"), false);
-  assert.equal(workflow.includes("run: mcp-google-map doctor"), false);
-  assert.equal(workflow.includes("GOOGLE_MAPS_API_KEY: ci-smoke-placeholder-key"), false);
+test("CI workflow automation is removed from the repository", () => {
+  // CI automation removed: the development-phase minimum verification runs
+  // locally via npm commands (PKG-019) on the developer platform; no
+  // push/PR workflow file may exist.
+  const expected_output = false;
+  assert.equal(existsSync(CI_WORKFLOW_PATH), expected_output);
 });
 
 test("Release workflow is triggered only by a canonical version tag push", () => {
@@ -79,10 +59,10 @@ test("Release workflow is triggered only by a canonical version tag push", () =>
 
 test("Release workflow gates the single integrated job on the tagged master commit", () => {
   // PKG-009/PKG-027/PKG-028: exactly one release job hosts the branch gate,
-  // build, verification, and publish. No separate or parallel release jobs
-  // exist, and the gate command precedes every dependency install, build,
-  // pack, and publish step, so a tag not reachable from origin/master (e.g.
-  // a tag on develop) fails before anything builds.
+  // build, pack, and publish. No separate or parallel release jobs exist, and
+  // the gate command precedes every dependency install, build, pack, and
+  // publish step, so a tag not reachable from origin/master (e.g. a tag on
+  // develop) fails before anything builds.
   const workflow = readWorkflow(RELEASE_WORKFLOW_PATH);
   assert.equal(workflow.includes("check-branch:"), false);
   assert.equal(workflow.includes("needs: check-branch"), false);
@@ -93,30 +73,39 @@ test("Release workflow gates the single integrated job on the tagged master comm
   const packIdx = workflow.indexOf("run: npm pack");
   const publishIdx = workflow.indexOf("run: npm publish --provenance --access public");
   assert.notEqual(installIdx, -1);
+  assert.notEqual(buildIdx, -1);
+  assert.notEqual(packIdx, -1);
+  assert.notEqual(publishIdx, -1);
   assert.equal(gateIdx < installIdx, true);
   assert.equal(gateIdx < buildIdx, true);
   assert.equal(gateIdx < packIdx, true);
   assert.equal(gateIdx < publishIdx, true);
 });
 
-test("Release workflow builds, verifies, and publishes the package before release assets", () => {
-  // PKG-008/PKG-021: the release job builds the package, packs the tarball,
-  // installs it into a temporary environment, and runs the no-Google doctor
-  // smoke check — all strictly before `npm publish` so only a verified build
-  // is published; the tarball is attached to the GitHub Release.
+test("Release workflow defines no typecheck, unit-test, verify, or smoke-check step", () => {
+  // Release-time testing removed: the release pipeline builds, packs, and
+  // publishes without running typecheck, unit tests, the verify pipeline,
+  // or the installed-package doctor smoke check. The development-phase
+  // minimum verification stays local (PKG-019); PKG-026 keeps build/pack
+  // exclusive to this workflow.
   const workflow = readWorkflow(RELEASE_WORKFLOW_PATH);
-  const buildIdx = workflow.indexOf("run: npm run build");
+  assert.equal(workflow.includes("run: npm run typecheck"), false);
+  assert.equal(workflow.includes("run: npm test"), false);
+  assert.equal(workflow.includes("run: npm run verify"), false);
+  assert.equal(workflow.includes("run: npm run test:e2e"), false);
+  assert.equal(workflow.includes("run: mcp-google-map doctor"), false);
+  assert.equal(workflow.includes("GOOGLE_MAPS_API_KEY: release-smoke-placeholder-key"), false);
+});
+
+test("Release workflow publishes with provenance and attaches the packed tarball", () => {
+  // PKG-010/PKG-012: publish uses provenance attestation and public access;
+  // the release asset is the packed npm tarball, failing on unmatched files;
+  // the tarball is packed before the release step attaches it.
+  const workflow = readWorkflow(RELEASE_WORKFLOW_PATH);
   const packIdx = workflow.indexOf("run: npm pack");
-  const installIdx = workflow.indexOf("npm install -g ./mcp-google-map-*.tgz");
-  const smokeIdx = workflow.indexOf("run: mcp-google-map doctor");
-  const publishIdx = workflow.indexOf("run: npm publish --provenance --access public");
-  assert.notEqual(buildIdx, -1);
-  assert.notEqual(packIdx, -1);
-  assert.notEqual(installIdx, -1);
-  assert.notEqual(smokeIdx, -1);
-  assert.notEqual(publishIdx, -1);
-  assert.equal(workflow.includes("GOOGLE_MAPS_API_KEY: release-smoke-placeholder-key"), true);
-  assert.equal(packIdx < publishIdx, true);
-  assert.equal(installIdx < publishIdx, true);
-  assert.equal(smokeIdx < publishIdx, true);
+  const releaseIdx = workflow.indexOf("files: mcp-google-map-*.tgz");
+  assert.notEqual(releaseIdx, -1);
+  assert.equal(workflow.includes("run: npm publish --provenance --access public"), true);
+  assert.equal(workflow.includes("fail_on_unmatched_files: true"), true);
+  assert.equal(packIdx < releaseIdx, true);
 });

@@ -22,7 +22,7 @@ Project file/folder structure (evidence: repository tree):
 
 ```
 mcp-google-map/
-├── .github/workflows/           # GitHub Actions: ci.yml (push/PR checks), release-npm.yml (npm tag releases)
+├── .github/workflows/           # GitHub Actions: release-npm.yml (npm tag releases)
 ├── docs/                        # Usage docs (CONFIGURATION.md, TOOLS.md)
 ├── scripts/                     # Shell helpers: build.sh, setup.sh, start-http.sh, start-mcp.sh, test.sh
 ├── src/
@@ -97,11 +97,10 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-001**: MUST keep `README.md` free of placeholder markers and of badges that do not match the Node.js runtime declared in `package.json` `engines`.
 - **PKG-002**: MUST resolve every `README.md` navigation-menu anchor to an existing section heading in the same document.
 - **PKG-003**: MUST document in `README.md` a prebuilt-package-first Quick Start and installation paths: npm install, one-shot `npx`, and from-source build via cross-platform npm commands.
-- **PKG-004**: MUST run a GitHub Actions CI workflow on push and pull_request across Linux, macOS, and Windows that installs dependencies with the lockfile, typechecks, and runs unit tests excluding live e2e tests.
-- **PKG-005**: MUST define a `prepublishOnly` script in `package.json` that runs the version guard, typecheck, unit tests, and build before any `npm publish`.
+- **PKG-005**: MUST define a `prepublishOnly` script in `package.json` that runs the version guard and build before any `npm publish`.
 - **PKG-006**: MUST set one identical non-`0.0.0` semantic version across `package.json`, `package-lock.json`, and the `README.md` title for every published release.
 - **PKG-007**: MUST print only the distribution package name `mcp-google-map` in user-facing doctor messages.
-- **PKG-008**: MUST trigger the release workflow only on pushed tags matching `v[0-9]+.[0-9]+.[0-9]+` whose commit is reachable from `master`, building, verifying, and publishing the package.
+- **PKG-008**: MUST trigger the release workflow only on pushed tags matching `v[0-9]+.[0-9]+.[0-9]+` whose commit is reachable from `master`, building and publishing the package.
 - **PKG-009**: MUST gate the single release job (PKG-027) on a branch check that requires the tagged commit on `origin/master` before any build or publish step.
 - **PKG-010**: MUST publish the package to npm from the release workflow with provenance attestation and `--access public` using `NPM_TOKEN`.
 - **PKG-011**: MUST generate the GitHub Release body from a commit-based changelog (`mode: COMMIT`) categorizing commits by conventional-commit title prefix, with the category set, ignore labels, transformer, ASC `mergedAt` sort, and compare-link template.
@@ -114,13 +113,12 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-018**: MUST document in `README.md` the migration of the HTTP default bind from `0.0.0.0` to loopback `127.0.0.1`, including the `--host 0.0.0.0` opt-in.
 - **PKG-019**: MUST provide a single `npm run verify` pipeline (typecheck, unit tests, build) and keep helper scripts free of implicit chained install/build steps.
 - **PKG-020**: MUST document developer setup using lockfile-based `npm ci` and cross-platform npm commands in `README.md`.
-- **PKG-021**: MUST install the packed tarball into a temporary environment and run the installed `doctor` local smoke check without Google API calls in the release workflow before publishing.
 - **PKG-022**: MUST keep every documented example consistent with supported CLI flags, headers, and transports.
 - **PKG-023**: MUST document `enable`, `disable`, `install`, `uninstall`, and `show` commands with supported CLI targets in README.md.
 - **PKG-024**: MUST ship `src/resources/skills` inside the published npm package so `install` and `show` resolve manifest skills from installed packages.
 - **PKG-025**: MUST document the `api-key` command as the only API-key configuration path and the stdio startup key guard in README.md.
 - **PKG-026**: MUST restrict GitHub Actions package build and tarball packing to the release workflow triggered by a version tag gated on master (PKG-008, PKG-009).
-- **PKG-027**: MUST run the release pipeline (branch gate, build, verification, publish, changelog, GitHub Release) in exactly one workflow job with no parallel or separate release jobs.
+- **PKG-027**: MUST run the release pipeline (branch gate, build, pack, publish, changelog, GitHub Release) in exactly one workflow job with no parallel or separate release jobs.
 - **PKG-028**: MUST fail the release job before any dependency install, build, pack, or publish step when the tagged commit is not reachable from `origin/master`, so `develop` tags never build.
 - **PKG-029**: MUST define the npm release workflow in the file `.github/workflows/release-npm.yml` implementing the PKG-008 tag-triggered release pipeline.
 
@@ -366,4 +364,4 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-017**: MUST verify REQ-079/REQ-129/REQ-130/REQ-131 by running `npm test` (`tests/cliSpawn.unit.test.ts`): spawned CLI asserts `start` boots the HTTP server from an explicit env file, and no command prints help with the version header and management commands on stdout with exit 0.
 - **TST-018**: MUST verify REQ-152/REQ-154/REQ-155/REQ-156/REQ-157/REQ-158 by running `npm test` (`tests/skillDebugInstall.unit.test.ts`): temp-directory installs assert plain mode excludes the debug file, debug mode appends it once across reruns, and `show` reports OK for both modes.
 - **TST-019**: MUST verify REQ-153/REQ-160 by running `npm test` (`tests/eatspotSkillContract.unit.test.ts`): the packaged `SKILL.md` carries no debug section while the packaged debug file carries the register, capture, and provenance rules.
-- **TST-020**: MUST verify PKG-008/PKG-009/PKG-021/PKG-026/PKG-027/PKG-028/PKG-029 by running `npm test` (`tests/ciContract.unit.test.ts`): CI excludes build/pack/smoke steps; the release job gates, builds, verifies, and publishes behind the integrated master check defined in `release-npm.yml`.
+- **TST-020**: MUST verify PKG-008/PKG-009/PKG-026/PKG-027/PKG-028/PKG-029 by running `npm test` (`tests/ciContract.unit.test.ts`): `.github/workflows/ci.yml` is absent and the release job gates before install/build/pack/publish with no typecheck, unit-test, or smoke-check step in `release-npm.yml`.
