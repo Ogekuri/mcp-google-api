@@ -6,7 +6,9 @@
  * cache that suppresses registry requests while the previously computed idle
  * deadline is still in the future (REQ-121); `--ver`/`--version` force one
  * check bypassing the idle gate and print the installed version (REQ-120);
- * `--upgrade` reinstalls the latest package via npm, re-runs the upgraded
+ * `--upgrade` first probes the registry and proceeds only when an upgrade is
+ * necessary or necessity is undeterminable (REQ-144, REQ-145, REQ-146,
+ * REQ-147), reinstalls the latest package via npm, re-runs the upgraded
  * package's `install` child command with captured stdout so packaged skills
  * and MCP registrations refresh from the upgraded package (REQ-125, REQ-126),
  * and prints a human-readable stdout summary with starting/updated versions,
@@ -25,6 +27,7 @@ import {
   probeLatestVersion,
   type AutoUpdateCheckerDeps,
   type AutoUpdateLogger,
+  type LatestVersionProbe,
 } from "./autoUpdate.js";
 import { loadCliSettings } from "./cliSettings.js";
 
@@ -699,18 +702,42 @@ export async function runVersionCommand(
 }
 
 /**
- * @brief Handles `--upgrade`: reinstall the latest package, then refresh skills with a stdout summary.
- * @details Runs `npm install -g mcp-google-map@latest` with inherited stdio
- * and propagates a non-zero exit code unchanged without printing any summary;
- * on success resolves the updated version via one registry probe (REQ-134),
- * runs the captured-stdout post-upgrade install (REQ-126), prints the
+ * @brief Decides whether the `--upgrade` flow must proceed after the pre-upgrade check.
+ * @details Decision table over `LatestVersionProbe.status`: `newer` -> true
+ * (REQ-146); `current` -> false (REQ-145: the installed version is already
+ * the latest available); `disabled`, `unknown-version`, `error` -> true
+ * (REQ-147: upgrade necessity undeterminable, legacy update path preserved).
+ * @param status {LatestVersionProbe["status"]} Status of the pre-upgrade registry probe.
+ * @return {boolean} True when the REQ-125 package-update child process must run.
+ * @satisfies REQ-144, REQ-145, REQ-146, REQ-147
+ * @note Complexity: O(1). Pure; no side effects.
+ * @see probeLatestVersion
+ */
+function isUpgradeNecessary(status: LatestVersionProbe["status"]): boolean {
+  return status !== "current";
+}
+
+/**
+ * @brief Handles `--upgrade`: check upgrade necessity, reinstall the latest package, then refresh skills with a stdout summary.
+ * @details Resolution order: one forced logging-free `probeLatestVersion`
+ * registry probe bypassing the idle cache gate (REQ-144) -> `current` status
+ * writes the already-latest stdout line including the installed version and
+ * returns 0 without spawning any child process (REQ-145) -> any other
+ * outcome proceeds to the update path (`newer` per REQ-146;
+ * `disabled`/`unknown-version`/`error` per REQ-147). The update path runs
+ * `npm install -g mcp-google-map@latest` with inherited stdio and propagates
+ * a non-zero exit code unchanged without printing any summary; on success
+ * resolves the updated version via one registry probe (REQ-134), runs the
+ * captured-stdout post-upgrade install (REQ-126), prints the
  * human-readable stdout summary with starting version, updated version,
  * install outcome, and per-CLI entries (REQ-132, REQ-133), and returns the
  * post-upgrade install exit code.
  * @param options {ManagementCommandOptions} Options carrying `currentVersion` and `home`.
  * @param deps {ManagementCommandDeps} Optional spawner/idle-check/stdout overrides.
- * @return {Promise<number>} Upgrade exit code when non-zero; otherwise the post-upgrade install exit code.
- * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135
+ * @return {Promise<number>} 0 when the installed version is already the latest available; otherwise the upgrade exit code when non-zero, else the post-upgrade install exit code.
+ * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-144, REQ-145, REQ-146, REQ-147
+ * @see probeLatestVersion
+ * @see isUpgradeNecessary
  * @see runPackageManagerCommand
  * @see resolveUpdatedVersion
  * @see runPostUpgradeSkillInstall
@@ -720,6 +747,17 @@ export async function runUpgradeCommand(
   options: ManagementCommandOptions,
   deps: ManagementCommandDeps = {}
 ): Promise<number> {
+  const precheck = await probeLatestVersion({
+    ...deps.idleCheck,
+    currentVersion: options.currentVersion,
+  });
+  if (!isUpgradeNecessary(precheck.status)) {
+    const stdout = deps.stdout ?? process.stdout;
+    stdout.write(
+      `${DEFAULT_PACKAGE_NAME} ${options.currentVersion} is already the latest available version.\n`
+    );
+    return 0;
+  }
   const upgraded = runPackageManagerCommand(PACKAGE_UPGRADE_COMMAND, deps);
   if (upgraded !== 0) {
     return upgraded;

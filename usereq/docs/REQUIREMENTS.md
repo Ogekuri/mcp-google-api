@@ -284,6 +284,10 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-133**: MUST list in the `--upgrade` summary one entry per processed CLI with its name and per-CLI install result.
 - **REQ-134**: MUST print `unknown` as the updated version in the `--upgrade` summary when the post-upgrade latest-version probe fails.
 - **REQ-135**: MUST derive the `--upgrade` summary CLI list from persisted enabled settings when the child `install` output is absent or unparseable.
+- **REQ-144**: `--upgrade` MUST first run one online npm-registry latest-version check comparing the installed version, bypassing the idle cache gate, before spawning any child process.
+- **REQ-145**: When the pre-upgrade check reports no newer version, `--upgrade` MUST print on stdout that the installed version is the latest available including the version number, terminate with exit code 0, and spawn no child process.
+- **REQ-146**: `--upgrade` MUST proceed with the REQ-125 package update, the REQ-126 post-upgrade install, and the REQ-132 summary exactly when the pre-upgrade check reports a newer available version.
+- **REQ-147**: When the pre-upgrade check cannot determine a newer version (`MCP_AUTO_UPDATE_DISABLED` set, installed version unknown, or probe failure), `--upgrade` MUST proceed with the package update.
 
 #### Skill Resources
 - **REQ-097**: Each skill MUST provide a `SKILL.md` with YAML front matter `name` (1-64 lowercase ASCII letters, digits, hyphens, matching the directory name) and non-empty `description`.
