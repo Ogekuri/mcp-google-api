@@ -253,7 +253,7 @@ export async function checkForUpdates(
 
 /** Default GitHub releases API URL resolving the latest published release of the distribution repository. */
 export const DEFAULT_GITHUB_RELEASES_API_URL =
-  "https://api.github.com/repos/cablate/mcp-google-map/releases/latest";
+  "https://api.github.com/repos/Ogekuri/mcp-google-map/releases/latest";
 
 /**
  * @brief Dependency injection surface of `probeLatestGitHubVersion`.
