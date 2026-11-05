@@ -100,8 +100,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-005**: MUST define a `prepublishOnly` script in `package.json` that runs the version guard and build before any `npm publish`.
 - **PKG-006**: MUST set one identical non-`0.0.0` semantic version across `package.json`, `package-lock.json`, and the `README.md` title for every published release.
 - **PKG-007**: MUST print only the distribution package name `mcp-google-map` in user-facing doctor messages.
-- **PKG-008**: MUST trigger the release workflow only on pushed tags matching `v[0-9]+.[0-9]+.[0-9]+` whose commit is reachable from `master`, building and publishing the package.
-- **PKG-009**: MUST gate the single release job (PKG-027) on a branch check that requires the tagged commit on `origin/master` before any build or publish step.
+- **PKG-008**: MUST trigger the release workflow only on pushed tags matching `v[0-9]+.[0-9]+.[0-9]+` whose commit is reachable from `master` or `develop`.
+- **PKG-009**: MUST resolve the tagged commit's reachability from `origin/master` and `origin/develop` in one gate step preceding every install, build, pack, and publish step.
 - **PKG-010**: MUST publish the package to npm from the release workflow via npm OIDC Trusted Publishing with provenance attestation and `--access public`, without long-lived npm tokens.
 - **PKG-011**: MUST generate the GitHub Release body from a commit-based changelog (`mode: COMMIT`) categorizing commits by conventional-commit title prefix, with the category set, ignore labels, transformer, ASC `mergedAt` sort, and compare-link template.
 - **PKG-012**: MUST attach the npm package tarball (not raw sources) as the GitHub Release asset, failing the release on unmatched files.
@@ -117,9 +117,9 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-023**: MUST document `enable`, `disable`, `install`, `uninstall`, and `show` commands with supported CLI targets in README.md.
 - **PKG-024**: MUST ship `src/resources/skills` inside the published npm package so `install` and `show` resolve manifest skills from installed packages.
 - **PKG-025**: MUST document the `api-key` command as the only API-key configuration path and the stdio startup key guard in README.md.
-- **PKG-026**: MUST restrict GitHub Actions package build and tarball packing to the release workflow triggered by a version tag gated on master (PKG-008, PKG-009).
+- **PKG-026**: MUST restrict GitHub Actions package build and tarball packing to the release workflow triggered by a version tag passing the branch gate (PKG-008, PKG-009).
 - **PKG-027**: MUST run the release pipeline (branch gate, build, pack, publish, changelog, GitHub Release) in exactly one workflow job with no parallel or separate release jobs.
-- **PKG-028**: MUST fail the release job before any dependency install, build, pack, or publish step when the tagged commit is not reachable from `origin/master`, so `develop` tags never build.
+- **PKG-028**: MUST fail the release job before any dependency install, build, pack, or publish step when the tagged commit is reachable from neither `origin/master` nor `origin/develop`, so foreign-branch tags never build.
 - **PKG-029**: MUST define the npm release workflow in the file `.github/workflows/release-npm.yml` implementing the PKG-008 tag-triggered release pipeline.
 - **PKG-030**: MUST grant the release job `id-token: write` permission so `npm publish` authenticates through the GitHub Actions OIDC token.
 - **PKG-031**: MUST NOT reference the `NPM_TOKEN` secret or set `NODE_AUTH_TOKEN` anywhere in the release workflow.
@@ -133,6 +133,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-039**: MUST NOT declare `"private": true` in `package.json`, keeping the package publishable under npm registry policy.
 - **PKG-040**: MUST declare one registry-valid package name (lowercase, URL-safe, max 214 characters) in `package.json` and `package-lock.json`.
 - **PKG-041**: MUST run GitHub Actions workflow steps on the Node.js 24 runner runtime using action versions built for Node.js 24.
+- **PKG-042**: MUST run the release `npm publish` step only when the gate resolves the tagged commit as reachable from `origin/master`.
+- **PKG-043**: MUST run build, pack, changelog, and GitHub Release creation with the tarball asset for tags reachable from `origin/develop` but not `origin/master`, skipping only npm publication.
 
 ## 3. Requirements
 
@@ -376,5 +378,5 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-017**: MUST verify REQ-079/REQ-129/REQ-130/REQ-131 by running `npm test` (`tests/cliSpawn.unit.test.ts`): spawned CLI asserts `start` boots the HTTP server from an explicit env file, and no command prints help with the version header and management commands on stdout with exit 0.
 - **TST-018**: MUST verify REQ-152/REQ-154/REQ-155/REQ-156/REQ-157/REQ-158 by running `npm test` (`tests/skillDebugInstall.unit.test.ts`): temp-directory installs assert plain mode excludes the debug file, debug mode appends it once across reruns, and `show` reports OK for both modes.
 - **TST-019**: MUST verify REQ-153/REQ-160 by running `npm test` (`tests/eatspotSkillContract.unit.test.ts`): the packaged `SKILL.md` carries no debug section while the packaged debug file carries the register, capture, and provenance rules.
-- **TST-020**: MUST verify PKG-008/PKG-009/PKG-010/PKG-026/PKG-027/PKG-028/PKG-029/PKG-030/PKG-031/PKG-032 by running `npm test` (`tests/ciContract.unit.test.ts`): `.github/workflows/ci.yml` is absent, the release job gates before install/build/pack/publish with no typecheck, unit-test, or smoke-check step, and publish authenticates via OIDC Trusted Publishing with `id-token: write`, no `NPM_TOKEN`/`NODE_AUTH_TOKEN`, and npm >= 11.5.1 on the pinned Node runtime.
+- **TST-020**: MUST verify PKG-008/PKG-009/PKG-010/PKG-026/PKG-027/PKG-028/PKG-029/PKG-030/PKG-031/PKG-032/PKG-042/PKG-043 by running `npm test` (`tests/ciContract.unit.test.ts`): `.github/workflows/ci.yml` is absent, the single release job resolves master and develop reachability before any install/build/pack/publish step, fails on neither-branch tags, gates `npm publish` on master reachability while develop-only tags build, pack, and release without publishing, and publish authenticates via OIDC Trusted Publishing with `id-token: write`, no `NPM_TOKEN`/`NODE_AUTH_TOKEN`, and npm >= 11.5.1 on the pinned Node runtime.
 - **TST-021**: MUST verify PKG-033/PKG-034/PKG-035/PKG-036/PKG-037/PKG-038/PKG-039/PKG-040 by running `npm test` (`tests/npmPublishContract.unit.test.ts`): metadata, lockfile identity, and `npm pack --dry-run` tarball-list assertions pass.

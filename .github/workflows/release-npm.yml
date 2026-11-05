@@ -1,11 +1,14 @@
-# Release (npm): ONE integrated release process — master gate, build, pack,
+# Release (npm): ONE integrated release process — branch gate, build, pack,
 # publish, changelog, GitHub Release — all in a single workflow job
 # (PKG-027). Triggered only by canonical version tags (PKG-008); branch
-# pushes and pull requests never start it. The master-reachability check is
-# the first step of this job and fails the run before any dependency
-# install, build, pack, or publish step when the tagged commit is not
-# reachable from origin/master, so a tag on develop never builds
-# (PKG-009, PKG-028). The package build and tarball packing run
+# pushes and pull requests never start it. The branch gate is the first
+# step of this job: it resolves the tagged commit's reachability from
+# origin/master and origin/develop (PKG-009) and fails the run before any
+# dependency install, build, pack, or publish step when neither branch
+# contains the tag (PKG-028). npm publication runs only when the tag is
+# reachable from origin/master (PKG-042); tags reachable from develop but
+# not master build, pack, and create the GitHub Release without publishing
+# to npm (PKG-043). The package build and tarball packing run
 # exclusively in this release workflow (PKG-026). No tests run in the
 # release pipeline; `npm publish` runs the `prepublishOnly` lifecycle hook
 # (version guard + build) defined in package.json (PKG-005). npm
@@ -41,19 +44,37 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Master gate (PKG-009): integrated as the first step of the single
-      # release job. A version tag whose commit is not reachable from
-      # origin/master (e.g. a tag pushed on develop) fails here with exit 1,
-      # before any dependency installation, build, pack, or publish step
-      # runs (PKG-028).
-      - name: Check if tag is on master
+      # Branch gate (PKG-009): integrated as the first step of the single
+      # release job. The gate resolves the tagged commit's reachability
+      # from origin/master and origin/develop and exports both outcomes as
+      # step outputs consumed by the publish step. A version tag reachable
+      # from neither branch fails here with exit 1, before any dependency
+      # installation, build, pack, or publish step runs (PKG-028). npm
+      # publication runs only for master-reachable tags (PKG-042);
+      # develop-only tags build, pack, and create the GitHub Release
+      # without publishing to npm (PKG-043).
+      - name: Check tag branch (master or develop)
+        id: branch_gate
         run: |
-          git fetch origin master
+          git fetch origin master develop
+          on_master=false
+          on_develop=false
           if git branch -r --contains ${GITHUB_SHA} | grep -q "origin/master"; then
-            echo "✅ Tag ${{ github.ref }} is on master branch. Proceeding with release."
-          else
-            echo "::error::Tag ${{ github.ref }} is not reachable from origin/master. Release builds run only for master version tags (PKG-008, PKG-009, PKG-028); no build is performed."
+            on_master=true
+          fi
+          if git branch -r --contains ${GITHUB_SHA} | grep -q "origin/develop"; then
+            on_develop=true
+          fi
+          echo "on_master=${on_master}" >> "$GITHUB_OUTPUT"
+          echo "on_develop=${on_develop}" >> "$GITHUB_OUTPUT"
+          if [ "${on_master}" = "false" ] && [ "${on_develop}" = "false" ]; then
+            echo "::error::Tag ${{ github.ref }} is reachable from neither origin/master nor origin/develop. Release builds run only for master or develop version tags (PKG-008, PKG-009, PKG-028); no build is performed."
             exit 1
+          fi
+          if [ "${on_master}" = "true" ]; then
+            echo "✅ Tag ${{ github.ref }} is on master branch. Proceeding with release including npm publish (PKG-042)."
+          else
+            echo "📦 Tag ${{ github.ref }} is on develop branch only. Proceeding with release without npm publish (PKG-043)."
           fi
 
       - name: Setup Node.js
@@ -78,6 +99,9 @@ jobs:
       - name: Remove private package flag
         run: npm pkg delete private
 
+      # npm publish runs only when the branch gate resolved the tag as
+      # reachable from origin/master (PKG-042); develop-only tags skip this
+      # step and complete the release without npm publication (PKG-043).
       # npm publish triggers `prepublishOnly` (version guard + build, PKG-005).
       # npm OIDC Trusted Publishing (PKG-010): authentication is minted from
       # the GitHub Actions OIDC token granted via `id-token: write` (PKG-030);
@@ -86,6 +110,7 @@ jobs:
       # npm >= 11.5.1, the minimum version supporting OIDC Trusted Publishing
       # (PKG-032, PKG-014).
       - name: Publish package to npm
+        if: steps.branch_gate.outputs.on_master == 'true'
         run: npm publish --provenance --access public
 
       - name: Build Changelog

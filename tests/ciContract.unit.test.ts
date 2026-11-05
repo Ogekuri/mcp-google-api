@@ -12,15 +12,18 @@
  *   development-phase minimum verification stays available as local npm commands on the
  *   developer platform only (`npm run typecheck`, `npm test`, `npm run verify` per PKG-019).
  * - The release workflow is the only GitHub Actions workflow: triggered by a canonical
- *   version tag (PKG-008, PKG-029), one integrated job (PKG-027) gated on a tagged commit
- *   reachable from master (PKG-009), failing before any install/build/pack/publish step
- *   otherwise (PKG-028). Build and pack run exclusively here (PKG-026); the pipeline
- *   defines NO typecheck, unit-test, verify, or smoke-check step (release-time testing
- *   removed; PKG-019 keeps the minimum verification local). The npm release pipeline is
- *   defined in `.github/workflows/release-npm.yml` (PKG-029). Publishing authenticates
- *   via npm OIDC Trusted Publishing (PKG-010): `id-token: write` granted (PKG-030), no
- *   NPM_TOKEN secret or NODE_AUTH_TOKEN variable referenced (PKG-031), publish step runs
- *   on the pinned Node.js runtime bundling npm >= 11.5.1 (PKG-032).
+ *   version tag (PKG-008, PKG-029), one integrated job (PKG-027) whose first step resolves
+ *   the tagged commit's reachability from origin/master and origin/develop into step
+ *   outputs (PKG-009), failing before any install/build/pack/publish step when neither
+ *   branch contains the tag (PKG-028). Build and pack run exclusively here (PKG-026); the
+ *   pipeline defines NO typecheck, unit-test, verify, or smoke-check step (release-time
+ *   testing removed; PKG-019 keeps the minimum verification local). The npm release
+ *   pipeline is defined in `.github/workflows/release-npm.yml` (PKG-029). npm publish runs
+ *   only for master-reachable tags (PKG-042); develop-only tags build, pack, and create
+ *   the GitHub Release with the tarball asset without publishing (PKG-043). Publishing
+ *   authenticates via npm OIDC Trusted Publishing (PKG-010): `id-token: write` granted
+ *   (PKG-030), no NPM_TOKEN secret or NODE_AUTH_TOKEN variable referenced (PKG-031),
+ *   publish step runs on the pinned Node.js runtime bundling npm >= 11.5.1 (PKG-032).
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -60,16 +63,22 @@ test("Release workflow is triggered only by a canonical version tag push", () =>
   assert.equal(workflow.includes("'v[0-9]+.[0-9]+.[0-9]+'"), true);
 });
 
-test("Release workflow gates the single integrated job on the tagged master commit", () => {
+test("Release workflow gates the single integrated job on master and develop tag reachability", () => {
   // PKG-009/PKG-027/PKG-028: exactly one release job hosts the branch gate,
-  // build, pack, and publish. No separate or parallel release jobs exist, and
-  // the gate command precedes every dependency install, build, pack, and
-  // publish step, so a tag not reachable from origin/master (e.g. a tag on
-  // develop) fails before anything builds.
+  // build, pack, and publish. No separate or parallel release jobs exist.
+  // The gate fetches both branches, resolves the tagged commit's
+  // reachability from origin/master and origin/develop, exports both
+  // outcomes, and fails before any dependency install, build, pack, or
+  // publish step when neither branch contains the tag.
   const workflow = readWorkflow(RELEASE_WORKFLOW_PATH);
   assert.equal(workflow.includes("check-branch:"), false);
   assert.equal(workflow.includes("needs: check-branch"), false);
+  assert.equal(workflow.includes("git fetch origin master develop"), true);
   assert.equal(workflow.includes("git branch -r --contains ${GITHUB_SHA} | grep -q \"origin/master\""), true);
+  assert.equal(workflow.includes("git branch -r --contains ${GITHUB_SHA} | grep -q \"origin/develop\""), true);
+  assert.equal(workflow.includes("reachable from neither origin/master nor origin/develop"), true);
+  assert.equal(workflow.includes("on_master=${on_master}"), true);
+  assert.equal(workflow.includes("on_develop=${on_develop}"), true);
   const gateIdx = workflow.indexOf("git branch -r --contains");
   const installIdx = workflow.indexOf("run: npm ci");
   const buildIdx = workflow.indexOf("run: npm run build");
@@ -83,6 +92,34 @@ test("Release workflow gates the single integrated job on the tagged master comm
   assert.equal(gateIdx < buildIdx, true);
   assert.equal(gateIdx < packIdx, true);
   assert.equal(gateIdx < publishIdx, true);
+});
+
+test("Release workflow publishes to npm only for master-reachable tags", () => {
+  // PKG-042/PKG-043: the publish step is the only step conditioned on the
+  // branch-gate master output, so develop-only tags skip exactly npm
+  // publication while build, pack, changelog, and the GitHub Release with
+  // the tarball asset still run.
+  const workflow = readWorkflow(RELEASE_WORKFLOW_PATH);
+  const condition = "steps.branch_gate.outputs.on_master == 'true'";
+  const gateOutputIdx = workflow.indexOf("on_master=${on_master}");
+  const publishIfIdx = workflow.indexOf(`if: ${condition}`);
+  const publishRunIdx = workflow.indexOf("run: npm publish --provenance --access public");
+  const releaseAssetIdx = workflow.indexOf("files: mcp-google-map-*.tgz");
+  const conditionCount = workflow.split(`if: ${condition}`).length - 1;
+  const expected_output = {
+    gateExportsMasterOutput: true,
+    masterConditionCount: 1,
+    publishConditionBeforeCommand: true,
+    publishConditionAfterGate: true,
+    releaseAssetStepPresent: true,
+  };
+  assert.equal(gateOutputIdx !== -1, expected_output.gateExportsMasterOutput);
+  assert.equal(conditionCount, expected_output.masterConditionCount);
+  assert.equal(publishIfIdx !== -1, expected_output.publishConditionBeforeCommand);
+  assert.notEqual(publishRunIdx, -1);
+  assert.equal(publishIfIdx < publishRunIdx, true);
+  assert.equal(gateOutputIdx < publishIfIdx, expected_output.publishConditionAfterGate);
+  assert.equal(releaseAssetIdx !== -1, expected_output.releaseAssetStepPresent);
 });
 
 test("Release workflow defines no typecheck, unit-test, verify, or smoke-check step", () => {
