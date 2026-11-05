@@ -135,6 +135,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-041**: MUST run GitHub Actions workflow steps on the Node.js 24 runner runtime using action versions built for Node.js 24.
 - **PKG-042**: MUST run the release `npm publish` step only when the gate resolves the tagged commit as reachable from `origin/master`.
 - **PKG-043**: MUST run build, pack, changelog, and GitHub Release creation with the tarball asset for tags reachable from `origin/develop` but not `origin/master`, skipping only npm publication.
+- **PKG-044**: MUST append an `Acknowledgments` section as the last section of `README.md`, thanking CabLate for the `mcp-google-map` contribution at `https://github.com/cablate/mcp-google-map`.
 
 ## 3. Requirements
 

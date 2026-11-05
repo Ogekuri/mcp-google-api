@@ -304,3 +304,7 @@ npm test           # unit tests
 ## License
 
 GPL-3.0-only — see [LICENSE](LICENSE).
+
+## Acknowledgments
+
+Special thanks to **CabLate** for the contribution given with the [mcp-google-map](https://github.com/cablate/mcp-google-map) project.
