@@ -250,3 +250,98 @@ export async function checkForUpdates(
       return { currentVersion: probe.currentVersion, latestVersion: probe.latestVersion };
   }
 }
+
+/** Default GitHub releases API URL resolving the latest published release of the distribution repository. */
+export const DEFAULT_GITHUB_RELEASES_API_URL =
+  "https://api.github.com/repos/cablate/mcp-google-map/releases/latest";
+
+/**
+ * @brief Dependency injection surface of `probeLatestGitHubVersion`.
+ * @details Every field is optional; omitted fields resolve to production
+ * defaults (global `fetch`, `DEFAULT_GITHUB_RELEASES_API_URL`,
+ * `DEFAULT_UPDATE_CHECK_TIMEOUT_MS`). Injection keeps unit tests
+ * deterministic and network-free.
+ */
+export interface GitHubProbeDeps {
+  /** GitHub releases API URL returning the latest-release JSON document. Default: `DEFAULT_GITHUB_RELEASES_API_URL`. */
+  releasesUrl?: string;
+  /** Fetch implementation used for the releases GET. Default: global `fetch`. */
+  fetchImpl?: typeof fetch;
+  /** Releases GET deadline in milliseconds. Default: `DEFAULT_UPDATE_CHECK_TIMEOUT_MS`. */
+  timeoutMs?: number;
+}
+
+/**
+ * @brief Discriminated outcome of one GitHub latest-release probe without side effects.
+ * @details Logging-free core result consumed by the `--ver`/`--version`
+ * command (`runVersionCommand`, `src/utils/upgradeManager.ts`), which maps
+ * `error` to the `unknown` placeholder (REQ-164).
+ */
+export type GitHubLatestVersionProbe =
+  | { status: "ok"; version: string }
+  | { status: "error"; message: string };
+
+/**
+ * @brief Strips the release-tag prefix from a GitHub release tag.
+ * @details Trims surrounding whitespace, removes one leading `v`/`V`, and
+ * returns the remaining text.
+ * @param tag {string} Raw `tag_name` value from the GitHub releases API.
+ * @return {string} Version text without the leading `v`; possibly empty.
+ * @note Complexity: O(n) in tag length. Pure; no side effects.
+ */
+function stripReleaseTagPrefix(tag: string): string {
+  return tag.trim().replace(/^v/i, "");
+}
+
+/**
+ * @brief Probes the GitHub releases API for the latest published release version.
+ * @details Logging-free resolution order: single `GET {releasesUrl}` with the
+ * `timeoutMs` deadline and the GitHub-mandatory `user-agent` header ->
+ * `response.ok` validation -> `payload.tag_name` validation -> leading `v`
+ * prefix strip. Never consults the idle cache and never gates on the
+ * persisted settings `autoUpdate` field: callers own the manual-command
+ * context (REQ-161). Every failure (non-OK status, malformed payload,
+ * network error) is returned as `{ status: "error", message }`; never throws.
+ * @param deps {GitHubProbeDeps} Optional dependency overrides; production defaults when omitted.
+ * @return {Promise<GitHubLatestVersionProbe>} `ok` with the stripped version text, or `error` with the diagnostic message.
+ * @satisfies REQ-161, REQ-163
+ * @note Complexity: O(n) in tag length plus one HTTP round-trip bounded by `timeoutMs`.
+ * @see probeLatestVersion
+ */
+export async function probeLatestGitHubVersion(
+  deps: GitHubProbeDeps = {}
+): Promise<GitHubLatestVersionProbe> {
+  const releasesUrl = deps.releasesUrl ?? DEFAULT_GITHUB_RELEASES_API_URL;
+  const timeoutMs = deps.timeoutMs ?? DEFAULT_UPDATE_CHECK_TIMEOUT_MS;
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  try {
+    const response = await fetchImpl(releasesUrl, {
+      headers: {
+        accept: "application/vnd.github+json",
+        "user-agent": DEFAULT_PACKAGE_NAME,
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) {
+      return {
+        status: "error",
+        message: `GitHub releases API responded with HTTP ${response.status}.`,
+      };
+    }
+    const payload = (await response.json()) as { tag_name?: unknown };
+    if (typeof payload?.tag_name !== "string") {
+      return {
+        status: "error",
+        message: "GitHub releases response has no tag_name field.",
+      };
+    }
+    const version = stripReleaseTagPrefix(payload.tag_name);
+    if (!version) {
+      return { status: "error", message: "GitHub release tag carries no version." };
+    }
+    return { status: "ok", version };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { status: "error", message };
+  }
+}

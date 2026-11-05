@@ -289,7 +289,11 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-086**: MUST document the `auto-update` command and the settings `autoUpdate` field in `README.md` and `docs/CONFIGURATION.md`, stating that the automatic update check is enabled by default.
 
 #### Self-Upgrade and Version Reporting
-- **REQ-120**: MUST provide top-level `--ver` and `--version` commands that force one online latest-version check bypassing the idle gate and print the installed version to stdout with exit code 0.
+- **REQ-120**: MUST provide top-level `--ver` and `--version` commands that print on stdout three lines: the installed version, the npmjs latest line (REQ-162), and the GitHub latest line (REQ-163), exiting 0.
+- **REQ-161**: `--ver` and `--version` MUST probe the npm registry and the GitHub releases API online, bypassing the idle cache gate, before printing the REQ-120 lines.
+- **REQ-162**: `--ver` and `--version` MUST print the second stdout line exactly `npmjs latest: <version>` where `<version>` is the latest `mcp-google-map` version published on the npm registry.
+- **REQ-163**: `--ver` and `--version` MUST print the third stdout line exactly `GitHub latest: <version>` where `<version>` is the latest GitHub release of `cablate/mcp-google-map` with any leading `v` stripped.
+- **REQ-164**: `--ver` and `--version` MUST print `unknown` in place of any REQ-120 version that cannot be determined: failed, disabled, or malformed probe result, or undetermined installed version.
 - **REQ-121**: MUST gate the automatic update check with an idle cache file at `~/.cache/mcp-google-map/check_version_idle-time.json`, skipping the registry request while its `idle_time_epoch` is in the future.
 - **REQ-122**: MUST persist cache fields `last_success_epoch`, `last_success_human`, `idle_time_epoch`, and `idle_time_human` (ISO-8601 UTC) after each executed check, tolerating missing or malformed cache content.
 - **REQ-123**: MUST set the idle window to 3600 seconds when a newer version is found and 86400 seconds otherwise.

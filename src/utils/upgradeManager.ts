@@ -4,9 +4,10 @@
  * @details Adapted from the reference `skills` Python CLI semantics: the
  * automatic registry check is made non-invasive through a persistent idle
  * cache that suppresses registry requests while the previously computed idle
- * deadline is still in the future (REQ-121); `--ver`/`--version` force one
- * check bypassing the idle gate and print the installed version (REQ-120);
- * `--upgrade` first probes the registry and proceeds only when an upgrade is
+ * deadline is still in the future (REQ-121); `--ver`/`--version` probe npm and
+ * GitHub bypassing the idle gate and print the three-line
+ * installed/npmjs/GitHub latest-version report (REQ-120, REQ-161, REQ-162,
+ * REQ-163, REQ-164); `--upgrade` first probes the registry and proceeds only when an upgrade is
  * necessary or necessity is undeterminable (REQ-144, REQ-145, REQ-146,
  * REQ-147), reinstalls the latest package via npm, re-runs the upgraded
  * package's `install` child command with captured stdout so packaged skills
@@ -24,9 +25,11 @@ import { dirname, join } from "node:path";
 import { Logger } from "../index.js";
 import {
   DEFAULT_PACKAGE_NAME,
+  probeLatestGitHubVersion,
   probeLatestVersion,
   type AutoUpdateCheckerDeps,
   type AutoUpdateLogger,
+  type GitHubProbeDeps,
   type LatestVersionProbe,
 } from "./autoUpdate.js";
 import { loadCliSettings } from "./cliSettings.js";
@@ -409,9 +412,11 @@ export interface ManagementCommandOptions {
  * injection surface and an injectable stdout sink used by the version print.
  */
 export interface ManagementCommandDeps extends PackageManagerDeps {
-  /** Dependencies forwarded to `checkVersionIdle` by `--ver`/`--version`. */
+  /** Dependencies forwarded to `probeLatestVersion` by `--ver`/`--version` and the `--upgrade` pre-upgrade probe. */
   idleCheck?: IdleCheckDeps;
-  /** stdout sink receiving the installed-version line and the `--upgrade` summary; defaults to `process.stdout`. */
+  /** Dependencies forwarded to `probeLatestGitHubVersion` by `--ver`/`--version`. */
+  githubCheck?: GitHubProbeDeps;
+  /** stdout sink receiving the version report lines and the `--upgrade` summary; defaults to `process.stdout`. */
   stdout?: { write: (data: string) => void };
 }
 
@@ -645,27 +650,17 @@ export function renderUpgradeSummary(
 }
 
 /**
- * @brief Resolves the updated package version reported by the `--upgrade` summary.
- * @details Runs one logging-free `probeLatestVersion` registry probe after the
- * upgrade child succeeds, forwarding the injected idle-check dependencies;
- * maps `newer` to the registry latest version, `current` to the running
- * version, and every other outcome (`disabled`, `unknown-version`, `error`)
- * to `unknown` (REQ-134). Never throws.
- * @param options {ManagementCommandOptions} Options carrying `currentVersion`.
- * @param deps {ManagementCommandDeps} Optional idle-check dependency overrides.
- * @return {Promise<string>} Updated version string; `unknown` when undeterminable.
- * @satisfies REQ-134
+ * @brief Maps one registry probe outcome to its latest-version text.
+ * @details `newer` -> `latestVersion`; `current` -> `currentVersion`;
+ * every other outcome (`disabled`, `unknown-version`, `error`) -> `unknown`
+ * (REQ-164). Pure; never throws.
+ * @param probe {LatestVersionProbe} Logging-free registry probe outcome.
+ * @return {string} Latest npm-published version text, or `unknown`.
+ * @satisfies REQ-164
+ * @note Complexity: O(1). Pure; no side effects.
  * @see probeLatestVersion
- * @note Complexity: one HTTP round-trip bounded by the probe timeout.
  */
-async function resolveUpdatedVersion(
-  options: ManagementCommandOptions,
-  deps: ManagementCommandDeps
-): Promise<string> {
-  const probe = await probeLatestVersion({
-    ...deps.idleCheck,
-    currentVersion: options.currentVersion,
-  });
+function resolveProbeLatestVersion(probe: LatestVersionProbe): string {
   if (probe.status === "newer") {
     return probe.latestVersion;
   }
@@ -676,28 +671,61 @@ async function resolveUpdatedVersion(
 }
 
 /**
- * @brief Handles `--ver`/`--version`: forced online check plus version print.
- * @details Awaits exactly one idle-gate-bypassing `checkVersionIdle` run
- * (force: true) so the colored availability diagnostics land on stderr before
- * the version line, then writes the installed version plus a newline to
- * stdout and returns 0 (REQ-120, REQ-122, REQ-123, REQ-124).
+ * @brief Resolves the updated package version reported by the `--upgrade` summary.
+ * @details Runs one logging-free `probeLatestVersion` registry probe after the
+ * upgrade child succeeds, forwarding the injected idle-check dependencies, and
+ * delegates the outcome-to-version mapping to `resolveProbeLatestVersion`:
+ * `newer` maps to the registry latest version, `current` to the running
+ * version, and every other outcome to `unknown` (REQ-134). Never throws.
  * @param options {ManagementCommandOptions} Options carrying `currentVersion`.
- * @param deps {ManagementCommandDeps} Optional idle-check/stdout overrides.
+ * @param deps {ManagementCommandDeps} Optional idle-check dependency overrides.
+ * @return {Promise<string>} Updated version string; `unknown` when undeterminable.
+ * @satisfies REQ-134
+ * @see probeLatestVersion
+ * @see resolveProbeLatestVersion
+ * @note Complexity: one HTTP round-trip bounded by the probe timeout.
+ */
+async function resolveUpdatedVersion(
+  options: ManagementCommandOptions,
+  deps: ManagementCommandDeps
+): Promise<string> {
+  const probe = await probeLatestVersion({
+    ...deps.idleCheck,
+    currentVersion: options.currentVersion,
+  });
+  return resolveProbeLatestVersion(probe);
+}
+
+/**
+ * @brief Handles `--ver`/`--version`: dual online probe plus three-line version report.
+ * @details Runs the npm-registry probe (`probeLatestVersion`) and the GitHub
+ * releases probe (`probeLatestGitHubVersion`) concurrently, both bypassing
+ * the idle cache gate (REQ-161: no cache read, no cache write, no persisted
+ * `autoUpdate` gating), then writes exactly three stdout lines — the
+ * installed version, `npmjs latest: <version>` (REQ-162), and
+ * `GitHub latest: <version>` (REQ-163) — and returns 0 (REQ-120). Any
+ * undeterminable version prints as `unknown` (REQ-164).
+ * @param options {ManagementCommandOptions} Options carrying `currentVersion`.
+ * @param deps {ManagementCommandDeps} Optional idle-check/GitHub-check/stdout overrides.
  * @return {Promise<number>} Exit code 0.
- * @satisfies REQ-120
- * @see checkVersionIdle
+ * @satisfies REQ-120, REQ-161, REQ-162, REQ-163, REQ-164
+ * @see probeLatestVersion
+ * @see probeLatestGitHubVersion
+ * @see resolveProbeLatestVersion
  */
 export async function runVersionCommand(
   options: ManagementCommandOptions,
   deps: ManagementCommandDeps = {}
 ): Promise<number> {
-  await checkVersionIdle({
-    ...deps.idleCheck,
-    force: true,
-    currentVersion: options.currentVersion,
-  });
+  const [npmProbe, githubProbe] = await Promise.all([
+    probeLatestVersion({ ...deps.idleCheck, currentVersion: options.currentVersion }),
+    probeLatestGitHubVersion(deps.githubCheck),
+  ]);
+  const installedVersion = options.currentVersion || "unknown";
+  const npmLatest = resolveProbeLatestVersion(npmProbe);
+  const githubLatest = githubProbe.status === "ok" ? githubProbe.version : "unknown";
   const stdout = deps.stdout ?? process.stdout;
-  stdout.write(`${options.currentVersion}\n`);
+  stdout.write(`${installedVersion}\nnpmjs latest: ${npmLatest}\nGitHub latest: ${githubLatest}\n`);
   return 0;
 }
 
