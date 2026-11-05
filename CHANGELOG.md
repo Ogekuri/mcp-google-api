@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.15.0..v0.16.0) - 2026-11-05
+### 🚜  Changes
+- publish npm via OIDC Trusted Publishing [useReq] *(release)*
+  - REQUIREMENTS: PKG-010 switches npm publishing to OIDC Trusted Publishing (no long-lived tokens); add PKG-030 id-token: write permission, PKG-031 no publish-token secret/env, PKG-032 npm >= 11.5.1 floor on the pinned runtime; extend TST-020.
+  - release-npm.yml: remove the publish-token secret/environment from the publish step; authentication is minted from the workflow OIDC token. Tag trigger, master gate, single job, build/pack/changelog/GitHub Release mechanics unchanged.
+  - tests: ciContract publish test asserts OIDC permission, token absence, and the pinned runtime floor; npm test passes 124/124.
+
 ## [0.15.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.14.0..v0.15.0) - 2026-11-04
 ### 🚜  Changes
 - remove CI automation and release-time testing [useReq] *(ci)*
@@ -286,6 +293,7 @@
 - \[0.13.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.13.0
 - \[0.14.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.14.0
 - \[0.15.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.15.0
+- \[0.16.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.16.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.2.0..v0.3.0
@@ -300,3 +308,4 @@
 [0.13.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.11.0..v0.13.0
 [0.14.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.13.0..v0.14.0
 [0.15.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.14.0..v0.15.0
+[0.16.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.15.0..v0.16.0
