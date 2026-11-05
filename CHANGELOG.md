@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.18.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.17.0..v0.18.0) - 2026-11-05
+### 📚  Documentation
+- Update README.md file.
+
 ## [0.17.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.16.0..v0.17.0) - 2026-11-05
 ### 🚜  Changes
 - BREAKING CHANGE: migrate runtime floor to Node.js 24 and drop Node 22 workarounds [useReq] *(runtime)*
@@ -311,6 +315,7 @@
 - \[0.15.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.15.0
 - \[0.16.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.16.0
 - \[0.17.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.17.0
+- \[0.18.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.18.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.2.0..v0.3.0
@@ -327,3 +332,4 @@
 [0.15.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.14.0..v0.15.0
 [0.16.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.15.0..v0.16.0
 [0.17.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.16.0..v0.17.0
+[0.18.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.17.0..v0.18.0
