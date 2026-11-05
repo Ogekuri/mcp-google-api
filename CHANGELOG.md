@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.20.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.19.0..v0.20.0) - 2026-11-05
+### 🚜  Changes
+- GitHub version probe targets the Ogekuri repository [useReq] *(upgrade-manager)*
+  - Re-point DEFAULT_GITHUB_RELEASES_API_URL (src/utils/autoUpdate.ts) from
+  - the upstream cablate/mcp-google-map (latest release v0.0.69) to the
+  - distribution repository Ogekuri/mcp-google-map (latest release v0.19.0),
+  - fixing the wrong 'GitHub latest:' line of --ver/--version.
+  - Update REQ-163 to pin the GitHub probe repository to
+  - Ogekuri/mcp-google-map; sync TRACE-L, external boundaries, and EDGE-10
+  - in WORKFLOW.md; REFERENCES.md regenerated unchanged.
+
 ## [0.19.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.18.0..v0.19.0) - 2026-11-05
 ### 🚜  Changes
 - --ver/--version prints installed, npmjs, and GitHub latest versions [useReq] *(upgrade-manager)*
@@ -340,6 +351,7 @@
 - \[0.17.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.17.0
 - \[0.18.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.18.0
 - \[0.19.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.19.0
+- \[0.20.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.20.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.2.0..v0.3.0
@@ -358,3 +370,4 @@
 [0.17.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.16.0..v0.17.0
 [0.18.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.17.0..v0.18.0
 [0.19.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.18.0..v0.19.0
+[0.20.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.19.0..v0.20.0
