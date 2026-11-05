@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.19.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.18.0..v0.19.0) - 2026-11-05
+### 🚜  Changes
+- --ver/--version prints installed, npmjs, and GitHub latest versions [useReq] *(upgrade-manager)*
+  - Rewrite runVersionCommand (REQ-120): concurrent npm-registry and
+  - GitHub-releases probes bypassing the idle cache gate (REQ-161), printing
+  - the three-line stdout report: installed version, 'npmjs latest: <v>'
+  - (REQ-162), 'GitHub latest: <v>' with leading v stripped (REQ-163), and
+  - 'unknown' placeholders on undeterminable versions (REQ-164).
+  - Add probeLatestGitHubVersion, GitHubProbeDeps, GitHubLatestVersionProbe,
+  - and DEFAULT_GITHUB_RELEASES_API_URL to autoUpdate.ts.
+  - Extract resolveProbeLatestVersion; resolveUpdatedVersion delegates to it.
+  - Update SRS (REQ-120, REQ-161..REQ-164), WORKFLOW.md (TRACE-L, EDGE-06,
+  - EDGE-07, EDGE-10), and regenerate REFERENCES.md.
+- add Acknowledgments section crediting CabLate's mcp-google-map [useReq] *(readme)*
+  - Requirements: add PKG-044 (Acknowledgments as the last README.md section naming CabLate and the project URL).
+  - README: append the Acknowledgments section after License, thanking CabLate for the mcp-google-map contribution.
+  - Verification: full unit suite 133/133 pass; static analysis clean.
+- publish to npm only for master tags; develop tags release without publish [useReq] *(release-npm)*
+  - Requirements: update PKG-008/PKG-009/PKG-026/PKG-028, add PKG-042/PKG-043, update TST-020.
+  - Workflow: branch gate resolves origin/master and origin/develop reachability, fails on neither, exports step outputs; npm publish runs only for master-reachable tags.
+  - Develop-only version tags now build, pack, and create the GitHub Release with the tarball asset without npm publication.
+  - Tests: refactor ciContract suite to the updated contract; targeted suite 6/6, full suite 133/133 pass.
+
 ## [0.18.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.17.0..v0.18.0) - 2026-11-05
 ### 📚  Documentation
 - Update README.md file.
@@ -316,6 +339,7 @@
 - \[0.16.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.16.0
 - \[0.17.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.17.0
 - \[0.18.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.18.0
+- \[0.19.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.19.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.2.0..v0.3.0
@@ -333,3 +357,4 @@
 [0.16.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.15.0..v0.16.0
 [0.17.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.16.0..v0.17.0
 [0.18.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.17.0..v0.18.0
+[0.19.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.18.0..v0.19.0
