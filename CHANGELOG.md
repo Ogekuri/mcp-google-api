@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.17.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.16.0..v0.17.0) - 2026-11-05
+### 🚜  Changes
+- BREAKING CHANGE: migrate runtime floor to Node.js 24 and drop Node 22 workarounds [useReq] *(runtime)*
+  - package.json engines >=24; @types/node ^24; lockfile refreshed (root identity kept)
+  - NODE_ENGINE_FLOOR 22->24: doctor and setup checks, Doxygen docs updated
+  - README badge/prerequisites, docs/CONFIGURATION.md floor, scripts/setup.sh gate at >=24
+  - tests: doctor/setup floor 24 (22.x now fails); remove transitional Node<=23 --env-file tolerance (exit 9 contract)
+  - release workflow already Node24-pinned (24.15.0, checkout@v5/setup-node@v5); requirements CTN-005/REQ-070/PKG-014 updated, PKG-041 added
+  - verification: typecheck clean, 132/132 unit tests pass, static-check clean
+- enforce npm publication compliance contract [useReq] *(pkg)*
+  - Add PKG-033..PKG-040 and TST-021 codifying npm publication policies
+  - Declare SPDX GPL-3.0-only in package.json, package-lock.json, README badge/section
+  - Add package.json exports map (dist entry + package.json subpath)
+  - Ship CHANGELOG.md via the files allowlist
+  - Add tests/npmPublishContract.unit.test.ts: metadata, lockfile identity, private-flag, name policy, npm pack --dry-run tarball allowlist
+
 ## [0.16.0](https://github.com/Ogekuri/mcp-google-map/compare/v0.15.0..v0.16.0) - 2026-11-05
 ### 🚜  Changes
 - publish npm via OIDC Trusted Publishing [useReq] *(release)*
@@ -294,6 +310,7 @@
 - \[0.14.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.14.0
 - \[0.15.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.15.0
 - \[0.16.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.16.0
+- \[0.17.0\]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.17.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-map/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.2.0..v0.3.0
@@ -309,3 +326,4 @@
 [0.14.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.13.0..v0.14.0
 [0.15.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.14.0..v0.15.0
 [0.16.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.15.0..v0.16.0
+[0.17.0]: https://github.com/Ogekuri/mcp-google-map/compare/v0.16.0..v0.17.0

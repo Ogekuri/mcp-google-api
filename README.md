@@ -1,4 +1,4 @@
-# mcp-google-map (0.16.0)
+# mcp-google-map (0.17.0)
 
 <p align="center">
   <img src="https://img.shields.io/badge/node-%3E%3D24-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js >= 24">
