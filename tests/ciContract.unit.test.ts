@@ -17,7 +17,10 @@
  *   otherwise (PKG-028). Build and pack run exclusively here (PKG-026); the pipeline
  *   defines NO typecheck, unit-test, verify, or smoke-check step (release-time testing
  *   removed; PKG-019 keeps the minimum verification local). The npm release pipeline is
- *   defined in `.github/workflows/release-npm.yml` (PKG-029).
+ *   defined in `.github/workflows/release-npm.yml` (PKG-029). Publishing authenticates
+ *   via npm OIDC Trusted Publishing (PKG-010): `id-token: write` granted (PKG-030), no
+ *   NPM_TOKEN secret or NODE_AUTH_TOKEN variable referenced (PKG-031), publish step runs
+ *   on the pinned Node.js runtime bundling npm >= 11.5.1 (PKG-032).
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -97,15 +100,35 @@ test("Release workflow defines no typecheck, unit-test, verify, or smoke-check s
   assert.equal(workflow.includes("GOOGLE_MAPS_API_KEY: release-smoke-placeholder-key"), false);
 });
 
-test("Release workflow publishes with provenance and attaches the packed tarball", () => {
-  // PKG-010/PKG-012: publish uses provenance attestation and public access;
-  // the release asset is the packed npm tarball, failing on unmatched files;
-  // the tarball is packed before the release step attaches it.
+test("Release workflow publishes via npm OIDC Trusted Publishing and attaches the packed tarball", () => {
+  // PKG-010/PKG-012: publish uses OIDC Trusted Publishing with provenance
+  // attestation and public access; the release asset is the packed npm
+  // tarball, failing on unmatched files; the tarball is packed before the
+  // release step attaches it.
+  // PKG-030/PKG-031/PKG-032: the publish step authenticates via the GitHub
+  // Actions OIDC token (`id-token: write`), references no NPM_TOKEN secret
+  // and no NODE_AUTH_TOKEN variable, and runs on the pinned Node.js runtime
+  // bundling npm >= 11.5.1 (OIDC Trusted Publishing floor).
   const workflow = readWorkflow(RELEASE_WORKFLOW_PATH);
   const packIdx = workflow.indexOf("run: npm pack");
   const releaseIdx = workflow.indexOf("files: mcp-google-map-*.tgz");
+  const expected_output = {
+    oidcPermissionGranted: true,
+    npmTokenSecretReferenced: false,
+    nodeAuthTokenVariableReferenced: false,
+    publishCommandPresent: true,
+    trustedPublishingFloorDocumented: true,
+    pinnedNodeMajor24: true,
+    releaseAssetPatternPresent: true,
+    tarballPackedBeforeRelease: true,
+  };
   assert.notEqual(releaseIdx, -1);
-  assert.equal(workflow.includes("run: npm publish --provenance --access public"), true);
-  assert.equal(workflow.includes("fail_on_unmatched_files: true"), true);
-  assert.equal(packIdx < releaseIdx, true);
+  assert.equal(workflow.includes("id-token: write"), expected_output.oidcPermissionGranted);
+  assert.equal(workflow.includes("secrets.NPM_TOKEN"), expected_output.npmTokenSecretReferenced);
+  assert.equal(workflow.includes("NODE_AUTH_TOKEN"), expected_output.nodeAuthTokenVariableReferenced);
+  assert.equal(workflow.includes("run: npm publish --provenance --access public"), expected_output.publishCommandPresent);
+  assert.equal(workflow.includes("npm >= 11.5.1"), expected_output.trustedPublishingFloorDocumented);
+  assert.equal(/^  NODE_VERSION: '24\./m.test(workflow), expected_output.pinnedNodeMajor24);
+  assert.equal(workflow.includes("fail_on_unmatched_files: true"), expected_output.releaseAssetPatternPresent);
+  assert.equal(packIdx < releaseIdx, expected_output.tarballPackedBeforeRelease);
 });

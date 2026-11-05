@@ -8,7 +8,11 @@
 # (PKG-009, PKG-028). The package build and tarball packing run
 # exclusively in this release workflow (PKG-026). No tests run in the
 # release pipeline; `npm publish` runs the `prepublishOnly` lifecycle hook
-# (version guard + build) defined in package.json (PKG-005).
+# (version guard + build) defined in package.json (PKG-005). npm
+# authentication uses OIDC Trusted Publishing (PKG-010): the job grants
+# `id-token: write` (PKG-030), no publish-token secret or publish-token
+# environment variable is configured (PKG-031), and the pinned Node.js
+# runtime bundles npm >= 11.5.1, the OIDC Trusted Publishing floor (PKG-032).
 name: Release (npm)
 
 on:
@@ -18,7 +22,7 @@ on:
 
 permissions:
   contents: write
-  id-token: write  # Required for OIDC
+  id-token: write  # Required for npm OIDC Trusted Publishing (PKG-030)
   attestations: write
 
 env:
@@ -75,10 +79,14 @@ jobs:
         run: npm pkg delete private
 
       # npm publish triggers `prepublishOnly` (version guard + build, PKG-005).
+      # npm OIDC Trusted Publishing (PKG-010): authentication is minted from
+      # the GitHub Actions OIDC token granted via `id-token: write` (PKG-030);
+      # no publish-token secret and no publish-token environment variable are
+      # configured (PKG-031). The pinned Node.js runtime bundles
+      # npm >= 11.5.1, the minimum version supporting OIDC Trusted Publishing
+      # (PKG-032, PKG-014).
       - name: Publish package to npm
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Build Changelog
         id: build_changelog
