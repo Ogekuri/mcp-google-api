@@ -5,8 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
-if [ "${NODE_MAJOR:-0}" -lt 22 ]; then
-  echo "ERROR: Node.js >= 22 required (found $(node -v))" >&2
+if [ "${NODE_MAJOR:-0}" -lt 24 ]; then
+  echo "ERROR: Node.js >= 24 required (found $(node -v))" >&2
   exit 1
 fi
 

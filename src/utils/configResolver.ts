@@ -8,7 +8,7 @@ import { existsSync } from "fs";
  * for the package (CTN-005). Complexity O(1); pure constant.
  * @satisfies CTN-005, REQ-070
  */
-export const NODE_ENGINE_FLOOR = 22;
+export const NODE_ENGINE_FLOOR = 24;
 
 /**
  * @brief Default HTTP bind address (loopback) used when no host is configured.

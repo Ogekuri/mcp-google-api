@@ -11,20 +11,20 @@ process.argv[1] = originalArgv1;
 
 const { resolveRuntimeConfig } = await import("../src/utils/configResolver.js");
 
-const NODE_22 = "22.11.0";
+const NODE_24 = "24.11.0";
 const CLEAN_CONFIG = resolveRuntimeConfig({ GOOGLE_MAPS_API_KEY: "AIzaSyConfigKey123456789" });
 
 test("doctor enforces the Node engine floor from package.json engines", async () => {
   const oldNode = await runDoctor("1.2.3", "configured-key", false, undefined, {
-    nodeVersion: "18.20.4",
+    nodeVersion: "22.11.0",
     config: CLEAN_CONFIG,
   });
   assert.equal(oldNode.checks.find((check) => check.name === "node")?.status, "fail");
-  assert.match(oldNode.checks.find((check) => check.name === "node")?.detail ?? "", /22 or newer/);
+  assert.match(oldNode.checks.find((check) => check.name === "node")?.detail ?? "", /24 or newer/);
   assert.equal(oldNode.success, false);
 
   const newNode = await runDoctor("1.2.3", "configured-key", false, undefined, {
-    nodeVersion: NODE_22,
+    nodeVersion: NODE_24,
     config: CLEAN_CONFIG,
   });
   assert.equal(newNode.checks.find((check) => check.name === "node")?.status, "pass");
@@ -33,7 +33,7 @@ test("doctor enforces the Node engine floor from package.json engines", async ()
 
 test("doctor local mode reports masked configuration with per-field sources", async () => {
   const report = await runDoctor("1.2.3", "AIzaSyRequestKey12345678", false, undefined, {
-    nodeVersion: NODE_22,
+    nodeVersion: NODE_24,
     config: CLEAN_CONFIG,
   });
 
@@ -50,7 +50,7 @@ test("doctor local mode reports masked configuration with per-field sources", as
 
 test("doctor local mode reports per-tool Google API profiles", async () => {
   const report = await runDoctor("1.2.3", "configured-key", false, undefined, {
-    nodeVersion: NODE_22,
+    nodeVersion: NODE_24,
     config: resolveRuntimeConfig({ GOOGLE_MAPS_ENABLED_TOOLS: "maps_geocode,maps_directions" }),
   });
 
@@ -64,7 +64,7 @@ test("doctor local mode reports per-tool Google API profiles", async () => {
 
 test("doctor fails the config check when the allowlist matches zero tools", async () => {
   const report = await runDoctor("1.2.3", "configured-key", false, undefined, {
-    nodeVersion: NODE_22,
+    nodeVersion: NODE_24,
     config: resolveRuntimeConfig({ GOOGLE_MAPS_ENABLED_TOOLS: "does_not_exist" }),
   });
 
@@ -80,7 +80,7 @@ test("doctor --live probes only the selected subset with --probes", async () => 
     calledTools.push(toolName);
     return { success: true };
   }, {
-    nodeVersion: NODE_22,
+    nodeVersion: NODE_24,
     config: CLEAN_CONFIG,
     probes: ["routes"],
   });
@@ -98,7 +98,7 @@ test("doctor --live without --probes keeps the legacy three-probe invocation", a
     calledTools.push(toolName);
     return { success: true };
   }, {
-    nodeVersion: NODE_22,
+    nodeVersion: NODE_24,
     config: CLEAN_CONFIG,
   });
 

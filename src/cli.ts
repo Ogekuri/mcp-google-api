@@ -577,7 +577,7 @@ export interface DoctorOptions {
 /**
  * @brief Runs the readiness self-check decoupled from server startup.
  * @details Local checks (zero network calls): Node major >=
- * `NODE_ENGINE_FLOOR` (22, aligned with `package.json` `engines`, REQ-070),
+ * `NODE_ENGINE_FLOOR` (24, aligned with `package.json` `engines`, REQ-070),
  * non-zero package version, API key presence (value hidden), effective
  * configuration diagnostics with masked secrets and per-field sources
  * (REQ-089, zero-match allowlist reported as fail), explicit env-file status,
@@ -744,7 +744,7 @@ export interface SetupOptions {
 /**
  * @brief Runs the non-interactive onboarding self-check with optional `.env` scaffolding.
  * @details Zero prompts, zero Google API calls, zero writes unless `writeEnv`
- * is true (REQ-087). Checks: Node major >= `NODE_ENGINE_FLOOR` (22);
+ * is true (REQ-087). Checks: Node major >= `NODE_ENGINE_FLOOR` (24);
  * `.env.example` presence in `packageDir`; `.env` handling in `targetDir` —
  * with `writeEnv` the file is created from the template only when absent and
  * is never overwritten (REQ-088), without it the check reports the current

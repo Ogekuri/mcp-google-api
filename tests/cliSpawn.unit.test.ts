@@ -126,19 +126,13 @@ test("missing --env-file fails the CLI process without stdout output", async () 
   try {
     const result = await spawnCli(["--env-file", missingPath, "doctor"]);
 
-    assert.notEqual(result.code, 0);
     assert.notEqual(result.code, null, "process must exit on its own, not be killed by the test timeout");
     assert.equal(result.stdout, "");
     assert.equal(result.stderr.includes(missingPath), true);
-    if (result.code === 1) {
-      // Our handler path (Node <= 23): JSON error on stderr.
-      const parsed = JSON.parse(result.stderr) as { error: string };
-      assert.match(parsed.error, /env file not found: /);
-    } else {
-      // Node >= 24 intercepts the missing --env-file value itself (exit 9).
-      assert.equal(result.code, 9);
-      assert.match(result.stderr, /not found/);
-    }
+    // Node >= 24 intercepts the missing --env-file value itself (exit 9)
+    // before the CLI's explicit-env-file handler can run (CTN-005).
+    assert.equal(result.code, 9);
+    assert.match(result.stderr, /not found/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

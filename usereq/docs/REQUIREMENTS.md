@@ -87,7 +87,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **CTN-002**: MUST require a Google Maps API key from the persisted user settings (REQ-142) or a per-request HTTP header before any tool call executes.
 - **CTN-003**: MUST reserve stdio-mode stdout exclusively for JSON-RPC frames, dropping non-JSON stdout writes.
 - **CTN-004**: MUST default Places API result language to English (`languageCode: "en"`).
-- **CTN-005**: MUST run on Node.js `>= 22`, declared in `package.json` `engines` and enforced identically by the `doctor` local check.
+- **CTN-005**: MUST run on Node.js `>= 24`, declared in `package.json` `engines` and enforced identically by the `doctor` local check.
 - **CTN-006**: MUST build and run as ECMAScript Modules only (`"type": "module"`, tsup ESM output).
 - **CTN-007**: MUST load `.env` from the current working directory first, then from the package installation directory, unless an explicit `--env-file` is given.
 - **CTN-008**: MUST NOT use any database or file-based persistence; all state is in-memory per process, except user-authorized local configuration files and the automatic-update idle cache under `~/.cache/mcp-google-map/`.
@@ -106,7 +106,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-011**: MUST generate the GitHub Release body from a commit-based changelog (`mode: COMMIT`) categorizing commits by conventional-commit title prefix, with the category set, ignore labels, transformer, ASC `mergedAt` sort, and compare-link template.
 - **PKG-012**: MUST attach the npm package tarball (not raw sources) as the GitHub Release asset, failing the release on unmatched files.
 - **PKG-013**: MUST disable GitHub auto-generated release notes when the commit-based changelog is used.
-- **PKG-014**: MUST pin the release Node.js version and disable dependency caching in release builds.
+- **PKG-014**: MUST pin the release Node.js runtime to major 24 (CTN-005 floor) and disable dependency caching in release builds.
 - **PKG-015**: MUST document in `README.md` and `docs/CONFIGURATION.md` MCP-client registration for pi CLI and OpenClaw with complete working stdio examples, including post-change reload notes.
 - **PKG-016**: MUST document configuration prerequisites in `README.md` and `docs/CONFIGURATION.md`: single Google Maps API key configured via `api-key`, enabled Google services, minimal operational subset, `GOOGLE_MAPS_ENABLED_TOOLS`, and post-install `doctor` verification.
 - **PKG-017**: MUST fail `npm publish` via the `prepublishOnly` guard when the `package.json` version is `0.0.0`-based or carries a prerelease or build suffix.
@@ -132,6 +132,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-038**: MUST restrict packed tarball contents to allowlisted runtime paths plus npm-invariant metadata files, excluding tests, local configuration, and secret files.
 - **PKG-039**: MUST NOT declare `"private": true` in `package.json`, keeping the package publishable under npm registry policy.
 - **PKG-040**: MUST declare one registry-valid package name (lowercase, URL-safe, max 214 characters) in `package.json` and `package-lock.json`.
+- **PKG-041**: MUST run GitHub Actions workflow steps on the Node.js 24 runner runtime using action versions built for Node.js 24.
 
 ## 3. Requirements
 
@@ -253,7 +254,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-069**: SHOULD resolve the target business display name for `maps_local_rank_tracker` via place details while tolerating lookup failure with an empty name.
 
 #### CLI
-- **REQ-070**: MUST verify Node >= 22 per `package.json` `engines`, non-zero package version, and API key presence in `doctor` local mode without network calls, exiting 0 only when no check fails.
+- **REQ-070**: MUST verify Node >= 24 per `package.json` `engines`, non-zero package version, and API key presence in `doctor` local mode without network calls, exiting 0 only when no check fails.
 - **REQ-071**: MUST add a skipped `live-api` check in `doctor` when `--live` is absent or no API key is configured, making no billable calls.
 - **REQ-072**: MUST probe Geocoding, Places (New), and Routes APIs independently via geocode, search-places, and directions calls in `doctor --live` mode, failing only the probes that error.
 - **REQ-089**: MUST report effective configuration with per-field sources and masked secrets in `doctor` local mode.

@@ -41,7 +41,7 @@ const PACKAGE_DIR = "/fake-pkg";
 const TARGET_DIR = "/fake-target";
 const TEMPLATE_KEY = resolve(PACKAGE_DIR, ".env.example");
 const ENV_KEY = resolve(TARGET_DIR, ".env");
-const NODE_22 = "22.11.0";
+const NODE_24 = "24.11.0";
 const KEY_CONFIG = resolveRuntimeConfig({ GOOGLE_MAPS_API_KEY: "AIzaSyTestKey1234567890" });
 
 test("setup without --write-env performs zero writes and skips env-file creation", async () => {
@@ -49,7 +49,7 @@ test("setup without --write-env performs zero writes and skips env-file creation
 
   const report = await runSetup(
     { packageDir: PACKAGE_DIR, targetDir: TARGET_DIR, writeEnv: false },
-    { nodeVersion: NODE_22, config: KEY_CONFIG, fs: fakeFsInterface(state) }
+    { nodeVersion: NODE_24, config: KEY_CONFIG, fs: fakeFsInterface(state) }
   );
 
   assert.deepEqual(state.writes, []);
@@ -63,7 +63,7 @@ test("setup --write-env creates .env from the template only when absent", async 
 
   const report = await runSetup(
     { packageDir: PACKAGE_DIR, targetDir: TARGET_DIR, writeEnv: true },
-    { nodeVersion: NODE_22, config: KEY_CONFIG, fs: fakeFsInterface(state) }
+    { nodeVersion: NODE_24, config: KEY_CONFIG, fs: fakeFsInterface(state) }
   );
 
   assert.equal(report.created, true);
@@ -80,7 +80,7 @@ test("setup --write-env never overwrites an existing .env", async () => {
 
   const report = await runSetup(
     { packageDir: PACKAGE_DIR, targetDir: TARGET_DIR, writeEnv: true },
-    { nodeVersion: NODE_22, config: KEY_CONFIG, fs: fakeFsInterface(state) }
+    { nodeVersion: NODE_24, config: KEY_CONFIG, fs: fakeFsInterface(state) }
   );
 
   assert.equal(report.created, false);
@@ -94,7 +94,7 @@ test("setup fails below the Node engine floor", async () => {
 
   const report = await runSetup(
     { packageDir: PACKAGE_DIR, targetDir: TARGET_DIR, writeEnv: false },
-    { nodeVersion: "18.0.0", config: KEY_CONFIG, fs: fakeFsInterface(state) }
+    { nodeVersion: "22.11.0", config: KEY_CONFIG, fs: fakeFsInterface(state) }
   );
 
   assert.equal(report.success, false);
@@ -106,7 +106,7 @@ test("setup fails creation when the template is missing", async () => {
 
   const report = await runSetup(
     { packageDir: PACKAGE_DIR, targetDir: TARGET_DIR, writeEnv: true },
-    { nodeVersion: NODE_22, config: KEY_CONFIG, fs: fakeFsInterface(state) }
+    { nodeVersion: NODE_24, config: KEY_CONFIG, fs: fakeFsInterface(state) }
   );
 
   assert.equal(report.created, false);
@@ -121,7 +121,7 @@ test("setup reports a masked API key status without exposing the value", async (
 
   const report = await runSetup(
     { packageDir: PACKAGE_DIR, targetDir: TARGET_DIR, writeEnv: false },
-    { nodeVersion: NODE_22, config: KEY_CONFIG, fs: fakeFsInterface(state) }
+    { nodeVersion: NODE_24, config: KEY_CONFIG, fs: fakeFsInterface(state) }
   );
 
   const serialized = JSON.stringify(report);

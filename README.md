@@ -1,7 +1,7 @@
 # mcp-google-map (0.16.0)
 
 <p align="center">
-  <img src="https://img.shields.io/badge/node-%3E%3D22-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js >= 22">
+  <img src="https://img.shields.io/badge/node-%3E%3D24-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js >= 24">
   <img src="https://img.shields.io/badge/typescript-5.7-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript 5.7">
   <img src="https://img.shields.io/badge/license-GPL--3.0--only-491?style=flat-square" alt="License: GPL-3.0-only">
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-6A7EC2?style=flat-square&logo=terminal&logoColor=white" alt="Platforms">
@@ -47,7 +47,7 @@ Supported transports: **stdio** (local MCP clients) and **Streamable HTTP**.
 
 ## Requirements
 
-- Node.js **>= 22**
+- Node.js **>= 24**
 - A **Google Maps API key** (<https://console.cloud.google.com/apis/credentials>) with the services enabled — see below
 
 ## Required Google Cloud APIs
@@ -89,7 +89,7 @@ gcloud services enable places-backend-new.googleapis.com \
 
 ## Install
 
-**Prerequisites**: Node.js **>= 22** and a Google Maps API key (see [Requirements](#requirements)).
+**Prerequisites**: Node.js **>= 24** and a Google Maps API key (see [Requirements](#requirements)).
 
 ### Prebuilt package (recommended)
 

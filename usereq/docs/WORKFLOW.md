@@ -233,7 +233,7 @@
   TRACE-G: doctor CLI mode [`src/cli.ts`]
   - `doctor` handler: reads installed package version from `package.json`; parses `--probes` before dispatch (invalid input -> JSON stderr error, exit 1)
     - external: `readFileSync`; fallback version `"0.0.0"`
-    - `runDoctor(packageVersion, apiKey, live, runner?, options?)`: local checks (node >= `NODE_ENGINE_FLOOR` 22 per `engines`, non-zero version, key presence, config diagnostics, env-file status, tool/API profile); live branch probes three APIs sequentially by default or the selected `--probes` subset; assembles `DoctorReport`
+    - `runDoctor(packageVersion, apiKey, live, runner?, options?)`: local checks (node >= `NODE_ENGINE_FLOOR` 24 per `engines`, non-zero version, key presence, config diagnostics, env-file status, tool/API profile); live branch probes three APIs sequentially by default or the selected `--probes` subset; assembles `DoctorReport`
       - `resolveRuntimeConfig(env, overrides)`: typed config snapshot with per-field sources (flag/environment/default) [`src/utils/configResolver.ts`]
       - `describeRuntimeConfig(config)` / `formatConfigDiagnostics(diagnostics)`: masked effective-configuration line (raw secret never printed) [`src/utils/configResolver.ts`]
         - `maskSecret(value)`: prefix/suffix masking helper
@@ -253,7 +253,7 @@
 
   TRACE-I: setup CLI mode [`src/cli.ts`]
   - `setup` handler: non-interactive onboarding; no prompts, no Google API calls, no writes without `--write-env`
-    - `runSetup({ packageDir, targetDir, writeEnv }, deps?)`: checks node floor (`NODE_ENGINE_FLOOR` 22), `.env.example` presence, `.env` state in `targetDir`; with `--write-env` creates `.env` from the template only when absent (existing files never overwritten); api-key presence from resolved config; assembles `SetupReport { success, created, checks[] }` (masked)
+    - `runSetup({ packageDir, targetDir, writeEnv }, deps?)`: checks node floor (`NODE_ENGINE_FLOOR` 24), `.env.example` presence, `.env` state in `targetDir`; with `--write-env` creates `.env` from the template only when absent (existing files never overwritten); api-key presence from resolved config; assembles `SetupReport { success, created, checks[] }` (masked)
       - `resolveRuntimeConfig(env)`: as TRACE-G [`src/utils/configResolver.ts`]
       - external: `existsSync`/`readFileSync`/`writeFileSync` (injectable for tests), `process.stdout` JSON write, `process.exitCode`
 

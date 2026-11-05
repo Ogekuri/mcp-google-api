@@ -113,4 +113,4 @@ node dist/cli.js snippet --client pi                              # registration
 node dist/cli.js doctor
 ```
 
-Verifica versione Node, presenza della API key e (con `--live`) effettua chiamate reali ai servizi Google. The Node floor is `>= 22`, aligned with `package.json` `engines`; the local report also prints the effective configuration (masked key, per-field sources) and the Google APIs required by each enabled tool.
+Verifica versione Node, presenza della API key e (con `--live`) effettua chiamate reali ai servizi Google. The Node floor is `>= 24`, aligned with `package.json` `engines`; the local report also prints the effective configuration (masked key, per-field sources) and the Google APIs required by each enabled tool.
