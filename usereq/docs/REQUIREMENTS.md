@@ -16,7 +16,7 @@ This document MUST follow these authoring rules (LLM-first, normative SRS):
   - Do NOT add YAML front matter or in-document revision history; use git history / CHANGELOG.md for change tracking.
 
 ### 1.2 Project Scope
-`mcp-google-map` (v0.0.0, GPL-3.0) is a Model Context Protocol (MCP) server exposing 18 Google Maps tools (geocoding, Places API (New), Routes, Weather, Air Quality, Time Zone, Elevation, Static Maps) to AI agents over stdio or Streamable HTTP, plus a standalone CLI (`doctor`, `exec`, `batch-geocode`, `setup`, `snippet`, `enable`, `disable`, `auto-update <enable|disable|1|0>`, `install`, `uninstall`, `show`, `api-key`). Boundaries: read-only Google API queries only; no persistence, no caching layer, no user management, no write operations.
+`mcp-google-map` (v0.0.0, GPL-3.0-only) is a Model Context Protocol (MCP) server exposing 18 Google Maps tools (geocoding, Places API (New), Routes, Weather, Air Quality, Time Zone, Elevation, Static Maps) to AI agents over stdio or Streamable HTTP, plus a standalone CLI (`doctor`, `exec`, `batch-geocode`, `setup`, `snippet`, `enable`, `disable`, `auto-update <enable|disable|1|0>`, `install`, `uninstall`, `show`, `api-key`). Boundaries: read-only Google API queries only; no persistence, no caching layer, no user management, no write operations.
 
 Project file/folder structure (evidence: repository tree):
 
@@ -124,6 +124,14 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-030**: MUST grant the release job `id-token: write` permission so `npm publish` authenticates through the GitHub Actions OIDC token.
 - **PKG-031**: MUST NOT reference the `NPM_TOKEN` secret or set `NODE_AUTH_TOKEN` anywhere in the release workflow.
 - **PKG-032**: MUST run the release `npm publish` step on the pinned release Node.js runtime bundling npm >= 11.5.1, the minimum version supporting OIDC Trusted Publishing.
+- **PKG-033**: MUST declare the `package.json` `license` field as the SPDX expression `GPL-3.0-only`, not the deprecated SPDX identifier `GPL-3.0`.
+- **PKG-034**: MUST state SPDX identifier `GPL-3.0-only` in the README.md license badge and License section, matching the `package.json` `license` value.
+- **PKG-035**: MUST define a `package.json` `exports` map with `.` targeting `./dist/index.js` and `./package.json` targeting `./package.json`, keeping `main` consistent with the `.` target.
+- **PKG-036**: MUST include `CHANGELOG.md` in the published tarball via the `package.json` `files` allowlist.
+- **PKG-037**: MUST keep the `package-lock.json` root `name` and `version` fields identical to the `package.json` values.
+- **PKG-038**: MUST restrict packed tarball contents to allowlisted runtime paths plus npm-invariant metadata files, excluding tests, local configuration, and secret files.
+- **PKG-039**: MUST NOT declare `"private": true` in `package.json`, keeping the package publishable under npm registry policy.
+- **PKG-040**: MUST declare one registry-valid package name (lowercase, URL-safe, max 214 characters) in `package.json` and `package-lock.json`.
 
 ## 3. Requirements
 
@@ -368,3 +376,4 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-018**: MUST verify REQ-152/REQ-154/REQ-155/REQ-156/REQ-157/REQ-158 by running `npm test` (`tests/skillDebugInstall.unit.test.ts`): temp-directory installs assert plain mode excludes the debug file, debug mode appends it once across reruns, and `show` reports OK for both modes.
 - **TST-019**: MUST verify REQ-153/REQ-160 by running `npm test` (`tests/eatspotSkillContract.unit.test.ts`): the packaged `SKILL.md` carries no debug section while the packaged debug file carries the register, capture, and provenance rules.
 - **TST-020**: MUST verify PKG-008/PKG-009/PKG-010/PKG-026/PKG-027/PKG-028/PKG-029/PKG-030/PKG-031/PKG-032 by running `npm test` (`tests/ciContract.unit.test.ts`): `.github/workflows/ci.yml` is absent, the release job gates before install/build/pack/publish with no typecheck, unit-test, or smoke-check step, and publish authenticates via OIDC Trusted Publishing with `id-token: write`, no `NPM_TOKEN`/`NODE_AUTH_TOKEN`, and npm >= 11.5.1 on the pinned Node runtime.
+- **TST-021**: MUST verify PKG-033/PKG-034/PKG-035/PKG-036/PKG-037/PKG-038/PKG-039/PKG-040 by running `npm test` (`tests/npmPublishContract.unit.test.ts`): metadata, lockfile identity, and `npm pack --dry-run` tarball-list assertions pass.

@@ -4,6 +4,10 @@
   "description": "Google Maps MCP server — 18 tools for AI agents: geocoding, Places API (New) search with server-side filters, directions, distance matrix and more, via stdio or Streamable HTTP",
   "type": "module",
   "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
+  },
   "bin": {
     "mcp-google-map": "dist/cli.js"
   },
@@ -11,6 +15,7 @@
     "dist",
     "src/resources/skills",
     "README.md",
+    "CHANGELOG.md",
     "docs",
     ".env.example"
   ],
@@ -40,7 +45,7 @@
     "geocoding",
     "directions"
   ],
-  "license": "GPL-3.0",
+  "license": "GPL-3.0-only",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Ogekuri/mcp-google-map.git"
