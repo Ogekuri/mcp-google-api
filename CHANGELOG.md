@@ -1,14 +1,36 @@
 # Changelog
 
+## [0.21.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.20.0..v0.21.0) - 2026-11-06
+### 🚜  Changes
+- pin release automation compliance to the mcp-google-api npm package [useReq] *(release-npm)*
+  - Add PKG-045: publish, pack, and release-asset glob derive from the distribution package name mcp-google-api.
+  - Verified automation compliance: release-npm.yml publishes package.json name, npm pack emits mcp-google-api-<ver>.tgz, asset glob mcp-google-api-*.tgz, .galias.conf regex matches the renamed lockfile; version guard name-agnostic; registry confirms mcp-google-api exists on npmjs.
+  - Zero superseded-name references in automation paths; REFERENCES.md regenerated unchanged.
+  - Verification: typecheck clean, static-check clean, 133/133 unit tests pass (ciContract 6/6), build success.
+- add mcp-google-api.sh local launcher mirroring the installed bin [useReq] *(scripts)*
+  - Add scripts/mcp-google-api.sh named after the installed mcp-google-api distribution bin (PRJ-018).
+  - Forward every argument unchanged to the local dist/cli.js entry with the full CLI surface; no implicit install/build steps, missing-artifact remediation message instead (PRJ-019, PKG-019).
+  - Update SRS scripts/ tree comment and requirements; REFERENCES.md regenerated unchanged.
+  - Verification: static-check clean, 133/133 unit tests pass; launcher guard/help/forwarding functionally verified.
+- BREAKING CHANGE: rename project to mcp-google-api and widen scope to all Google APIs [useReq] *(pkg)*
+  - Rename package, bin, CLI script name, npm/GitHub probe endpoints, MCP entry, settings (~/.config/mcp-google-api), and idle cache paths (PRJ-016, REQ-082, 114, 115, 121, 125, 127, 162, 163).
+  - Widen scope to Google APIs at large with Google Maps as the currently implemented family (PRJ-017, CTN-008, DES-018, DES-021).
+  - Reword README Acknowledgments to credit CabLate without the superseded name (PKG-044).
+  - Update SRS, WORKFLOW.md, README/docs, CHANGELOG, release workflow glob, skills, and unit-test assertions; regenerate REFERENCES.md.
+  - Verification: typecheck clean, static-check clean, 133/133 unit tests pass, build success.
+
+### 📚  Documentation
+- Update TODO.md file.
+
 ## [0.20.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.19.0..v0.20.0) - 2026-11-05
 ### 🚜  Changes
 - GitHub version probe targets the Ogekuri repository [useReq] *(upgrade-manager)*
   - Re-point DEFAULT_GITHUB_RELEASES_API_URL (src/utils/autoUpdate.ts) from
-  - the upstream cablate project (latest release v0.0.69) to the
-  - distribution repository Ogekuri/mcp-google-api (latest release v0.19.0),
+  - the upstream cablate/mcp-google-map (latest release v0.0.69) to the
+  - distribution repository Ogekuri/mcp-google-map (latest release v0.19.0),
   - fixing the wrong 'GitHub latest:' line of --ver/--version.
   - Update REQ-163 to pin the GitHub probe repository to
-  - Ogekuri/mcp-google-api; sync TRACE-L, external boundaries, and EDGE-10
+  - Ogekuri/mcp-google-map; sync TRACE-L, external boundaries, and EDGE-10
   - in WORKFLOW.md; REFERENCES.md regenerated unchanged.
 
 ## [0.19.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.18.0..v0.19.0) - 2026-11-05
@@ -24,9 +46,9 @@
   - Extract resolveProbeLatestVersion; resolveUpdatedVersion delegates to it.
   - Update SRS (REQ-120, REQ-161..REQ-164), WORKFLOW.md (TRACE-L, EDGE-06,
   - EDGE-07, EDGE-10), and regenerate REFERENCES.md.
-- add Acknowledgments section crediting CabLate's upstream project [useReq] *(readme)*
+- add Acknowledgments section crediting CabLate's mcp-google-map [useReq] *(readme)*
   - Requirements: add PKG-044 (Acknowledgments as the last README.md section naming CabLate and the project URL).
-  - README: append the Acknowledgments section after License, thanking CabLate for the upstream contribution.
+  - README: append the Acknowledgments section after License, thanking CabLate for the mcp-google-map contribution.
   - Verification: full unit suite 133/133 pass; static analysis clean.
 - publish to npm only for master tags; develop tags release without publish [useReq] *(release-npm)*
   - Requirements: update PKG-008/PKG-009/PKG-026/PKG-028, add PKG-042/PKG-043, update TST-020.
@@ -127,7 +149,7 @@
   - Requirements: REQ-152..REQ-160, REQ-126, DES-020, PRJ-012/013, TST-018/019
 - BREAKING CHANGE: config-file-only settings, human-readable api-key, auto-update [useReq] *(cli)*
   - REQ-083/DES-018/DES-023/DES-024: configuration comes only from
-  - ~/.config/mcp-google-api/config.json ({enabled, apiKey, autoUpdate});
+  - ~/.config/mcp-google-map/config.json ({enabled, apiKey, autoUpdate});
   - startup resolves the API key from settings (default empty key) and the
   - auto-update check only runs when the autoUpdate flag is true (default on).
   - New auto-update enable|disable|1|0 command persists the flag. Env-var
@@ -147,7 +169,7 @@
 ### ⛰️  Features
 - add api-key command, install placeholder, and stdio key guard [useReq] *(api-key)*
   - Add api-key <key> CLI: validate REQ-020 format, persist key in
-  - ~/.config/mcp-google-api/config.json (apiKey field), then reinstall
+  - ~/.config/mcp-google-map/config.json (apiKey field), then reinstall
   - every enabled CLI with the new key (REQ-136..REQ-139)
   - install: resolve embedded key as --apikey > persisted settings >
   - GOOGLE_MAPS_API_KEY; embed placeholder naming api-key when unset
@@ -161,13 +183,13 @@
 ## [0.9.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.8.0..v0.9.0) - 2026-11-03
 ### 🐛  Bug Fixes
 - spawn post-upgrade install via upgraded package bin [useReq] *(upgrade)*
-  - The --upgrade post-upgrade child spawned 'npx -y mcp-google-api install',
+  - The --upgrade post-upgrade child spawned 'npx -y mcp-google-map install',
   - an unversioned npx spec resolved from the npx cache/registry instead of the
   - package just upgraded by 'npm install -g'. A stale cached CLI copy could run
   - its default command (pre-v0.7.0 releases start the MCP HTTP server there),
   - never exit, and block the parent spawnSync forever: the user observed the
   - MCP server running instead of the 'install' command (REQ-126 violation).
-  - POST_UPGRADE_INSTALL_COMMAND is now ['mcp-google-api', 'install']: the
+  - POST_UPGRADE_INSTALL_COMMAND is now ['mcp-google-map', 'install']: the
   - globally installed bin of the just-upgraded package, already on PATH in
   - the exact --upgrade scenario; captured stdout and stderr-inherited spawn
   - mechanics unchanged (REQ-125, REQ-126, REQ-128).
@@ -197,15 +219,15 @@
 ### 🚜  Changes
 - gate server start on start/run, no-command help, silent version check [useReq] *(cli)*
   - REQUIREMENTS: PRJ-003/REQ-079/REQ-080/REQ-114/REQ-124 updated; REQ-129/130/131 and TST-017 added.
-  - cli.ts: server runs only via start/run; bare invocation prints help with mcp-google-api v<version> header and --upgrade/--uninstall/--ver/--version epilog.
+  - cli.ts: server runs only via start/run; bare invocation prints help with mcp-google-map v<version> header and --upgrade/--uninstall/--ver/--version epilog.
   - upgradeManager: no stderr output when no newer version exists (not an error).
-  - clientSnippets/cliInstaller: stdio registrations launch 'mcp-google-api start --stdio'.
+  - clientSnippets/cliInstaller: stdio registrations launch 'mcp-google-map start --stdio'.
   - Scripts, README, CONFIGURATION docs, and spawn/snippet tests aligned; npm test 103 pass, tsc/eslint clean.
 
 ## [0.6.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.5.0..v0.6.0) - 2026-11-02
 ### ⛰️  Features
 - add --upgrade/--uninstall/--ver/--version with idle-gated version check [useReq] *(upgradeManager)*
-  - Add src/utils/upgradeManager.ts: idle cache (~/.cache/mcp-google-api/), forced --ver/--version check, npm-based --upgrade with post-upgrade skill install, --uninstall (REQ-120..REQ-128)
+  - Add src/utils/upgradeManager.ts: idle cache (~/.cache/mcp-google-map/), forced --ver/--version check, npm-based --upgrade with post-upgrade skill install, --uninstall (REQ-120..REQ-128)
   - Extract logging-free probeLatestVersion in autoUpdate.ts; startup check now idle-gated (REQ-082, REQ-121)
   - Fix registry accept header (406 -> application/json) so online version verification works
   - Update REQUIREMENTS (PRJ-003, CTN-008, DES-022, REQ-120..128), WORKFLOW (TRACE-L, EDGE-07/09), REFERENCES
@@ -233,12 +255,12 @@
 ### 🚜  Changes
 - derive settings dir from program name, forbid generic skills dir [useReq] *(cli-settings)*
   - Add DES-021: settings directory MUST equal the distribution program
-  - name mcp-google-api; shared/generic dirs like ~/.config/skills/ are
+  - name mcp-google-map; shared/generic dirs like ~/.config/skills/ are
   - forbidden
   - Introduce SETTINGS_PROGRAM_NAME constant as single source of truth
   - for CLI_SETTINGS_RELATIVE in src/utils/cliSettings.ts
   - Drop the reference skills settings-path mention from documentation;
-  - runtime path stays ~/.config/mcp-google-api/config.json (DES-018)
+  - runtime path stays ~/.config/mcp-google-map/config.json (DES-018)
   - Regenerate REFERENCES.md
 - drop GeoScout 6.2 lineage and bind filters to venue-discovery skill [useReq] *(skills)*
   - Remove all GeoScout 6.2 references: PRJ-014 rewritten, docs/GEOSCOUT.md deleted, README/docs/package.json/manifest/SKILL/NewPlacesService cleaned
@@ -246,7 +268,7 @@
   - Rename tests/geoscoutFilters.unit.test.ts to placesFilters.unit.test.ts (titles only; TST-003 updated); npm test 102/102 green
 - add venue-discovery skill and skills resource framework [useReq] *(skills)*
   - Add src/resources/skills: manifest.json registry + README.md authoring guide (PRJ-012..014, REQ-097..108)
-  - Add venue-discovery SKILL.md: GeoScout 6.2 translated to English and bound to mcp-google-api; all 18 tools mapped; budget/priceLevels/priceRange rules, grades A-E, categories, hours, geo modes, progressive search, output A-D + DEBUG
+  - Add venue-discovery SKILL.md: GeoScout 6.2 translated to English and bound to mcp-google-map; all 18 tools mapped; budget/priceLevels/priceRange rules, grades A-E, categories, hours, geo modes, progressive search, output A-D + DEBUG
   - REQUIREMENTS.md: skills section; WORKFLOW.md: inert-resources note
 - add setup+snippet commands, typed config, doctor probes, loopback *(cli)*
   - Requirements: PRJ-003/006/009-011, CTN-005/007-009, DES-014-016, REQ-008/009/070/079/087-096, PKG-003-005/018-022, TST-002/012-016; LIM-003 removed (doctor now enforces engines >= 22).
@@ -283,7 +305,7 @@
   - Add PKG-017 to SRS 2.3: npm publish MUST fail when package.json version is 0.0.0-based or carries a prerelease/build suffix (stray 0.0.0-stage incident).
   - Add scripts/check-publish-version.mjs (Doxygen-documented): strict X.Y.Z pattern plus 0.0.0 placeholder prefix check; wired as first stage of prepublishOnly, preserving PKG-005 chain (typecheck, tests, build).
   - Verified: tsc --noEmit clean, 41/41 unit tests, npm publish --dry-run full chain, refusal cases 0.0.0-stage and 1.2.3-rc.1 exit 1.
-  - Ops: unpublished mcp-google-api@0.0.0-stage from the npm registry.
+  - Ops: unpublished mcp-google-map@0.0.0-stage from the npm registry.
 
 ## [0.3.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.2.0..v0.3.0) - 2026-10-29
 ### 🚜  Changes
@@ -352,6 +374,7 @@
 - \[0.18.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.18.0
 - \[0.19.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.19.0
 - \[0.20.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.20.0
+- \[0.21.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.21.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.2.0..v0.3.0
@@ -371,3 +394,4 @@
 [0.18.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.17.0..v0.18.0
 [0.19.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.18.0..v0.19.0
 [0.20.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.19.0..v0.20.0
+[0.21.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.20.0..v0.21.0
