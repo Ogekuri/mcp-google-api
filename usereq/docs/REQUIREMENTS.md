@@ -16,7 +16,7 @@ This document MUST follow these authoring rules (LLM-first, normative SRS):
   - Do NOT add YAML front matter or in-document revision history; use git history / CHANGELOG.md for change tracking.
 
 ### 1.2 Project Scope
-`mcp-google-api` (v0.0.0, GPL-3.0-only) is a Model Context Protocol (MCP) server exposing Google APIs to AI agents over stdio or Streamable HTTP; the currently implemented family is Google Maps with 18 tools (geocoding, Places API (New), Routes, Weather, Air Quality, Time Zone, Elevation, Static Maps), plus a standalone CLI (`doctor`, `exec`, `batch-geocode`, `setup`, `snippet`, `enable`, `disable`, `auto-update <enable|disable|1|0>`, `install`, `uninstall`, `show`, `api-key`). Boundaries: read-only Google API queries only; no persistence, no caching layer, no user management, no write operations.
+`mcp-google-api` (v0.0.0, GPL-3.0-only) is a Model Context Protocol (MCP) server exposing Google APIs to AI agents over stdio or Streamable HTTP; the currently implemented family is Google Maps with 18 tools (geocoding, Places API (New), Routes, Weather, Air Quality, Time Zone, Elevation, Static Maps), plus a standalone CLI (`doctor`, `exec`, `batch-geocode`, `snippet`, `enable`, `disable`, `auto-update <enable|disable|1|0>`, `tools <list|*>`, `host <host>`, `port <port>`, `install`, `uninstall`, `show`, `api-key`). Boundaries: read-only Google API queries only; no persistence, no caching layer, no user management, no write operations.
 
 Project file/folder structure (evidence: repository tree):
 
@@ -24,7 +24,7 @@ Project file/folder structure (evidence: repository tree):
 mcp-google-api/
 ├── .github/workflows/           # GitHub Actions: release-npm.yml (npm tag releases)
 ├── docs/                        # Usage docs (CONFIGURATION.md, TOOLS.md)
-├── scripts/                     # Shell helpers: build.sh, mcp-google-api.sh, setup.sh, start-http.sh, start-mcp.sh, test.sh
+├── scripts/                     # Shell helpers: build.sh, mcp-google-api.sh, start-http.sh, start-mcp.sh, test.sh
 ├── src/
 │   ├── cli.ts                   # yargs entry: doctor, exec, batch-geocode, server start
 │   ├── config.ts                # serverConfigs registry, tool annotations, filterTools()
@@ -60,7 +60,6 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - `express` ^4.21.2 — HTTP server hosting `/mcp` (`src/core/BaseMcpServer.ts`).
 - `yargs` ^17.7.2 — CLI command parsing (`src/cli.ts`).
 - `zod` ^3.25.0 — tool input schemas (`src/tools/maps/*.ts`, `src/config.ts`).
-- `dotenv` ^16.4.7 — `.env` loading (`src/cli.ts`, `src/services/toolclass.ts`).
 - Dev toolchain: `typescript` ^5.7.3, `tsup` ^8.4.0 (ESM build), `tsx` ^4.19.2 (test runner).
 
 ## 2. Project Requirements
@@ -68,16 +67,15 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 ### 2.1 Project Functions
 - **PRJ-001**: MUST expose 18 Google Maps MCP tools: maps_geocode, maps_reverse_geocode, maps_search_nearby, maps_search_places, maps_place_details, maps_directions, maps_distance_matrix, maps_elevation, maps_timezone, maps_weather, maps_explore_area, maps_plan_route, maps_compare_places, maps_air_quality, maps_static_map, maps_batch_geocode, maps_search_along_route, maps_local_rank_tracker.
 - **PRJ-002**: MUST serve tool calls over both stdio transport and Streamable HTTP transport at endpoint path `/mcp`.
-- **PRJ-003**: MUST provide a standalone CLI with commands: `doctor`, `exec <tool> [params]`, `batch-geocode`, `setup`, `snippet`, `enable <cli>`, `disable <cli>`, `auto-update <enable|disable|1|0>`, `install`, `uninstall`, `show`, `api-key <key>`, server start via `start` or `run`, and management flags `--upgrade`, `--uninstall`, `--ver`, `--version`.
+- **PRJ-003**: MUST provide a standalone CLI with commands: `doctor`, `exec <tool> [params]`, `batch-geocode`, `snippet`, `enable <cli>`, `disable <cli>`, `auto-update <enable|disable|1|0>`, `tools <list|*>`, `host <host>`, `port <port>`, `install`, `uninstall`, `show`, `api-key <key>`, server start via `start` or `run`, and management flags `--upgrade`, `--uninstall`, `--ver`, `--version`.
 - **PRJ-004**: MUST provide composite tools (explore-area, plan-route, compare-places, search-along-route, local-rank-tracker) that chain geocoding, search, details, and routing calls internally.
 - **PRJ-005**: MUST support per-request and per-session Google Maps API keys so concurrent HTTP clients use isolated credentials.
-- **PRJ-006**: MUST allow restricting exposed tools via the `GOOGLE_MAPS_ENABLED_TOOLS` comma-separated allowlist environment variable resolved through the central typed configuration.
+- **PRJ-006**: MUST allow restricting exposed tools via the persisted `enabledTools` settings field configured through the `tools` CLI command and resolved through the central typed configuration.
 - **PRJ-007**: MUST provide CLI batch geocoding of address files or stdin with bounded concurrency and JSON summary output.
-- **PRJ-008**: MUST report machine-readable JSON results on stdout and diagnostics on stderr in all CLI modes except the human-readable `show` report tables and the `api-key`/`auto-update` operation reports.
+- **PRJ-008**: MUST report machine-readable JSON results on stdout and diagnostics on stderr in all CLI modes except the human-readable `show` report tables and the `api-key`, `auto-update`, `tools`, `host`, `port`, `install`, and `uninstall` operation reports.
 - **PRJ-015**: MUST provide CLI commands `enable <cli>`, `disable <cli>`, `install`, `uninstall`, and `show` managing MCP-server registration and packaged skill installation across supported CLI agents.
 - **PRJ-009**: MUST provide machine-readable tool/API dependency profiles covering all 18 tools, including the tool dependencies of composite tools.
 - **PRJ-010**: MUST provide a `snippet` CLI command that prints valid MCP-client registration snippets without modifying any client configuration file.
-- **PRJ-011**: MUST provide a non-interactive `setup` CLI command that verifies local readiness without prompts or Google API calls.
 - **PRJ-012**: MUST ship LLM agent skills as self-contained English `SKILL.md` resources under `src/resources/skills/<skill-id>/`, exactly one skill per directory, plus an optional `<skill-id>/DEBUG.md` debug overlay.
 - **PRJ-013**: MUST maintain `src/resources/skills/manifest.json` indexing every skill (id, name, version, language, path, description, optional `debug` overlay path) plus `src/resources/skills/README.md` authoring conventions enabling new skills without source-code changes.
 - **PRJ-014**: MUST ship the `eatspot-discovery` skill dedicated to discovering bars, pastry shops, restaurants, cafes, and bakeries.
@@ -88,19 +86,17 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 
 ### 2.2 Project Constraints
 - **CTN-001**: MUST declare all tools read-only, non-destructive, idempotent, and open-world via MCP tool annotations (evidence: `MAPS_TOOL_ANNOTATIONS`, `src/config.ts`).
-- **CTN-002**: MUST require a Google Maps API key from the persisted user settings (REQ-142) or a per-request HTTP header before any tool call executes.
+- **CTN-002**: MUST require a Google Maps API key from the persisted user settings (REQ-142) or a per-request HTTP header before any tool call executes; environment variables MUST NOT supply the API key.
 - **CTN-003**: MUST reserve stdio-mode stdout exclusively for JSON-RPC frames, dropping non-JSON stdout writes.
 - **CTN-004**: MUST default Places API result language to English (`languageCode: "en"`).
 - **CTN-005**: MUST run on Node.js `>= 24`, declared in `package.json` `engines` and enforced identically by the `doctor` local check.
 - **CTN-006**: MUST build and run as ECMAScript Modules only (`"type": "module"`, tsup ESM output).
-- **CTN-007**: MUST load `.env` from the current working directory first, then from the package installation directory, unless an explicit `--env-file` is given.
 - **CTN-008**: MUST NOT use any database or file-based persistence; all state is in-memory per process, except user-authorized local configuration files and the automatic-update idle cache under `~/.cache/mcp-google-api/`.
-- **CTN-009**: MUST support a global `--env-file <path>` CLI option that loads exactly the given file before command execution and fails when it is missing.
 
 ### 2.3 Packaging and Publication
 - **PKG-001**: MUST keep `README.md` free of placeholder markers and of badges that do not match the Node.js runtime declared in `package.json` `engines`.
 - **PKG-002**: MUST resolve every `README.md` navigation-menu anchor to an existing section heading in the same document.
-- **PKG-003**: MUST document in `README.md` a prebuilt-package-first Quick Start and installation paths: npm install, one-shot `npx`, and from-source build via cross-platform npm commands.
+- **PKG-003**: MUST document in `README.md` the standard flow only: package installation, `api-key` configuration, `enable` CLI selection, `install` registration, and server usage.
 - **PKG-005**: MUST define a `prepublishOnly` script in `package.json` that runs the version guard and build before any `npm publish`.
 - **PKG-006**: MUST set one identical non-`0.0.0` semantic version across `package.json`, `package-lock.json`, and the `README.md` title for every published release.
 - **PKG-007**: MUST print only the distribution package name `mcp-google-api` in user-facing doctor messages.
@@ -111,12 +107,11 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-012**: MUST attach the npm package tarball (not raw sources) as the GitHub Release asset, failing the release on unmatched files.
 - **PKG-013**: MUST disable GitHub auto-generated release notes when the commit-based changelog is used.
 - **PKG-014**: MUST pin the release Node.js runtime to major 24 (CTN-005 floor) and disable dependency caching in release builds.
-- **PKG-015**: MUST document in `README.md` and `docs/CONFIGURATION.md` MCP-client registration for pi CLI and OpenClaw with complete working stdio examples, including post-change reload notes.
-- **PKG-016**: MUST document configuration prerequisites in `README.md` and `docs/CONFIGURATION.md`: single Google Maps API key configured via `api-key`, enabled Google services, minimal operational subset, `GOOGLE_MAPS_ENABLED_TOOLS`, and post-install `doctor` verification.
+- **PKG-015**: MUST document in `README.md` and `docs/CONFIGURATION.md` the standard MCP-client registration flow via `enable` and `install` for pi CLI and OpenClaw, including post-change reload notes.
+- **PKG-016**: MUST document configuration prerequisites in `README.md` and `docs/CONFIGURATION.md`: single Google Maps API key configured via `api-key`, enabled Google services, minimal operational subset, `tools` command restriction, and post-install `doctor` verification.
 - **PKG-017**: MUST fail `npm publish` via the `prepublishOnly` guard when the `package.json` version is `0.0.0`-based or carries a prerelease or build suffix.
 - **PKG-018**: MUST document in `README.md` the migration of the HTTP default bind from `0.0.0.0` to loopback `127.0.0.1`, including the `--host 0.0.0.0` opt-in.
 - **PKG-019**: MUST provide a single `npm run verify` pipeline (typecheck, unit tests, build) and keep helper scripts free of implicit chained install/build steps.
-- **PKG-020**: MUST document developer setup using lockfile-based `npm ci` and cross-platform npm commands in `README.md`.
 - **PKG-022**: MUST keep every documented example consistent with supported CLI flags, headers, and transports.
 - **PKG-023**: MUST document `enable`, `disable`, `install`, `uninstall`, and `show` commands with supported CLI targets in README.md.
 - **PKG-024**: MUST ship `src/resources/skills` inside the published npm package so `install` and `show` resolve manifest skills from installed packages.
@@ -159,10 +154,10 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **DES-012**: MUST map legacy travel-mode names driving/walking/bicycling/transit to Routes API DRIVE/WALK/BICYCLE/TRANSIT, defaulting unknown modes to DRIVE.
 - **DES-013**: MUST prefer place IDs over coordinates when converting resolved locations to Routes waypoints, because Routes snaps coordinates to roads (`toRouteWaypoint`, `src/services/PlacesSearcher.ts`).
 - **DES-014**: MUST implement doctor self-checks decoupled from server startup with injectable tool runner, Node version, and configuration dependencies for testing (`runDoctor`, `src/cli.ts`).
-- **DES-015**: MUST resolve runtime configuration (host, port, enabled tools, env file) in one typed resolver consumed by CLI commands; the API key and update flag resolve from the persisted settings.
-- **DES-016**: MUST mask secret values via a single masking helper in every diagnostic, doctor, and setup report.
+- **DES-015**: MUST resolve runtime configuration (host, port, enabled tools) in one typed resolver consuming the persisted settings file plus per-invocation CLI flag overrides; the API key and update flag resolve from the persisted settings.
+- **DES-016**: MUST mask secret values via a single masking helper in every diagnostic and command report.
 - **DES-017**: MUST implement per-CLI target adapters for pi, openclaw, codex, antigravity, and claude resolving each MCP configuration file and skills destination directory from an injectable home root.
-- **DES-018**: MUST persist `{ "enabled": [<cli>...], "apiKey": "", "autoUpdate": true }` JSON at `~/.config/mcp-google-api/config.json`, tolerating missing or malformed content and writing atomically; `apiKey` follows DES-023 and `autoUpdate` follows DES-024.
+- **DES-018**: MUST persist `{ "enabled": [<cli>...], "apiKey": "", "autoUpdate": true, "enabledTools": "*", "host": "127.0.0.1", "port": 3000 }` JSON at `~/.config/mcp-google-api/config.json`, tolerating missing or malformed content and writing atomically; `apiKey` follows DES-023, `autoUpdate` follows DES-024, and `enabledTools`/`host`/`port` follow REQ-167/REQ-168/REQ-169 with default-normalizing loaders.
 - **DES-021**: MUST derive the enabled-CLI settings directory from the distribution program name `mcp-google-api`; shared or generic directories such as `~/.config/skills/` MUST NOT be used.
 - **DES-019**: MUST apply MCP-server registration through read-modify-write preserving every unrelated configuration entry, with atomic temporary-file replacement.
 - **DES-020**: MUST synchronize packaged skills into CLI skills destinations copying packaged content files with overwrite and pruning stale files inside managed skill directories only, excluding any declared debug overlay file.
@@ -180,14 +175,14 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-005**: MUST delete the stored session context when the session transport emits `onclose`.
 - **REQ-006**: MUST overwrite the stored session API key when a later request on that session supplies a header-based key.
 - **REQ-007**: MUST serve GET `/mcp` for server-to-client SSE notifications and DELETE `/mcp` for session termination through one shared handler.
-- **REQ-008**: MUST bind the HTTP server to `--host` (default `MCP_SERVER_HOST` or `127.0.0.1`) and port `--port` (default `MCP_SERVER_PORT` or 3000).
+- **REQ-008**: MUST bind the HTTP server to `--host` (default: persisted `host` setting or `127.0.0.1`) and port `--port` (default: persisted `port` setting or 3000).
 - **REQ-009**: MUST skip starting a server instance, log remediation guidance, and mark startup failed when its port value is unset or invalid.
 - **REQ-094**: MUST start stdio mode directly from the built `dist` artifact, failing with build remediation guidance instead of implicit builds.
 - **REQ-095**: MUST exit non-zero from HTTP startup when zero server instances are listening.
 - **REQ-096**: MUST close all HTTP sessions and the listening socket on SIGINT or SIGTERM before exiting.
-- **REQ-010**: MUST return the full tool set when `GOOGLE_MAPS_ENABLED_TOOLS` is unset, empty, or `*`.
-- **REQ-011**: MUST return the named tool subset when `GOOGLE_MAPS_ENABLED_TOOLS` matches at least one tool name, trimming whitespace and ignoring empty items.
-- **REQ-012**: MUST return the full tool set and log an error when `GOOGLE_MAPS_ENABLED_TOOLS` matches zero tools.
+- **REQ-010**: MUST return the full tool set when the persisted `enabledTools` setting is unset, empty, or `*`.
+- **REQ-011**: MUST return the named tool subset when the persisted `enabledTools` setting matches at least one tool name, trimming whitespace and ignoring empty items.
+- **REQ-012**: MUST return the full tool set and log an error when the persisted `enabledTools` setting matches zero tools.
 - **REQ-013**: MUST attach annotations `readOnlyHint: true`, `destructiveHint: false`, `idempotentHint: true`, `openWorldHint: true` to every registered tool.
 - **REQ-014**: MUST suppress stdout string writes not beginning with `{` after any transport connect, preserving JSON-RPC framing in stdio mode.
 - **REQ-015**: MUST log all diagnostics to stderr via the `Logger` wrapper (`src/index.ts`).
@@ -274,14 +269,11 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-076**: MUST read one address per line for `batch-geocode` from `--input` file or stdin when `--input -`, rejecting empty input with exit 1.
 - **REQ-077**: MUST bound `batch-geocode` concurrency between 1 and 50 (default 20), print a JSON summary with counts and per-address results, and write progress to stderr only when `--output` is set.
 - **REQ-078**: MUST write `batch-geocode` results to `--output` file when given, otherwise stdout, and exit 1 when any address failed.
-- **REQ-079**: MUST start the MCP server from the `start` and `run` commands in stdio mode when `--stdio` is passed, otherwise in HTTP mode, applying `--env-file` before startup.
+- **REQ-079**: MUST start the MCP server from the `start` and `run` commands in stdio mode when `--stdio` is passed, otherwise in HTTP mode, resolving host and port from flags over the persisted settings.
 - **REQ-080**: MUST log a warning instead of failing when the `start` or `run` server-start command runs in HTTP mode without an API key.
-- **REQ-087**: MUST run `setup` non-interactively: no prompts, no Google API calls, no writes unless an explicit write option is passed.
-- **REQ-088**: MUST create `.env` from `.env.example` in `setup` only with explicit write authorization and only when the target file is absent, never overwriting existing files.
 - **REQ-092**: MUST print valid JSON MCP-client registration snippets for stdio and HTTP to stdout in `snippet`, writing no file.
-- **REQ-093**: MUST embed literal placeholder values in snippets by default; `--env-key` MUST emit variable references documented as client-specific.
-- **REQ-129**: MUST print the `--help` text on stdout and exit 0 when no command argument is supplied, without starting any server.
-- **REQ-130**: MUST print the application version adjacent to the first `mcp-google-api` line in help output.
+- **REQ-093**: MUST NOT embed API keys or environment variables in snippets; snippet notes MUST point to the `api-key` command as the configuration path.
+- **REQ-129**: MUST print the `--help` text on stdout and exit 0 when no command argument is supplied, without starting any server.- **REQ-130**: MUST print the application version adjacent to the first `mcp-google-api` line in help output.
 - **REQ-131**: MUST list in the help text the management commands `--upgrade`, `--uninstall`, `--ver`, and `--version`, each with a description.
 - **REQ-142**: `start`/`run` MUST resolve the effective API key exclusively from the persisted settings key (REQ-136), treating empty and placeholder values as unset.
 - **REQ-143**: `start`/`run` with `--stdio` MUST exit 1 before creating any server when REQ-142 resolves no key, printing a stderr JSON error naming the `api-key` command.
@@ -304,14 +296,13 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-123**: MUST set the idle window to 3600 seconds when a newer version is found and 86400 seconds otherwise.
 - **REQ-124**: MUST report each executed check on stderr only: `Available Version: <latest> | Installed Version: <current>` plus an upgrade command when newer and an error notice on failure; it MUST emit no output when no newer version exists.
 - **REQ-125**: MUST implement `--upgrade` to run `npm install -g mcp-google-api@latest` as a child process with inherited stdio, propagating its exit code.
-- **REQ-126**: MUST, after a successful `--upgrade` with at least one enabled CLI, run the upgraded package's `install` child command without `--debug-skills` with captured stdout, refreshing skills and MCP registrations without echoing the child JSON summary.
+- **REQ-126**: MUST, after a successful `--upgrade` with at least one enabled CLI, run the upgraded package's `install` child command without `--debug-skills` with captured stdout, refreshing skills and MCP registrations without echoing the child activity report.
 - **REQ-127**: MUST implement `--uninstall` to run `npm uninstall -g mcp-google-api` as a child process with inherited stdio, propagating its exit code.
 - **REQ-128**: MUST print the manual package-manager command and return exit code 1 when a management child process fails to spawn.
 - **REQ-132**: MUST print on stdout a human-readable summary after a successful `--upgrade` package update stating the starting version, the updated version, and the post-upgrade install outcome.
 - **REQ-133**: MUST list in the `--upgrade` summary one entry per processed CLI with its name and per-CLI install result.
 - **REQ-134**: MUST print `unknown` as the updated version in the `--upgrade` summary when the post-upgrade latest-version probe fails.
-- **REQ-135**: MUST derive the `--upgrade` summary CLI list from persisted enabled settings when the child `install` output is absent or unparseable.
-- **REQ-144**: `--upgrade` MUST first run one online npm-registry latest-version check comparing the installed version, bypassing the idle cache gate, before spawning any child process.
+- **REQ-135**: MUST derive the `--upgrade` summary CLI list from persisted enabled settings when the child `install` output is absent or unparseable.- **REQ-144**: `--upgrade` MUST first run one online npm-registry latest-version check comparing the installed version, bypassing the idle cache gate, before spawning any child process.
 - **REQ-145**: When the pre-upgrade check reports no newer version, `--upgrade` MUST print on stdout that the installed version is the latest available including the version number, terminate with exit code 0, and spawn no child process.
 - **REQ-146**: `--upgrade` MUST proceed with the REQ-125 package update, the REQ-126 post-upgrade install, and the REQ-132 summary exactly when the pre-upgrade check reports a newer available version.
 - **REQ-147**: When the pre-upgrade check cannot determine a newer version (installed version unknown or probe failure), `--upgrade` MUST proceed with the package update.
@@ -349,7 +340,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-111**: `enable <cli>` MUST add and `disable <cli>` MUST remove the resolved CLI name in the persisted enabled set; both MUST be idempotent.
 - **REQ-112**: MUST resolve MCP configuration files: pi `~/.pi/agent/mcp.json`, openclaw `~/.openclaw/openclaw.json`, codex `~/.codex/config.toml` (`mcp_servers` table), antigravity `~/.gemini/settings.json`, claude `~/.claude.json` (JSON `mcpServers` map).
 - **REQ-113**: MUST resolve skills directories: pi `~/.pi/agent/skills`, openclaw `~/.openclaw/workspace/skills`, codex `~/.codex/skills`, antigravity `~/.gemini/config/skills`, claude `~/.claude/skills`.
-- **REQ-114**: `install` MUST register per enabled CLI the stdio entry `mcp-google-api` launching `npx -y mcp-google-api start --stdio` with no API-key environment setup, and install every manifest skill.
+- **REQ-114**: `install` MUST register per enabled CLI the stdio entry `mcp-google-api` launching `npx -y mcp-google-api start --stdio` with no embedded API key or environment payload, and install every manifest skill.
 - **REQ-115**: `uninstall` MUST remove per enabled CLI the `mcp-google-api` MCP entry and managed skill directories; absent entries MUST count as removed without failure.
 - **REQ-116**: `install` and `uninstall` MUST process enabled CLIs only, report per-CLI counts, continue on per-CLI failures, and exit 1 when any failure occurs.
 - **REQ-117**: `show` MUST print a CLI Configuration table with columns CLI, Enabled, MCP Config Path, Skills Config Path covering all five supported CLIs in registry order.
@@ -359,6 +350,11 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-137**: `api-key` MUST reject empty, whitespace-only, or REQ-020-invalid keys with a human-readable stderr error and non-zero exit, persisting nothing.
 - **REQ-138**: after persisting, `api-key` MUST run the install operation for every enabled CLI, applying REQ-116 and REQ-119 semantics.
 - **REQ-139**: `api-key` MUST print on stdout a human-readable report stating the configured key masked per DES-016 and one line per processed CLI with its install result.
+- **REQ-165**: `start`/`run` startup diagnostics MUST identify the application as `MCP Google API server` (distribution name `mcp-google-api`).
+- **REQ-166**: `install` and `uninstall` MUST print on stdout a human-readable per-CLI activity report (server registration and skill counts) instead of a JSON payload, listing every collected error line.
+- **REQ-167**: `tools <list|*>` MUST persist the comma-separated enabled-tool allowlist (or `*`) into the settings `enabledTools` field, rejecting unknown tool names with a human-readable stderr error and non-zero exit while persisting nothing.
+- **REQ-168**: `host <host>` MUST persist a non-empty bind hostname into the settings `host` field with a human-readable confirmation, rejecting empty input while persisting nothing.
+- **REQ-169**: `port <port>` MUST persist an integer port 1-65535 into the settings `port` field with a human-readable confirmation, rejecting any other value while persisting nothing.
 
 ### 3.3 Known Limitations (True State)
 - **LIM-001**: `maps_search_nearby` may return fewer than 20 results when client-side `openNow`/`minRating` filters discard matches post-query.
@@ -370,7 +366,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 
 ## 4. Test Requirements
 - **TST-001**: MUST verify REQ-073/REQ-074/REQ-075 by running `npm test` (`tests/cliExec.unit.test.ts`): injected runners assert stdout JSON on success, stderr JSON plus exit code 1 on failure responses, thrown errors, and alias resolution; pass when all assertions hold.
-- **TST-002**: MUST verify REQ-070/REQ-071/REQ-072/REQ-089/REQ-090/REQ-091 by running `npm test` (`tests/cliExec.unit.test.ts`, `tests/doctorExt.unit.test.ts`): local mode makes zero API calls, engines floor enforced, config diagnostics masked, tool profiles reported, probes selectable and independent; pass when reports match expectations.
+- **TST-002**: MUST verify REQ-070/REQ-071/REQ-072/REQ-089/REQ-090/REQ-091 by running `npm test` (`tests/cliExec.unit.test.ts`, `tests/doctorExt.unit.test.ts`): local mode makes zero API calls, engines floor enforced, settings-derived config diagnostics masked, tool profiles reported, probes selectable and independent; pass when reports match expectations.
 - **TST-003**: MUST verify REQ-024-REQ-030 and REQ-081 by running `npm test` (`tests/placesFilters.unit.test.ts`): mocked `PlacesClient` assertions confirm forwarded filters, field masks, priceRange preservation, `pageSize`→`maxResultCount` translation, `nextPageToken`, `pageToken` forwarding, raw payloads, and legacy array contract.
 - **TST-004**: MUST verify REQ-054/REQ-055/REQ-057 by running `npm test` (`tests/locationResolution.unit.test.ts`): mocked clients assert resolved waypoints, geocode→text-search fallback, thrown errors on unresolvable stops, and coordinate handling without API calls.
 - **TST-005**: MUST verify REQ-058 by running `npm test` (`tests/planRoute.unit.test.ts`): 2-4 stop scenarios assert optimization is applied or skipped per thresholds and ordering is preserved when disabled.
@@ -380,12 +376,12 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-009**: MUST verify REQ-056 defaults by running `npm test` (`tests/exploreArea.unit.test.ts`): default type set contains only valid Places API (New) type names and caller-supplied types are preserved.
 - **TST-010**: SHOULD verify end-to-end behavior against live Google APIs by running `npm run test:e2e` (`tests/smoke.test.ts`) with a real API key; pass requires all live tool calls to succeed. This test is excluded from `npm test`.
 - **TST-011**: MUST verify REQ-082/REQ-083/REQ-084/REQ-085 by running `npm test` (`tests/autoUpdate.unit.test.ts`): injected fetch and logger assert disabled short-circuit without fetch, newer-version stderr notice, and startup-failure tolerance.
-- **TST-012**: MUST verify REQ-089/CTN-009/DES-015/DES-016 by running `npm test` (`tests/configResolver.unit.test.ts`): typed resolution, per-field sources, explicit env-file precedence and missing-file failure, masked secrets.
+- **TST-012**: MUST verify REQ-089/DES-015/DES-016 by running `npm test` (`tests/configResolver.unit.test.ts`): typed resolution from persisted settings with per-field sources and masked secrets.
 - **TST-013**: MUST verify PRJ-009/REQ-090 by running `npm test` (`tests/toolProfiles.unit.test.ts`): all 18 tools mapped to Google APIs with composite tool dependencies included.
-- **TST-014**: MUST verify PRJ-010/REQ-092/REQ-093 by running `npm test` (`tests/snippet.unit.test.ts`): snippets parse as JSON, default placeholders, `--env-key` references, no file writes.
-- **TST-015**: MUST verify PRJ-011/REQ-087/REQ-088 by running `npm test` (`tests/setupCommand.unit.test.ts`): no prompts, no network, authorized creation only, existing files preserved.
+- **TST-014**: MUST verify PRJ-010/REQ-092/REQ-093 by running `npm test` (`tests/snippet.unit.test.ts`): snippets parse as JSON, stdio entries carry command/args only with no key or env material, no file writes.
+- **TST-022**: MUST verify REQ-166/REQ-167/REQ-168/REQ-169 by running `npm test` (`tests/cliConfigCommands.unit.test.ts`, `tests/skillDebugInstall.unit.test.ts`): the `tools`, `host`, and `port` commands persist validated settings values with human-readable confirmations, and `install`/`uninstall` print human-readable per-CLI activity reports.
 - **TST-016**: MUST verify REQ-009/REQ-095/REQ-096 by running `npm test` (`tests/httpLifecycle.unit.test.ts`): invalid port marks startup failed, zero listening instances exit non-zero, signals close sessions and socket.
-- **TST-017**: MUST verify REQ-079/REQ-129/REQ-130/REQ-131 by running `npm test` (`tests/cliSpawn.unit.test.ts`): spawned CLI asserts `start` boots the HTTP server from an explicit env file, and no command prints help with the version header and management commands on stdout with exit 0.
+- **TST-017**: MUST verify REQ-079/REQ-129/REQ-130/REQ-131/REQ-165 by running `npm test` (`tests/cliSpawn.unit.test.ts`): spawned CLI asserts `start` boots the HTTP server from flag-and-settings configuration with the `MCP Google API server` startup banner and orderly SIGTERM shutdown, and no command prints help with the version header and management commands on stdout with exit 0.
 - **TST-018**: MUST verify REQ-152/REQ-154/REQ-155/REQ-156/REQ-157/REQ-158 by running `npm test` (`tests/skillDebugInstall.unit.test.ts`): temp-directory installs assert plain mode excludes the debug file, debug mode appends it once across reruns, and `show` reports OK for both modes.
 - **TST-019**: MUST verify REQ-153/REQ-160 by running `npm test` (`tests/eatspotSkillContract.unit.test.ts`): the packaged `SKILL.md` carries no debug section while the packaged debug file carries the register, capture, and provenance rules.
 - **TST-020**: MUST verify PKG-008/PKG-009/PKG-010/PKG-026/PKG-027/PKG-028/PKG-029/PKG-030/PKG-031/PKG-032/PKG-042/PKG-043 by running `npm test` (`tests/ciContract.unit.test.ts`): `.github/workflows/ci.yml` is absent, the single release job resolves master and develop reachability before any install/build/pack/publish step, fails on neither-branch tags, gates `npm publish` on master reachability while develop-only tags build, pack, and release without publishing, and publish authenticates via OIDC Trusted Publishing with `id-token: write`, no `NPM_TOKEN`/`NODE_AUTH_TOKEN`, and npm >= 11.5.1 on the pinned Node runtime.

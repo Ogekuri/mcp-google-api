@@ -48,7 +48,6 @@ const PACK_ALLOWED_INVARIANTS: ReadonlySet<string> = new Set([
   "README.md",
   "CHANGELOG.md",
   "LICENSE",
-  ".env.example",
 ]);
 
 /** Pack allowlist: directory prefixes whose contents are runtime-shippable. */
@@ -201,7 +200,7 @@ test("test_files_allowlist_ships_changelog_and_runtime_assets", () => {
   // Act
   const files: string[] = Array.isArray(manifest.files) ? manifest.files.map(String) : [];
   // Assert
-  for (const required of ["CHANGELOG.md", "dist", "src/resources/skills", "docs", ".env.example"]) {
+  for (const required of ["CHANGELOG.md", "dist", "src/resources/skills", "docs"]) {
     assert.equal(files.includes(required), true, `files allowlist must include "${required}"`);
   }
 });

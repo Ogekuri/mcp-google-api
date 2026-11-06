@@ -1,4 +1,5 @@
 import { resolveEnabledToolNames } from "./utils/configResolver.js";
+import { loadCliSettings } from "./utils/cliSettings.js";
 import { Logger } from "./index.js";
 import { ToolConfig } from "./core/BaseMcpServer.js";
 
@@ -32,14 +33,12 @@ const MAPS_TOOL_ANNOTATIONS = {
 
 interface ServerInstanceConfig {
   name: string;
-  portEnvVar: string;
   tools: ToolConfig[];
 }
 
 const serverConfigs: ServerInstanceConfig[] = [
   {
     name: "MCP-Server",
-    portEnvVar: "MCP_SERVER_PORT",
     tools: [
       {
         name: SearchNearby.NAME,
@@ -172,29 +171,32 @@ const serverConfigs: ServerInstanceConfig[] = [
 ];
 
 /**
- * @brief Applies the `GOOGLE_MAPS_ENABLED_TOOLS` allowlist to a tool registry.
+ * @brief Applies the persisted `enabledTools` allowlist to a tool registry.
  * @details Delegates allowlist semantics to `resolveEnabledToolNames` (unset,
  * empty, or `*` -> full set; >=1 match -> subset; 0 matches -> full set plus
- * stderr error). Logs the active-count line only when a strict subset is
+ * stderr error). The raw allowlist defaults to the persisted settings
+ * `enabledTools` field (DES-015, REQ-167); callers may pass an explicit
+ * value for testing. Logs the active-count line only when a strict subset is
  * selected, preserving legacy output. Complexity O(n + m).
  * @param tools {ToolConfig[]} Full tool registry.
+ * @param raw {string | undefined} Raw allowlist string; defaults to the persisted settings value.
  * @return {ToolConfig[]} Effective tool list (never empty for a non-empty input).
  * @see resolveEnabledToolNames
  * @satisfies PRJ-006, REQ-010, REQ-011, REQ-012
  */
-export function filterTools(tools: ToolConfig[]): ToolConfig[] {
+export function filterTools(tools: ToolConfig[], raw: string | undefined = loadCliSettings().enabledTools): ToolConfig[] {
   const resolution = resolveEnabledToolNames(
     tools.map((tool) => tool.name),
-    process.env.GOOGLE_MAPS_ENABLED_TOOLS
+    raw
   );
 
   if (resolution.fallback) {
-    Logger.error(`GOOGLE_MAPS_ENABLED_TOOLS matched 0 tools. Available: ${tools.map((t) => t.name).join(", ")}`);
+    Logger.error(`enabledTools matched 0 tools. Available: ${tools.map((t) => t.name).join(", ")}`);
     return tools;
   }
 
   if (resolution.matched !== tools.length) {
-    Logger.log(`GOOGLE_MAPS_ENABLED_TOOLS: ${resolution.matched}/${tools.length} tools active`);
+    Logger.log(`enabledTools: ${resolution.matched}/${tools.length} tools active`);
   }
 
   const enabled = new Set(resolution.names);

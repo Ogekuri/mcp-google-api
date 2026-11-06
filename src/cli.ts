@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 
-import { config as dotenvConfig } from "dotenv";
-import { resolve } from "path";
 import yargs from "yargs";
 import type { Argv, BuilderArguments } from "yargs";
 import { hideBin } from "yargs/helpers";
@@ -10,13 +8,12 @@ import { BaseMcpServer } from "./core/BaseMcpServer.js";
 import { Logger } from "./index.js";
 import { PlacesSearcher } from "./services/PlacesSearcher.js";
 import { fileURLToPath } from "url";
-import { dirname } from "path";
+import { dirname, resolve } from "path";
 import { readFileSync, writeFileSync, existsSync, realpathSync } from "fs";
 import { createInterface } from "readline";
 import { checkVersionIdle, parseManagementCommand, runManagementCommand } from "./utils/upgradeManager.js";
 import {
   NODE_ENGINE_FLOOR,
-  applyExplicitEnvFile,
   describeRuntimeConfig,
   formatConfigDiagnostics,
   maskSecret,
@@ -42,56 +39,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * @brief Extracts the explicit `--env-file <path>` value from a raw argv array.
- * @details Scans for both `--env-file <path>` and `--env-file=<path>` forms
- * before any command parsing so the file loads before option defaults are
- * captured. First match wins. Complexity O(n) in argv length; pure.
- * @param argv {readonly string[]} Raw process argument vector.
- * @return {string | undefined} Path value when present; undefined otherwise.
- * @satisfies CTN-009
- */
-export function extractEnvFileOption(argv: readonly string[]): string | undefined {
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--env-file" && i + 1 < argv.length) {
-      return argv[i + 1];
-    }
-    if (arg.startsWith("--env-file=")) {
-      return arg.slice("--env-file=".length);
-    }
-  }
-  return undefined;
-}
-
-/**
- * @brief Loads environment files for the current CLI invocation.
- * @details Explicit mode (`envFile` set): loads exactly that file via
- * `applyExplicitEnvFile` and exits 1 with a JSON stderr error when missing —
- * no implicit fallback. Implicit mode: loads `.env` from the current working
- * directory first, then from the package installation directory (dotenv never
- * overrides already-set variables). Complexity O(file count).
- * @param envFile {string | undefined} Explicit `--env-file` value; undefined selects implicit discovery.
- * @return {void}
- * @throws {never} Terminates the process via `process.exit(1)` on a missing explicit file.
- * @see applyExplicitEnvFile
- * @satisfies CTN-007, CTN-009
- */
-function loadEnvironment(envFile: string | undefined): void {
-  if (envFile !== undefined) {
-    const result = applyExplicitEnvFile(envFile);
-    if (!result.ok) {
-      process.stderr.write(JSON.stringify({ error: result.error }, null, 2) + "\n");
-      process.exit(1);
-    }
-    return;
-  }
-  // Try to load .env from current directory first, then from package directory
-  dotenvConfig({ path: resolve(process.cwd(), ".env") });
-  // Also try to load from the package installation directory
-  dotenvConfig({ path: resolve(__dirname, "../.env") });
-}
-
-/**
  * @brief Aggregated HTTP startup result across all configured server instances.
  * @details `started`/`failed` count per instance; `servers` holds only the
  * instances that are listening, so a zero-length array with `started === 0`
@@ -105,36 +52,30 @@ export interface ServerStartupOutcome {
 
 /**
  * @brief Starts every configured HTTP MCP server instance and reports the outcome.
- * @details Applies flag overrides to the environment, validates each instance
- * port (integer 1-65535), skips invalid instances with remediation guidance
- * while marking them failed (REQ-009), awaits `startHttpServer` so listen
- * errors are caught, installs SIGINT/SIGTERM handlers on success (REQ-096),
- * and returns the aggregate outcome. Default bind host is loopback
- * `127.0.0.1` (REQ-008). Complexity O(instances).
- * @param port {number | undefined} `--port` override written to `MCP_SERVER_PORT`.
+ * @details Validates the requested listen port (integer 1-65535), skips the
+ * invalid instance with remediation guidance while marking it failed
+ * (REQ-009), awaits `startHttpServer` so listen errors are caught, installs
+ * SIGINT/SIGTERM handlers on success (REQ-096), and returns the aggregate
+ * outcome. The port and host are resolved by the caller from CLI flags over
+ * the persisted settings (REQ-008, DES-015); the startup API key is injected
+ * into `ApiKeyManager`, never into the environment (DES-006). Startup
+ * diagnostics identify the application as `MCP Google API server`
+ * (REQ-165). Complexity O(instances).
+ * @param port {number} Effective HTTP listen port (flag or persisted setting).
  * @param apiKey {string | undefined} Startup API key injected into `ApiKeyManager` from the persisted settings (REQ-142).
- * @param host {string | undefined} `--host` override written to `MCP_SERVER_HOST`.
+ * @param host {string} Effective HTTP bind host (flag or persisted setting; default loopback).
  * @return {Promise<ServerStartupOutcome>} Per-run counts plus listening servers.
  * @see installShutdownHandlers
- * @satisfies REQ-008, REQ-009, REQ-096
+ * @satisfies REQ-008, REQ-009, REQ-096, REQ-165
  */
 export async function startServer(
-  port?: number,
+  port: number,
   apiKey?: string,
-  host?: string
+  host: string = "127.0.0.1"
 ): Promise<ServerStartupOutcome> {
-  // Override environment variables with CLI arguments if provided; the API
-  // key is injected into the key manager, never into the environment (DES-006).
-  if (port) {
-    process.env.MCP_SERVER_PORT = port.toString();
-  }
   ApiKeyManager.getInstance().setDefaultApiKey(apiKey);
-  if (host) {
-    process.env.MCP_SERVER_HOST = host;
-  }
 
-  Logger.log("🚀 Starting Google Maps MCP Server...");
-  Logger.log("📍 18 tools registered (set GOOGLE_MAPS_ENABLED_TOOLS to limit)");
+  Logger.log("🚀 Starting MCP Google API server...");
   Logger.log(
     "ℹ️  Reminder: enable Places API (New) in https://console.cloud.google.com before using the new Place features."
   );
@@ -146,28 +87,21 @@ export async function startServer(
 
   await Promise.all(
     serverConfigs.map(async (config) => {
-      const portString = process.env[config.portEnvVar];
-      if (!portString) {
-        Logger.error(`⚠️  [${config.name}] Port environment variable ${config.portEnvVar} not set.`);
-        Logger.log(`💡 Please set ${config.portEnvVar} in your .env file or use --port parameter.`);
-        Logger.log(`   Example: ${config.portEnvVar}=3000 or --port 3000`);
-        failed++;
-        return;
-      }
-
-      const serverPort = Number(portString);
+      const serverPort = port;
       if (!Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65535) {
         Logger.error(
-              `❌ [${config.name}] Invalid port number "${portString}" defined in ${config.portEnvVar} (expected integer 1-65535).`
+          `❌ [${config.name}] Invalid port number "${serverPort}" (expected integer 1-65535).`
         );
+        Logger.log("💡 Fix the persisted port with 'mcp-google-api port <number>' or pass --port.");
         failed++;
         return;
       }
 
       try {
         const activeTools = filterTools(config.tools);
+        Logger.log(`📍 ${activeTools.length} tools registered (configure with 'mcp-google-api tools')`);
         const server = new BaseMcpServer(config.name, activeTools);
-        const serverHost = process.env.MCP_SERVER_HOST || "127.0.0.1";
+        const serverHost = host;
         Logger.log(`🔧 [${config.name}] Initializing MCP Server in HTTP mode on ${serverHost}:${serverPort}...`);
         await server.startHttpServer(serverPort, serverHost);
         servers.push(server);
@@ -580,12 +514,12 @@ export interface DoctorOptions {
  * `NODE_ENGINE_FLOOR` (24, aligned with `package.json` `engines`, REQ-070),
  * non-zero package version, API key presence (value hidden), effective
  * configuration diagnostics with masked secrets and per-field sources
- * (REQ-089, zero-match allowlist reported as fail), explicit env-file status,
- * and the per-tool Google API profile of the effective tool set (REQ-090).
- * Live branch: without `options.probes` runs all three probes (legacy
- * `--live`, REQ-072); with `options.probes` runs only the selected subset
- * (REQ-091); each probe fails independently. `success` is false when any
- * check fails; the caller maps it to the exit code.
+ * (REQ-089, zero-match allowlist reported as fail), and the per-tool Google
+ * API profile of the effective tool set (REQ-090). Live branch: without
+ * `options.probes` runs all three probes (legacy `--live`, REQ-072); with
+ * `options.probes` runs only the selected subset (REQ-091); each probe fails
+ * independently. `success` is false when any check fails; the caller maps it
+ * to the exit code.
  * @param packageVersion {string} Installed package version ("0.0.0" = unknown).
  * @param apiKey {string | undefined} Resolved API key; never printed.
  * @param live {boolean} True to run billable live probes.
@@ -605,7 +539,7 @@ export async function runDoctor(
 ): Promise<DoctorReport> {
   const nodeVersion = options.nodeVersion ?? process.versions.node;
   const nodeMajor = Number.parseInt(nodeVersion.split(".")[0] ?? "0", 10);
-  const config = options.config ?? resolveRuntimeConfig(process.env);
+  const config = options.config ?? resolveRuntimeConfig(loadCliSettings());
   const allToolNames = options.allToolNames ?? serverConfigs[0].tools.map((tool) => tool.name);
   const toolsResolution = resolveEnabledToolNames(allToolNames, config.enabledToolsRaw);
   const diagnostics = describeRuntimeConfig(config);
@@ -629,22 +563,15 @@ export async function runDoctor(
       name: "api-key",
       status: apiKey ? "pass" : "fail",
       detail: apiKey
-        ? "GOOGLE_MAPS_API_KEY is configured (value hidden)."
-        : "GOOGLE_MAPS_API_KEY is not configured. Set it in the environment before making API calls.",
+        ? "Google Maps API key is configured via 'mcp-google-api api-key' (value hidden)."
+        : "Google Maps API key is not configured. Run 'mcp-google-api api-key <your-api-key>' to configure it.",
     },
     {
       name: "config",
       status: toolsResolution.fallback ? "fail" : "pass",
       detail: toolsResolution.fallback
-        ? `GOOGLE_MAPS_ENABLED_TOOLS matched 0 tools; the server falls back to all ${allToolNames.length} tools. Effective configuration: ${formatConfigDiagnostics(diagnostics)}`
+        ? `enabledTools matched 0 tools; the server falls back to all ${allToolNames.length} tools. Effective configuration: ${formatConfigDiagnostics(diagnostics)}`
         : `Effective configuration: ${formatConfigDiagnostics(diagnostics)}`,
-    },
-    {
-      name: "env-file",
-      status: "pass",
-      detail: config.envFile
-        ? `Explicit environment file loaded: ${config.envFile}`
-        : "No explicit --env-file requested; implicit .env discovery (current directory, then package directory) applies.",
     },
     {
       name: "tools",
@@ -663,7 +590,7 @@ export async function runDoctor(
     checks.push({
       name: "live-api",
       status: "skip",
-      detail: "Live API checks require GOOGLE_MAPS_API_KEY.",
+      detail: "Live API checks require a configured Google Maps API key.",
     });
   } else {
     const selected = options.probes
@@ -700,142 +627,6 @@ export async function runDoctor(
     success: checks.every((check) => check.status !== "fail"),
     version: packageVersion,
     live,
-    checks,
-  };
-}
-
-// --------------- Setup Mode ---------------
-
-/** @brief One named onboarding check result (`pass`, `fail`, or `skip`). */
-export interface SetupCheck {
-  name: string;
-  status: "pass" | "fail" | "skip";
-  detail: string;
-}
-
-/** @brief JSON-serializable outcome of the `setup` command. */
-export interface SetupReport {
-  success: boolean;
-  created: boolean;
-  checks: SetupCheck[];
-}
-
-/** @brief Injectable filesystem surface used by `runSetup` (tests pass fakes). */
-export interface SetupFs {
-  existsSync(path: string): boolean;
-  readFileSync(path: string, encoding: "utf-8"): string;
-  writeFileSync(path: string, data: string, encoding: "utf-8"): void;
-}
-
-/** @brief Injectable dependencies for deterministic `runSetup` testing. */
-export interface SetupDeps {
-  nodeVersion?: string;
-  config?: ResolvedRuntimeConfig;
-  fs?: SetupFs;
-}
-
-/** @brief Inputs controlling `runSetup` behavior. */
-export interface SetupOptions {
-  packageDir: string;
-  targetDir: string;
-  writeEnv: boolean;
-}
-
-/**
- * @brief Runs the non-interactive onboarding self-check with optional `.env` scaffolding.
- * @details Zero prompts, zero Google API calls, zero writes unless `writeEnv`
- * is true (REQ-087). Checks: Node major >= `NODE_ENGINE_FLOOR` (24);
- * `.env.example` presence in `packageDir`; `.env` handling in `targetDir` —
- * with `writeEnv` the file is created from the template only when absent and
- * is never overwritten (REQ-088), without it the check reports the current
- * state; API key presence from the resolved configuration (value hidden).
- * `success` is false only when a check fails. Complexity O(1) filesystem ops.
- * @param options {SetupOptions} Directories and the explicit write authorization flag.
- * @param deps {SetupDeps} Injectable Node version, config, and fs surface.
- * @return {Promise<SetupReport>} Report with `created` flag and named checks.
- * @see resolveRuntimeConfig
- * @satisfies PRJ-011, REQ-087, REQ-088
- */
-export async function runSetup(options: SetupOptions, deps: SetupDeps = {}): Promise<SetupReport> {
-  const fsImpl: SetupFs =
-    deps.fs ?? {
-      existsSync: (path) => existsSync(path),
-      readFileSync: (path, encoding) => readFileSync(path, encoding),
-      writeFileSync: (path, data, encoding) => writeFileSync(path, data, encoding),
-    };
-  const nodeVersion = deps.nodeVersion ?? process.versions.node;
-  const nodeMajor = Number.parseInt(nodeVersion.split(".")[0] ?? "0", 10);
-  const config = deps.config ?? resolveRuntimeConfig(process.env);
-
-  const examplePath = resolve(options.packageDir, ".env.example");
-  const envPath = resolve(options.targetDir, ".env");
-  const checks: SetupCheck[] = [
-    {
-      name: "node",
-      status: nodeMajor >= NODE_ENGINE_FLOOR ? "pass" : "fail",
-      detail: `Node.js ${nodeVersion} detected; version ${NODE_ENGINE_FLOOR} or newer is required (package.json engines).`,
-    },
-    {
-      name: "env-template",
-      status: fsImpl.existsSync(examplePath) ? "pass" : "fail",
-      detail: fsImpl.existsSync(examplePath)
-        ? `Template found: ${examplePath}`
-        : `Template missing: ${examplePath} (expected next to the installed package).`,
-    },
-  ];
-
-  let created = false;
-  if (options.writeEnv) {
-    if (fsImpl.existsSync(envPath)) {
-      checks.push({
-        name: "env-file",
-        status: "pass",
-        detail: `${envPath} already exists; left untouched (no overwrite).`,
-      });
-    } else if (!fsImpl.existsSync(examplePath)) {
-      checks.push({
-        name: "env-file",
-        status: "fail",
-        detail: `Cannot create ${envPath}: template ${examplePath} is missing.`,
-      });
-    } else {
-      try {
-        fsImpl.writeFileSync(envPath, fsImpl.readFileSync(examplePath, "utf-8"), "utf-8");
-        created = true;
-        checks.push({
-          name: "env-file",
-          status: "pass",
-          detail: `Created ${envPath} from template; edit it and set GOOGLE_MAPS_API_KEY.`,
-        });
-      } catch (error: unknown) {
-        checks.push({
-          name: "env-file",
-          status: "fail",
-          detail: `Failed to create ${envPath}: ${error instanceof Error ? error.message : String(error)}`,
-        });
-      }
-    }
-  } else {
-    checks.push({
-      name: "env-file",
-      status: fsImpl.existsSync(envPath) ? "pass" : "skip",
-      detail: fsImpl.existsSync(envPath)
-        ? `${envPath} found.`
-        : `${envPath} not found; rerun with --write-env to create it from the template.`,
-    });
-  }
-
-  checks.push({
-    name: "api-key",
-    status: config.apiKey ? "pass" : "fail",
-    detail: config.apiKey
-      ? `GOOGLE_MAPS_API_KEY is configured (source: ${config.apiKeySource}, value hidden).`
-      : "GOOGLE_MAPS_API_KEY is not configured. Set it in the environment or in .env after scaffolding.",
-  });
-
-  return {
-    success: checks.every((check) => check.status !== "fail"),
-    created,
     checks,
   };
 }
@@ -1033,21 +824,154 @@ export function runAutoUpdateCommand(
 }
 
 /**
+ * @brief Persists the enabled-tool allowlist via the `tools` command.
+ * @details Accepts a comma-separated tool-name list or the literal `*`
+ * (full set). Unknown names, empty items only, or a missing value print a
+ * human-readable stderr error listing the accepted names and exit 1 without
+ * persisting anything (REQ-167); a valid value is persisted atomically into
+ * the settings `enabledTools` field before the human-readable stdout
+ * confirmation is printed. Complexity O(n + m).
+ * @param raw {string | undefined} Raw positional argument from the command line.
+ * @param options {object} `{ home?, streams? }`; streams default to process streams.
+ * @return {number} Exit code: 0 on success, 1 on invalid input or persistence failure.
+ * @see loadCliSettings
+ * @see saveCliSettings
+ * @satisfies REQ-167
+ */
+export function runToolsCommand(
+  raw: string | undefined,
+  options: { home?: string; streams?: ExecStreams } = {}
+): number {
+  const streams = options.streams ?? { stdout: process.stdout, stderr: process.stderr };
+  const allToolNames = serverConfigs[0].tools.map((tool) => tool.name);
+  const trimmed = (raw ?? "").trim();
+  if (trimmed.length === 0) {
+    streams.stderr.write(
+      `tools: missing or empty tool list. Use '*' for all tools or a comma-separated subset of: ${allToolNames.join(", ")}.\n`
+    );
+    return 1;
+  }
+  let value: string;
+  if (trimmed === "*") {
+    value = "*";
+  } else {
+    const requested = trimmed
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const unknown = requested.filter((item) => !allToolNames.includes(item));
+    if (requested.length === 0 || unknown.length > 0) {
+      streams.stderr.write(
+        `tools: unknown tool name(s): ${unknown.join(", ") || "(none)"}. Accepted: ${allToolNames.join(", ")} (or '*').\n`
+      );
+      return 1;
+    }
+    value = requested.join(",");
+  }
+  try {
+    const settings = loadCliSettings(options.home);
+    settings.enabledTools = value;
+    saveCliSettings(settings, options.home);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    streams.stderr.write(`tools: failed to persist the setting: ${message}\n`);
+    return 1;
+  }
+  const count = value === "*" ? allToolNames.length : value.split(",").length;
+  streams.stdout.write(`Enabled tools set to ${value === "*" ? `* (all ${count})` : value}.\n`);
+  return 0;
+}
+
+/**
+ * @brief Persists the HTTP bind host via the `host` command.
+ * @details Rejects missing or whitespace-only values with a human-readable
+ * stderr error, persisting nothing (REQ-168); a valid non-empty hostname is
+ * persisted atomically into the settings `host` field before the
+ * human-readable stdout confirmation is printed. Complexity O(1).
+ * @param raw {string | undefined} Raw positional argument from the command line.
+ * @param options {object} `{ home?, streams? }`; streams default to process streams.
+ * @return {number} Exit code: 0 on success, 1 on invalid input or persistence failure.
+ * @see loadCliSettings
+ * @see saveCliSettings
+ * @satisfies REQ-168
+ */
+export function runHostCommand(
+  raw: string | undefined,
+  options: { home?: string; streams?: ExecStreams } = {}
+): number {
+  const streams = options.streams ?? { stdout: process.stdout, stderr: process.stderr };
+  const trimmed = (raw ?? "").trim();
+  if (trimmed.length === 0) {
+    streams.stderr.write("host: missing or empty hostname. Example: mcp-google-api host 127.0.0.1\n");
+    return 1;
+  }
+  try {
+    const settings = loadCliSettings(options.home);
+    settings.host = trimmed;
+    saveCliSettings(settings, options.home);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    streams.stderr.write(`host: failed to persist the setting: ${message}\n`);
+    return 1;
+  }
+  streams.stdout.write(`HTTP bind host set to ${trimmed}.\n`);
+  return 0;
+}
+
+/**
+ * @brief Persists the HTTP listen port via the `port` command.
+ * @details Rejects missing or non-integer values outside 1..65535 with a
+ * human-readable stderr error, persisting nothing (REQ-169); a valid port is
+ * persisted atomically into the settings `port` field before the
+ * human-readable stdout confirmation is printed. Complexity O(1).
+ * @param raw {string | undefined} Raw positional argument from the command line.
+ * @param options {object} `{ home?, streams? }`; streams default to process streams.
+ * @return {number} Exit code: 0 on success, 1 on invalid input or persistence failure.
+ * @see loadCliSettings
+ * @see saveCliSettings
+ * @satisfies REQ-169
+ */
+export function runPortCommand(
+  raw: string | undefined,
+  options: { home?: string; streams?: ExecStreams } = {}
+): number {
+  const streams = options.streams ?? { stdout: process.stdout, stderr: process.stderr };
+  const trimmed = (raw ?? "").trim();
+  const parsed = Number(trimmed);
+  if (trimmed.length === 0 || !Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    streams.stderr.write(`port: invalid port "${trimmed || "(none)"}" (expected integer 1-65535).\n`);
+    return 1;
+  }
+  try {
+    const settings = loadCliSettings(options.home);
+    settings.port = parsed;
+    saveCliSettings(settings, options.home);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    streams.stderr.write(`port: failed to persist the setting: ${message}\n`);
+    return 1;
+  }
+  streams.stdout.write(`HTTP port set to ${parsed}.\n`);
+  return 0;
+}
+
+/**
  * @brief Shared handler for the `install` and `uninstall` commands.
- * @details Runs the requested operation over every enabled CLI, prints the
- * aggregate JSON result on stdout, and exits 1 when any per-CLI failure was
- * collected (REQ-116). With zero enabled CLIs prints the enable hint and
- * exits 0 (REQ-119). `install` forwards `includeDebugSkills` so each skill's
- * declared debug overlay is appended to the installed `SKILL.md` only when
- * REQ-154 `--debug-skills` is requested. Diagnostics ride in the JSON
- * `errors` array so stdout stays the single machine-readable channel
- * (PRJ-008).
+ * @details Runs the requested operation over every enabled CLI and prints a
+ * human-readable per-CLI activity report on stdout (REQ-166): one header
+ * line `mcp-google-api <operation> report:`, one indented line per processed
+ * CLI stating the server registration and installed/removed skill count, and
+ * an `Errors:` block listing every collected diagnostic; exits 1 when any
+ * per-CLI failure was collected (REQ-116). With zero enabled CLIs prints the
+ * enable hint and exits 0 (REQ-119). `install` forwards `includeDebugSkills`
+ * so each skill's declared debug overlay is appended to the installed
+ * `SKILL.md` only when REQ-154 `--debug-skills` is requested.
  * @param operation {"install" | "uninstall"} Requested reciprocal operation.
  * @param options {object} `{ home?, resourcesRoot, includeDebugSkills?, streams? }`.
  * @return {number} Exit code: 0 on success or zero enabled CLIs, 1 on failures.
  * @see installEnabledCliResources
  * @see uninstallEnabledCliResources
- * @satisfies REQ-114, REQ-115, REQ-116, REQ-119, REQ-154, REQ-155, REQ-156
+ * @satisfies REQ-114, REQ-115, REQ-116, REQ-119, REQ-154, REQ-155, REQ-156, REQ-166
  */
 export function runInstallUninstallCommand(
   operation: "install" | "uninstall",
@@ -1055,18 +979,7 @@ export function runInstallUninstallCommand(
 ): number {
   const streams = options.streams ?? { stdout: process.stdout, stderr: process.stderr };
   if (loadCliSettings(options.home).enabled.length === 0) {
-    streams.stdout.write(
-      JSON.stringify(
-        {
-          success: true,
-          message: "No CLI enabled. Use 'mcp-google-api enable <cli name>' first.",
-          summaries: [],
-          errors: [],
-        },
-        null,
-        2
-      ) + "\n"
-    );
+    streams.stdout.write("No CLI agent enabled. Run 'mcp-google-api enable <cli name>' first.\n");
     return 0;
   }
   let result: CliOperationResult;
@@ -1081,13 +994,22 @@ export function runInstallUninstallCommand(
         : uninstallEnabledCliResources({ home: options.home, resourcesRoot: options.resourcesRoot });
   } catch (error: unknown) {
     streams.stderr.write(
-      JSON.stringify({ success: false, errors: [error instanceof Error ? error.message : String(error)] }, null, 2) + "\n"
+      `${operation} failed: ${error instanceof Error ? error.message : String(error)}\n`
     );
     return 1;
   }
-  streams.stdout.write(
-    JSON.stringify({ success: result.errors.length === 0, operation, summaries: result.summaries, errors: result.errors }, null, 2) + "\n"
-  );
+  streams.stdout.write(`mcp-google-api ${operation} report:\n`);
+  for (const summary of result.summaries) {
+    streams.stdout.write(
+      `  ${summary.cli}: MCP server ${operation === "install" ? "registered" : "removed"}, ${summary.skills} skill(s) ${operation === "install" ? "installed" : "removed"}\n`
+    );
+  }
+  if (result.errors.length > 0) {
+    streams.stdout.write("Errors:\n");
+    for (const error of result.errors) {
+      streams.stdout.write(`  ${error}\n`);
+    }
+  }
   return result.errors.length > 0 ? 1 : 0;
 }
 
@@ -1137,7 +1059,6 @@ export function runShowCommand(
  * metadata lookups; no side effects.
  * @return {boolean} True when this module was launched as the main module.
  * @satisfies PRJ-003
- * @see loadEnvironment
  */
 function isEntryMainModule(): boolean {
   const entryPath = process.argv[1];
@@ -1161,10 +1082,6 @@ const isRunDirectly =
 const isMainModule = isEntryMainModule();
 
 if (isRunDirectly || isMainModule) {
-  // Load environment files before command dispatch: explicit --env-file wins
-  // over the implicit cwd/package .env discovery chain.
-  loadEnvironment(extractEnvFileOption(process.argv));
-
   let packageVersion = "0.0.0";
   try {
     const packageJsonPath = resolve(__dirname, "../package.json");
@@ -1192,26 +1109,27 @@ if (isRunDirectly || isMainModule) {
   } else {
     /**
      * @brief Applies the shared server-start options to a yargs builder.
-     * @details Declares `--port`, `--host`, and `--stdio` with
-     * environment-derived defaults plus the server-mode examples. Shared
-     * verbatim by the `start` and `run` commands so both expose an identical
-     * option surface (PRJ-003). Complexity O(1).
+     * @details Declares `--port`, `--host`, and `--stdio` with defaults taken
+     * from the persisted settings (DES-015) plus the server-mode examples.
+     * Shared verbatim by the `start` and `run` commands so both expose an
+     * identical option surface (PRJ-003). Complexity O(1).
      * @param yargs {Argv} Builder of the command being configured.
      * @return {Argv} The same builder instance with the typed server options attached.
-     * @satisfies REQ-079
+     * @satisfies REQ-079, REQ-008
      */
-    const buildServerCommandOptions = (yargs: Argv) =>
-      yargs
+    const buildServerCommandOptions = (yargs: Argv) => {
+      const settings = loadCliSettings();
+      return yargs
         .option("port", {
           alias: "p",
           type: "number",
-          description: "Port to run the MCP server on",
-          default: process.env.MCP_SERVER_PORT ? parseInt(process.env.MCP_SERVER_PORT) : 3000,
+          description: "Port to run the MCP server on (default: persisted 'port' setting)",
+          default: settings.port,
         })
         .option("host", {
           type: "string",
-          description: "Hostname to bind the server to (default 127.0.0.1 loopback; 0.0.0.0 for all interfaces)",
-          default: process.env.MCP_SERVER_HOST || "127.0.0.1",
+          description: "Hostname to bind the server to (default: persisted 'host' setting; 0.0.0.0 for all interfaces)",
+          default: settings.host,
         })
         .option("stdio", {
           type: "boolean",
@@ -1224,6 +1142,7 @@ if (isRunDirectly || isMainModule) {
           ["$0 start --stdio", "Start in stdio mode (for MCP clients)"],
           ["$0 run --stdio", "Alias: run the server in stdio mode"],
         ]);
+    };
 
     /** Parsed argv shape produced by `buildServerCommandOptions` (port/host/apikey/stdio). */
     type ServerCommandArgs = BuilderArguments<typeof buildServerCommandOptions>;
@@ -1234,15 +1153,16 @@ if (isRunDirectly || isMainModule) {
      * settings key (REQ-142) and injects it into `ApiKeyManager` (DES-006);
      * fires the idle-gated automatic update check fire-and-forget only when
      * the persisted `autoUpdate` setting enables it (REQ-082, REQ-083,
-     * DES-024; never blocks startup), then starts
-     * stdio mode when `--stdio` is passed — exiting 1 with a stderr JSON
-     * error naming the `api-key` command when no key resolves (REQ-143) —
- * otherwise HTTP mode via `startServer`, exiting 1 when zero instances
-     * listen (REQ-095). HTTP mode without an API key logs a warning and still
-     * starts (REQ-080).
+     * DES-024; never blocks startup), then starts stdio mode when `--stdio`
+     * is passed — exiting 1 with a stderr JSON error naming the `api-key`
+     * command when no key resolves (REQ-143) — otherwise HTTP mode via
+     * `startServer` with the flag-or-settings host and port (REQ-008),
+     * exiting 1 when zero instances listen (REQ-095). The HTTP banner
+     * identifies the application as `MCP Google API server` (REQ-165).
+ * HTTP mode without an API key logs a warning and still starts (REQ-080).
      * @param argv {ServerCommandArgs} Parsed options: `--port`, `--host`, `--stdio`.
      * @return {Promise<void>} Resolves when stdio mode stops; HTTP mode persists.
-     * @satisfies REQ-079, REQ-080, REQ-082, REQ-095, REQ-142, REQ-143
+     * @satisfies REQ-079, REQ-080, REQ-082, REQ-095, REQ-142, REQ-143, REQ-165
      */
     const runServerCommand = async (argv: ServerCommandArgs): Promise<void> => {
       // REQ-142: the effective key resolves exclusively from the persisted
@@ -1282,8 +1202,8 @@ if (isRunDirectly || isMainModule) {
         await server.startStdio();
       } else {
         // HTTP mode
-        Logger.log("🗺️  Google Maps MCP Server");
-        Logger.log("   A Model Context Protocol server for Google Maps services");
+        Logger.log("🗺️  MCP Google API server");
+        Logger.log("   Google APIs for AI agents over the Model Context Protocol");
         Logger.log("");
 
         if (effectiveApiKey === undefined) {
@@ -1340,8 +1260,7 @@ if (isRunDirectly || isMainModule) {
             .option("apikey", {
               alias: "k",
               type: "string",
-              description: "Google Maps API key (prefer GOOGLE_MAPS_API_KEY to avoid shell history exposure)",
-              default: process.env.GOOGLE_MAPS_API_KEY,
+              description: "Google Maps API key override for live probes (default: persisted api-key setting)",
             })
             .example([
               ["$0 doctor", "Check local runtime and API key configuration without network calls"],
@@ -1355,38 +1274,10 @@ if (isRunDirectly || isMainModule) {
             process.exitCode = 1;
             return;
           }
-          const report = await runDoctor(packageVersion, argv.apikey as string | undefined, argv.live as boolean, undefined, {
+          const effectiveKey = ((argv.apikey as string | undefined) ?? "").trim() || loadConfiguredApiKey();
+          const report = await runDoctor(packageVersion, effectiveKey, argv.live as boolean, undefined, {
             probes: parsedProbes.probes,
-            config: resolveRuntimeConfig(process.env, { envFile: extractEnvFileOption(process.argv) }),
-          });
-          process.stdout.write(JSON.stringify(report, null, 2) + "\n");
-          process.exitCode = report.success ? 0 : 1;
-        }
-      )
-      .command(
-        "setup",
-        "Non-interactive onboarding: verify local readiness, optionally scaffold .env",
-        (yargs) =>
-          yargs
-            .option("write-env", {
-              type: "boolean",
-              default: false,
-              description: "Create .env from .env.example in --env-dir when it does not exist (never overwrites)",
-            })
-            .option("env-dir", {
-              type: "string",
-              default: process.cwd(),
-              description: "Directory where .env is looked up / created",
-            })
-            .example([
-              ["$0 setup", "Check readiness without writing anything"],
-              ["$0 setup --write-env", "Also scaffold .env from the package template"],
-            ]),
-        async (argv) => {
-          const report = await runSetup({
-            packageDir: resolve(__dirname, ".."),
-            targetDir: argv.envDir as string,
-            writeEnv: argv.writeEnv as boolean,
+            config: resolveRuntimeConfig(loadCliSettings()),
           });
           process.stdout.write(JSON.stringify(report, null, 2) + "\n");
           process.exitCode = report.success ? 0 : 1;
@@ -1429,10 +1320,6 @@ if (isRunDirectly || isMainModule) {
               default: 3000,
               description: "Port used in the URL (transport http)",
             })
-            .option("env-key", {
-              type: "string",
-              description: 'Emit a ${NAME} variable reference instead of a literal placeholder (expansion is client-specific)',
-            })
             .option("name", {
               type: "string",
               default: "mcp-google-api",
@@ -1451,7 +1338,6 @@ if (isRunDirectly || isMainModule) {
             commandPath: argv.command as string | undefined,
             host: argv.host as string,
             port: argv.port as number,
-            envKey: argv.envKey as string | undefined,
             serverName: argv.name as string,
           });
         }
@@ -1515,6 +1401,69 @@ if (isRunDirectly || isMainModule) {
             ]]),
         (argv) => {
           process.exitCode = runAutoUpdateCommand(argv.state as string | undefined, {
+            home: argv.home as string | undefined,
+          });
+        }
+      )
+      .command(
+        "tools <tools>",
+        "Persist the enabled-tool allowlist in the configuration file ('*' = all 18 tools)",
+        (yargs) =>
+          yargs
+            .positional("tools", {
+              type: "string",
+              describe: "Comma-separated tool names (e.g. maps_geocode,maps_search_places) or '*' for all",
+            })
+            .option("home", {
+              type: "string",
+              description: "Home-directory override for the settings file (default: user home)",
+            })
+            .example([
+              ["$0 tools '*'", "Expose every registered tool (default)"],
+              ["$0 tools maps_geocode,maps_search_places", "Expose only the named tools"],
+            ]),
+        (argv) => {
+          process.exitCode = runToolsCommand(argv.tools as string | undefined, {
+            home: argv.home as string | undefined,
+          });
+        }
+      )
+      .command(
+        "host <host>",
+        "Persist the HTTP bind host in the configuration file (default 127.0.0.1)",
+        (yargs) =>
+          yargs
+            .positional("host", {
+              type: "string",
+              describe: "Bind hostname (e.g. 127.0.0.1 loopback; 0.0.0.0 for all interfaces)",
+            })
+            .option("home", {
+              type: "string",
+              description: "Home-directory override for the settings file (default: user home)",
+            })
+            .example([["$0 host 0.0.0.0", "Bind the HTTP server on all interfaces"]]),
+        (argv) => {
+          process.exitCode = runHostCommand(argv.host as string | undefined, {
+            home: argv.home as string | undefined,
+          });
+        }
+      )
+      .command(
+        "port <port>",
+        "Persist the HTTP listen port in the configuration file (default 3000)",
+        (yargs) =>
+          yargs
+            .positional("port", {
+              type: "number",
+              describe: "Listen port (integer 1-65535)",
+            })
+            .option("home", {
+              type: "string",
+              description: "Home-directory override for the settings file (default: user home)",
+            })
+            .example([["$0 port 3100", "Serve Streamable HTTP on port 3100"]]),
+        (argv) => {
+          process.exitCode = runPortCommand(argv.port === undefined ? undefined : String(argv.port), {
             home: argv.home as string | undefined,
           });
         }
@@ -1789,11 +1738,6 @@ if (isRunDirectly || isMainModule) {
       )
       .version(packageVersion)
       .alias("version", "v")
-      .option("env-file", {
-        type: "string",
-        global: true,
-        description: "Load environment variables from this exact file (error if missing; no implicit .env fallback)",
-      })
       .epilog(
         `Management commands (single flags, dispatched before subcommands):\n` +
           `  --ver         Print the installed version and force one update check\n` +

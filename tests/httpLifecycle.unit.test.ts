@@ -11,61 +11,30 @@ process.argv[1] = originalArgv1;
 
 const { BaseMcpServer } = await import("../src/core/BaseMcpServer.js");
 const { resolveRuntimeConfig, validateHttpEndpoint } = await import("../src/utils/configResolver.js");
-
-const ENV_KEYS = ["MCP_SERVER_PORT", "MCP_SERVER_HOST", "GOOGLE_MAPS_API_KEY", "GOOGLE_MAPS_ENABLED_TOOLS"];
-
-function snapshotEnv(): Record<string, string | undefined> {
-  const snapshot: Record<string, string | undefined> = {};
-  for (const key of ENV_KEYS) {
-    snapshot[key] = process.env[key];
-  }
-  return snapshot;
-}
-
-function restoreEnv(snapshot: Record<string, string | undefined>): void {
-  for (const key of ENV_KEYS) {
-    if (snapshot[key] === undefined) {
-      delete process.env[key];
-    } else {
-      process.env[key] = snapshot[key];
-    }
-  }
-}
+const { loadCliSettings } = await import("../src/utils/cliSettings.js");
 
 test("invalid or unset port values are marked as startup failures", () => {
-  const invalid = validateHttpEndpoint(resolveRuntimeConfig({ MCP_SERVER_PORT: "not-a-number" }));
+  const invalid = validateHttpEndpoint(resolveRuntimeConfig({ ...loadCliSettings(), port: Number.NaN }));
   assert.equal(invalid.valid, false);
 
-  const zero = validateHttpEndpoint(resolveRuntimeConfig({ MCP_SERVER_PORT: "0" }));
+  const zero = validateHttpEndpoint(resolveRuntimeConfig({ ...loadCliSettings(), port: 0 }));
   assert.equal(zero.valid, false);
 
-  const unset = validateHttpEndpoint(resolveRuntimeConfig({}));
+  const unset = validateHttpEndpoint(resolveRuntimeConfig(loadCliSettings()));
   assert.equal(unset.valid, true);
 });
 
 test("startServer marks the instance failed and starts zero listeners on an invalid port", async () => {
-  const snapshot = snapshotEnv();
-  process.env.MCP_SERVER_PORT = "not-a-number";
-  try {
-    const outcome = await startServer();
-    assert.equal(outcome.started, 0);
-    assert.equal(outcome.failed, 1);
-    assert.deepEqual(outcome.servers, []);
-  } finally {
-    restoreEnv(snapshot);
-  }
+  const outcome = await startServer(Number.NaN);
+  assert.equal(outcome.started, 0);
+  assert.equal(outcome.failed, 1);
+  assert.deepEqual(outcome.servers, []);
 });
 
-test("startServer marks the instance failed when the port environment variable is unset", async () => {
-  const snapshot = snapshotEnv();
-  delete process.env.MCP_SERVER_PORT;
-  try {
-    const outcome = await startServer();
-    assert.equal(outcome.started, 0);
-    assert.equal(outcome.failed, 1);
-  } finally {
-    restoreEnv(snapshot);
-  }
+test("startServer marks the instance failed when the port is out of range", async () => {
+  const outcome = await startServer(0);
+  assert.equal(outcome.started, 0);
+  assert.equal(outcome.failed, 1);
 });
 
 test("BaseMcpServer HTTP lifecycle starts on an ephemeral port and stops orderly", async () => {

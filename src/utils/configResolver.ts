@@ -1,11 +1,10 @@
-import { config as dotenvConfig } from "dotenv";
-import { existsSync } from "fs";
+import { isUnsetApiKey, type CliSettings } from "./cliSettings.js";
 
 /**
  * @brief Minimum Node.js major version required by `package.json` `engines`.
- * @details Single source of truth shared by the `doctor` local check and the
- * `setup` onboarding check so both enforce exactly the runtime floor declared
- * for the package (CTN-005). Complexity O(1); pure constant.
+ * @details Single source of truth shared by the `doctor` local check so it
+ * enforces exactly the runtime floor declared for the package (CTN-005).
+ * Complexity O(1); pure constant.
  * @satisfies CTN-005, REQ-070
  */
 export const NODE_ENGINE_FLOOR = 24;
@@ -13,8 +12,8 @@ export const NODE_ENGINE_FLOOR = 24;
 /**
  * @brief Default HTTP bind address (loopback) used when no host is configured.
  * @details Loopback default limits unintended network exposure; callers that
- * need all interfaces pass `--host 0.0.0.0` or set `MCP_SERVER_HOST=0.0.0.0`
- * (REQ-008, PKG-018). Complexity O(1); pure constant.
+ * need all interfaces pass `--host 0.0.0.0` or persist `host` in the settings
+ * file (REQ-008, PKG-018). Complexity O(1); pure constant.
  * @satisfies REQ-008
  */
 export const DEFAULT_HTTP_HOST = "127.0.0.1";
@@ -22,71 +21,70 @@ export const DEFAULT_HTTP_HOST = "127.0.0.1";
 /**
  * @brief Default HTTP port used when no port is configured.
  * @details Fallback port mirroring the historical default; overridable via
- * `--port` or `MCP_SERVER_PORT` (REQ-008). Complexity O(1); pure constant.
+ * `--port` or the persisted settings `port` field (REQ-008). Complexity O(1);
+ * pure constant.
  * @satisfies REQ-008
  */
 export const DEFAULT_HTTP_PORT = 3000;
 
 /**
- * @brief Higher-priority values that override environment-derived configuration.
+ * @brief Higher-priority values that override settings-derived configuration.
  * @details Flags parsed from CLI arguments; every field optional. `flag`
- * source wins over `environment` which wins over `default`.
+ * source wins over `settings`.
  */
 export interface RuntimeConfigOverrides {
   apiKey?: string;
   host?: string;
   port?: number;
-  envFile?: string;
-  /** Injected automatic-update disable state; defaults to false (check enabled, DES-024). */
-  autoUpdateDisabled?: boolean;
 }
 
 /** @brief Origin tag attached to each resolved configuration field. */
-export type RuntimeConfigSource = "flag" | "environment" | "default";
+export type RuntimeConfigSource = "flag" | "settings";
 
 /**
  * @brief Typed snapshot of every runtime configuration field with per-field source.
  * @details Produced exclusively by `resolveRuntimeConfig`; consumed by all CLI
  * commands and `doctor` diagnostics (DES-015). `port` is undefined when the
- * configured value cannot be parsed to an integer; `portRaw` preserves the
- * original string for remediation messages.
+ * configured value cannot be used as a listen port; `portRaw` preserves the
+ * original value rendering for remediation messages.
  */
 export interface ResolvedRuntimeConfig {
   apiKey: string | undefined;
-  apiKeySource: "flag" | "environment" | "none";
+  apiKeySource: "flag" | "settings" | "none";
   host: string;
   hostSource: RuntimeConfigSource;
   port: number | undefined;
   portRaw: string | undefined;
   portSource: RuntimeConfigSource;
-  enabledToolsRaw: string | undefined;
+  enabledToolsRaw: string;
   enabledToolsSource: RuntimeConfigSource;
   autoUpdateDisabled: boolean;
-  envFile: string | undefined;
 }
 
 /**
- * @brief Resolves runtime configuration from an environment map plus flag overrides.
- * @details Priority per field: overrides (`flag`) > environment map
- * (`environment`) > built-in default (`default`). Port parsing: flag port used
- * as-is; environment string parsed with `Number` and left undefined when not a
- * finite integer (raw preserved in `portRaw`). `enabledToolsRaw` keeps the
- * trimmed `GOOGLE_MAPS_ENABLED_TOOLS` string; empty string normalizes to
- * undefined. `autoUpdateDisabled` defaults to false (check enabled) unless
- * overridden via `overrides.autoUpdateDisabled`; the persisted-settings
- * enablement is wired by callers (DES-024, REQ-083). Pure:
- * reads inputs only, mutates nothing. Complexity O(1).
- * @param env {Record<string, string | undefined>} Environment map; defaults to `process.env`.
+ * @brief Resolves runtime configuration from the persisted settings plus flag overrides.
+ * @details Priority per field: overrides (`flag`) > persisted settings
+ * (`settings`). The persisted settings file is the only non-flag configuration
+ * source (DES-015); no environment variable is consulted. Port handling:
+ * flag port used as-is; settings port kept when it is an integer in 1..65535,
+ * otherwise left undefined with the raw rendering preserved in `portRaw`.
+ * `apiKey` normalizes unset and placeholder settings values to undefined
+ * (DES-023). `autoUpdateDisabled` is the negation of the persisted
+ * `autoUpdate` field (DES-024). Pure: reads inputs only, mutates nothing.
+ * Complexity O(1).
+ * @param settings {CliSettings} Persisted settings loaded via `loadCliSettings`.
  * @param overrides {RuntimeConfigOverrides} Flag-derived overrides; defaults to none.
  * @return {ResolvedRuntimeConfig} Fully typed configuration with per-field sources.
  * @see validateHttpEndpoint
- * @satisfies DES-015
+ * @satisfies DES-015, REQ-008
  */
 export function resolveRuntimeConfig(
-  env: Record<string, string | undefined> = process.env,
+  settings: CliSettings,
   overrides: RuntimeConfigOverrides = {}
 ): ResolvedRuntimeConfig {
-  const envPort = env.MCP_SERVER_PORT?.trim() || undefined;
+  const settingsPort = Number.isInteger(settings.port) && settings.port >= 1 && settings.port <= 65535
+    ? settings.port
+    : undefined;
 
   let port: number | undefined;
   let portRaw: string | undefined;
@@ -95,32 +93,33 @@ export function resolveRuntimeConfig(
     port = overrides.port;
     portRaw = String(overrides.port);
     portSource = "flag";
-  } else if (envPort !== undefined) {
-    const parsed = Number(envPort);
-    port = Number.isFinite(parsed) ? parsed : undefined;
-    portRaw = envPort;
-    portSource = "environment";
+  } else if (settingsPort !== undefined) {
+    port = settingsPort;
+    portRaw = String(settingsPort);
+    portSource = "settings";
   } else {
-    port = DEFAULT_HTTP_PORT;
-    portRaw = undefined;
-    portSource = "default";
+    port = undefined;
+    portRaw = String(settings.port);
+    portSource = "settings";
   }
 
-  const apiKey = overrides.apiKey ?? env.GOOGLE_MAPS_API_KEY;
-  const enabledToolsRaw = env.GOOGLE_MAPS_ENABLED_TOOLS?.trim() || undefined;
+  const flagApiKey = overrides.apiKey !== undefined ? overrides.apiKey.trim() : undefined;
+  const settingsApiKey = isUnsetApiKey(settings.apiKey) ? undefined : settings.apiKey;
+  const apiKey = flagApiKey !== undefined && flagApiKey.length > 0 ? flagApiKey : settingsApiKey;
+  const apiKeySource: "flag" | "settings" | "none" =
+    flagApiKey !== undefined && flagApiKey.length > 0 ? "flag" : settingsApiKey !== undefined ? "settings" : "none";
 
   return {
     apiKey,
-    apiKeySource: overrides.apiKey !== undefined ? "flag" : apiKey ? "environment" : "none",
-    host: overrides.host ?? env.MCP_SERVER_HOST ?? DEFAULT_HTTP_HOST,
-    hostSource: overrides.host !== undefined ? "flag" : env.MCP_SERVER_HOST ? "environment" : "default",
+    apiKeySource,
+    host: overrides.host ?? settings.host,
+    hostSource: overrides.host !== undefined ? "flag" : "settings",
     port,
     portRaw,
     portSource,
-    enabledToolsRaw,
-    enabledToolsSource: enabledToolsRaw ? "environment" : "default",
-    autoUpdateDisabled: overrides.autoUpdateDisabled === true,
-    envFile: overrides.envFile,
+    enabledToolsRaw: settings.enabledTools,
+    enabledToolsSource: "settings",
+    autoUpdateDisabled: settings.autoUpdate !== true,
   };
 }
 
@@ -150,12 +149,11 @@ export function maskSecret(value: string | undefined): string {
  * `doctor` local reports.
  */
 export interface ConfigDiagnostics {
-  apiKey: { value: string; source: "flag" | "environment" | "none" };
+  apiKey: { value: string; source: "flag" | "settings" | "none" };
   httpHost: { value: string; source: RuntimeConfigSource };
   httpPort: { value: number | null; raw: string | null; source: RuntimeConfigSource };
   enabledTools: { value: string; source: RuntimeConfigSource };
   autoUpdateCheck: { enabled: boolean };
-  envFile: { value: string | null };
 }
 
 /**
@@ -176,9 +174,8 @@ export function describeRuntimeConfig(config: ResolvedRuntimeConfig): ConfigDiag
       raw: config.portRaw ?? null,
       source: config.portSource,
     },
-    enabledTools: { value: config.enabledToolsRaw ?? "*", source: config.enabledToolsSource },
+    enabledTools: { value: config.enabledToolsRaw, source: config.enabledToolsSource },
     autoUpdateCheck: { enabled: !config.autoUpdateDisabled },
-    envFile: { value: config.envFile ?? null },
   };
 }
 
@@ -223,42 +220,16 @@ export interface HttpEndpointValidation {
 export function validateHttpEndpoint(config: ResolvedRuntimeConfig): HttpEndpointValidation {
   const errors: string[] = [];
   if (config.port === undefined || !Number.isInteger(config.port) || config.port < 1 || config.port > 65535) {
-    errors.push(`invalid MCP_SERVER_PORT value "${config.portRaw ?? config.port}" (expected integer 1-65535)`);
+    errors.push(`invalid port value "${config.portRaw ?? config.port}" (expected integer 1-65535)`);
   }
   if (!config.host || config.host.trim().length === 0) {
-    errors.push("empty MCP_SERVER_HOST value (expected a non-empty bind address)");
+    errors.push("empty host value (expected a non-empty bind address)");
   }
   return { valid: errors.length === 0, errors };
 }
 
 /**
- * @brief Result of loading an explicit `--env-file` file.
- * @details `ok` false carries an `error` message suitable for CLI JSON errors.
- */
-export interface ExplicitEnvFileResult {
-  ok: boolean;
-  error?: string;
-}
-
-/**
- * @brief Loads exactly one explicit environment file via dotenv.
- * @details Checks existence first (dotenv silently ignores missing files) and
- * returns `{ ok: false, error }` when absent; otherwise loads the file without
- * overriding already-set process variables. Complexity O(file size).
- * @param path {string} Absolute or relative path to the environment file.
- * @return {ExplicitEnvFileResult} `{ ok: true }` on load; `{ ok: false, error }` when missing.
- * @satisfies CTN-009
- */
-export function applyExplicitEnvFile(path: string): ExplicitEnvFileResult {
-  if (!existsSync(path)) {
-    return { ok: false, error: `env file not found: ${path}` };
-  }
-  dotenvConfig({ path });
-  return { ok: true };
-}
-
-/**
- * @brief Result of resolving the `GOOGLE_MAPS_ENABLED_TOOLS` allowlist.
+ * @brief Result of resolving the persisted `enabledTools` allowlist.
  * @details `names` is the effective tool-name list; `matched` counts allowlist
  * hits; `fallback` is true when the allowlist matched zero tools and the full
  * set is returned (REQ-012); `requested` lists the parsed allowlist items.
@@ -277,7 +248,7 @@ export interface EnabledToolsResolution {
  * (REQ-011); zero matches -> full set with `fallback: true` (REQ-012). Pure;
  * complexity O(n + m) with n registry names and m allowlist items.
  * @param allToolNames {readonly string[]} Full registered tool-name registry.
- * @param raw {string | undefined} Raw `GOOGLE_MAPS_ENABLED_TOOLS` value.
+ * @param raw {string | undefined} Raw `enabledTools` settings value.
  * @return {EnabledToolsResolution} Effective names plus resolution metadata.
  * @satisfies REQ-010, REQ-011, REQ-012, PRJ-006
  */

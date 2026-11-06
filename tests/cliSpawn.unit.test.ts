@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync, copyFileSync } from "node:fs";
+import { mkdtempSync, rmSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { createServer } from "node:net";
@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 // does not start an HTTP server as a side effect.
 const originalArgv1 = process.argv[1];
 process.argv[1] = "cli-spawn-unit-test";
-const { extractEnvFileOption } = await import("../src/cli.js");
+await import("../src/cli.js");
 process.argv[1] = originalArgv1;
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -113,69 +113,22 @@ async function waitForMarker(readStderr: () => string, marker: string, timeoutMs
   return readStderr().includes(marker);
 }
 
-test("extractEnvFileOption recognizes both argv forms and absence", () => {
-  assert.deepEqual(extractEnvFileOption(["doctor"]), undefined);
-  assert.deepEqual(extractEnvFileOption(["--env-file", "/a/b.env", "doctor"]), "/a/b.env");
-  assert.deepEqual(extractEnvFileOption(["doctor", "--env-file=/c/d.env"]), "/c/d.env");
-  assert.deepEqual(extractEnvFileOption(["--env-file"]), undefined);
-});
+test("doctor exits 0 with a settings-derived report and no environment dependence", async () => {
+  const result = await spawnCli(["doctor"]);
 
-test("missing --env-file fails the CLI process without stdout output", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "mgm-spawn-"));
-  const missingPath = join(dir, "definitely-missing.env");
-  try {
-    const result = await spawnCli(["--env-file", missingPath, "doctor"]);
-
-    assert.notEqual(result.code, null, "process must exit on its own, not be killed by the test timeout");
-    assert.equal(result.stdout, "");
-    assert.equal(result.stderr.includes(missingPath), true);
-    // Node >= 24 intercepts the missing --env-file value itself (exit 9)
-    // before the CLI's explicit-env-file handler can run (CTN-005).
-    assert.equal(result.code, 9);
-    assert.match(result.stderr, /not found/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("existing --env-file=<path> loads before the doctor command runs", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "mgm-spawn-"));
-  const envPath = join(dir, "existing.env");
-  writeFileSync(envPath, "GOOGLE_MAPS_API_KEY=AIzaSySpawnProbeKey123456789\n", "utf-8");
-  try {
-    const result = await spawnCli(["--env-file=" + envPath, "doctor"]);
-
-    assert.equal(result.code, 0);
-    const report = JSON.parse(result.stdout) as {
-      success: boolean;
-      checks: Array<{ name: string; status: string; detail: string }>;
-    };
-    assert.equal(report.success, true);
-    assert.equal(report.checks.find((check) => check.name === "api-key")?.status, "pass");
-    assert.equal(
-      report.checks.find((check) => check.name === "env-file")?.detail.includes(`Explicit environment file loaded: ${envPath}`),
-      true
-    );
-    // No secret in the report (masked only).
-    assert.equal(result.stdout.includes("AIzaSySpawnProbeKey123456789"), false);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("existing --env-file <path> (space form) reaches the command identically", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "mgm-spawn-"));
-  const envPath = join(dir, "existing.env");
-  writeFileSync(envPath, "GOOGLE_MAPS_API_KEY=AIzaSySpawnProbeKey123456789\n", "utf-8");
-  try {
-    const result = await spawnCli(["--env-file", envPath, "doctor"]);
-
-    assert.equal(result.code, 0);
-    const report = JSON.parse(result.stdout) as { success: boolean };
-    assert.equal(report.success, true);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  assert.notEqual(result.code, null, "process must exit on its own, not be killed by the test timeout");
+  assert.equal(result.code, 0, `doctor must exit 0 on a clean environment; stderr:\n${result.stderr}`);
+  const report = JSON.parse(result.stdout) as {
+    success: boolean;
+    checks: Array<{ name: string; status: string; detail: string }>;
+  };
+  assert.equal(report.success, true);
+  assert.equal(report.checks.find((check) => check.name === "node")?.status, "pass");
+  assert.equal(report.checks.find((check) => check.name === "env-file"), undefined);
+  assert.match(
+    report.checks.find((check) => check.name === "config")?.detail ?? "",
+    /host=127\.0\.0\.1 \(settings\)/
+  );
 });
 
 test("no command prints the help text and exits 0 without starting a server", async () => {
@@ -194,22 +147,15 @@ test("no command prints the help text and exits 0 without starting a server", as
   assert.equal(result.stdout.includes("--ver"), true);
   assert.equal(result.stdout.includes("--version"), true);
   // REQ-129: nothing was started (no server banner on any stream).
-  assert.equal(result.stdout.includes("Google Maps MCP Server"), false);
-  assert.equal(result.stderr.includes("Google Maps MCP Server"), false);
+  assert.equal(result.stdout.includes("MCP Google API server"), false);
+  assert.equal(result.stderr.includes("MCP Google API server"), false);
 });
 
-test("HTTP server applies --env-file before startup and stops orderly on SIGTERM", async (t) => {
+test("HTTP server starts from the --port flag with the MCP Google API server banner and stops orderly on SIGTERM", async (t) => {
   const port = await findFreePort();
   assert.ok(port > 0);
-  const dir = mkdtempSync(join(tmpdir(), "mgm-spawn-"));
-  const envPath = join(dir, "server.env");
-  writeFileSync(
-    envPath,
-    `GOOGLE_MAPS_API_KEY=AIzaSySpawnProbeKey123456789\nMCP_SERVER_PORT=${port}\nMCP_AUTO_UPDATE_DISABLED=1\n`,
-    "utf-8"
-  );
 
-  const child = spawn(process.execPath, [TSX_CLI, CLI_ENTRY, "start", "--env-file=" + envPath], {
+  const child = spawn(process.execPath, [TSX_CLI, CLI_ENTRY, "start", "--port", String(port)], {
     cwd: PROJECT_ROOT,
     env: { ...process.env, MCP_AUTO_UPDATE_DISABLED: "1" },
     stdio: ["ignore", "pipe", "pipe"],
@@ -230,7 +176,10 @@ test("HTTP server applies --env-file before startup and stops orderly on SIGTERM
   try {
     const ready = await waitForMarker(() => stderr, "MCP Server started successfully!");
     assert.equal(ready, true, `server never became ready; stderr:\n${stderr}`);
-    // REQ-079: port from the explicit env file was applied before startup.
+    // REQ-165: startup diagnostics identify the application as
+    // "MCP Google API server".
+    assert.equal(stderr.includes("MCP Google API server"), true);
+    // REQ-079: the --port flag was applied before startup.
     assert.equal(stderr.includes(`http://127.0.0.1:${port}/mcp`), true);
     // CTN-003/PRJ-008: stdout stays empty (protocol/diagnostics separation).
     assert.equal(stdout, "");
@@ -250,7 +199,6 @@ test("HTTP server applies --env-file before startup and stops orderly on SIGTERM
     if (child.exitCode === null && child.signalCode === null) {
       child.kill("SIGKILL");
     }
-    rmSync(dir, { recursive: true, force: true });
   }
 });
 

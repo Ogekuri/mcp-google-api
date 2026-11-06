@@ -106,7 +106,7 @@ export const POST_UPGRADE_INSTALL_COMMAND: readonly string[] = [
 /**
  * @brief Per-CLI result entry of the post-upgrade install consumed by the `--upgrade` summary.
  * @details One entry per CLI processed by the child `install` command (REQ-133);
- * counts are present only when the child JSON summary was parseable.
+ * counts are present only when the child activity report was parseable.
  */
 export interface PostUpgradeCliOutcome {
   /** Canonical CLI name as reported by the child `install` summary or the persisted settings. */
@@ -484,64 +484,47 @@ export function runPackageManagerCommand(
 }
 
 /**
- * @brief Parses the child `install` JSON summary into per-CLI outcomes.
- * @details Accepts the `{ success, operation, summaries[], errors[] }` payload
- * emitted by the `install` command on stdout; locates the first `{`, parses
- * the remainder, validates the `summaries` array shape, and marks a CLI
- * `ok: false` when any error diagnostic text contains its name
- * (case-insensitive). Returns undefined for missing, non-JSON, or malformed
- * payloads so callers fall back to the persisted enabled-CLI list (REQ-135).
- * Pure; never throws.
+ * @brief Parses the child `install` activity report into per-CLI outcomes.
+ * @details Accepts the human-readable report emitted by the `install` command
+ * on stdout (REQ-166): lines of the form `  <cli>: <activity>` under the
+ * `mcp-google-api install report:` header, optionally followed by an
+ * `Errors:` block. A CLI is marked `ok: false` when any error diagnostic text
+ * contains its name (case-insensitive). Returns undefined for missing or
+ * unparseable output so callers fall back to the persisted enabled-CLI list
+ * (REQ-135). Pure; never throws.
  * @param raw {string | undefined} Captured child stdout text.
- * @return {PostUpgradeCliOutcome[] | undefined} Per-CLI entries in summary order; undefined when unparseable.
- * @satisfies REQ-133, REQ-135
- * @note Complexity: O(n + m) with n summary entries and m error strings.
+ * @return {PostUpgradeCliOutcome[] | undefined} Per-CLI entries in report order; undefined when unparseable.
+ * @satisfies REQ-133, REQ-135, REQ-166
+ * @note Complexity: O(n + m) with n report lines and m error strings.
  */
 function parsePostUpgradeCliOutcomes(
   raw: string | undefined
 ): PostUpgradeCliOutcome[] | undefined {
-  if (raw === undefined) {
+  if (raw === undefined || !raw.includes("install report:")) {
     return undefined;
   }
-  const start = raw.indexOf("{");
-  if (start < 0) {
-    return undefined;
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw.slice(start));
-  } catch {
-    return undefined;
-  }
-  if (typeof parsed !== "object" || parsed === null) {
-    return undefined;
-  }
-  const summaries = (parsed as { summaries?: unknown }).summaries;
-  const errors = (parsed as { errors?: unknown }).errors;
-  if (!Array.isArray(summaries)) {
-    return undefined;
-  }
-  const errorTexts = Array.isArray(errors)
-    ? errors.filter((item): item is string => typeof item === "string")
-    : [];
+  const lines = raw.split(/\r?\n/);
+  const cliLine = /^\s{2,}([a-z][a-z0-9-]*):\s+/;
   const outcomes: PostUpgradeCliOutcome[] = [];
-  for (const entry of summaries) {
-    if (typeof entry !== "object" || entry === null) {
-      continue;
+  for (const line of lines) {
+    const match = cliLine.exec(line);
+    if (match) {
+      outcomes.push({ cli: match[1], ok: true });
     }
-    const record = entry as { cli?: unknown; server?: unknown; skills?: unknown };
-    const cli = record.cli;
-    if (typeof cli !== "string" || cli.length === 0) {
-      continue;
+  }
+  if (outcomes.length === 0) {
+    return undefined;
+  }
+  const errorBlockIndex = lines.findIndex((line) => line.trim() === "Errors:");
+  const errorTexts =
+    errorBlockIndex >= 0
+      ? lines.slice(errorBlockIndex + 1).filter((line) => line.trim().length > 0)
+      : [];
+  for (const outcome of outcomes) {
+    const lowered = outcome.cli.toLowerCase();
+    if (errorTexts.some((text) => text.toLowerCase().includes(lowered))) {
+      outcome.ok = false;
     }
-    const lowered = cli.toLowerCase();
-    const failed = errorTexts.some((text) => text.toLowerCase().includes(lowered));
-    outcomes.push({
-      cli,
-      ok: !failed,
-      server: typeof record.server === "number" ? record.server : undefined,
-      skills: typeof record.skills === "number" ? record.skills : undefined,
-    });
   }
   return outcomes;
 }
@@ -554,7 +537,7 @@ function parsePostUpgradeCliOutcomes(
  * (stderr stays inherited so child diagnostics remain visible), so the
  * freshly upgraded package (not the running process, and never a stale npx
  * cache copy) re-synchronizes its packaged skills and MCP registrations into
- * every enabled CLI without echoing the child JSON summary (REQ-126). The captured payload is parsed into per-CLI outcomes;
+ * every enabled CLI without echoing the child activity report (REQ-126). The captured payload is parsed into per-CLI outcomes;
  * missing or unparseable output falls back to the persisted enabled-CLI list
  * carrying the aggregate exit-code outcome (REQ-135). Spawn failures report
  * the manual command hint on stderr and map to exit code 1 (REQ-128). With

@@ -198,9 +198,10 @@ test("install command forwards the debug-skills flag and plain reruns drop the o
     streams: debugStreams,
   });
   assert.equal(debugExit, 0);
-  const debugPayload = JSON.parse(debugStreams.out.join(""));
-  assert.equal(debugPayload.success, true);
-  assert.deepEqual(debugPayload.summaries, [{ cli: "pi", server: 1, skills: 1 }]);
+  const debugReport = debugStreams.out.join("");
+  assert.match(debugReport, /mcp-google-api install report:/);
+  assert.match(debugReport, /pi: MCP server registered, 1 skill\(s\) installed/);
+  assert.equal(debugReport.startsWith("{"), false);
   assert.equal(readInstalled(fixture, "SKILL.md"), CORE_DOCUMENT + DEBUG_OVERLAY);
 
   const plainStreams = createStreams();
@@ -210,6 +211,6 @@ test("install command forwards the debug-skills flag and plain reruns drop the o
     streams: plainStreams,
   });
   assert.equal(plainExit, 0);
-  assert.deepEqual(JSON.parse(plainStreams.out.join("")).summaries, [{ cli: "pi", server: 1, skills: 1 }]);
+  assert.match(plainStreams.out.join(""), /pi: MCP server registered, 1 skill\(s\) installed/);
   assert.equal(readInstalled(fixture, "SKILL.md"), CORE_DOCUMENT);
 });

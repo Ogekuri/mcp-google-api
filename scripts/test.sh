@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test.sh — run the test suite (no implicit setup chain)
 #   scripts/test.sh          → unit tests (no API key needed, service clients are mocked)
-#   scripts/test.sh e2e      → smoke/e2e tests (requires GOOGLE_MAPS_API_KEY in .env)
+#   scripts/test.sh e2e      → smoke/e2e tests (requires a configured api-key setting)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

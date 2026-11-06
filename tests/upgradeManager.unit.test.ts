@@ -95,19 +95,14 @@ function createFakeHome(enabled: readonly string[]): string {
 }
 
 /**
- * @brief Builds the JSON summary payload emitted by the `install` child command.
- * @details Shape matches the `{ success, operation, summaries[], errors[] }`
- * stdout contract consumed by the post-upgrade outcome parser.
- * @param cli {string} CLI name reported in the single summary entry.
+ * @brief Builds the activity-report payload emitted by the `install` child command.
+ * @details Shape matches the human-readable stdout report consumed by the
+ * post-upgrade outcome parser (REQ-166).
+ * @param cli {string} CLI name reported in the single report line.
  * @return {string} Serialized child stdout payload.
  */
 function buildInstallChildStdout(cli: string): string {
-  return JSON.stringify({
-    success: true,
-    operation: "install",
-    summaries: [{ cli, server: 1, skills: 1 }],
-    errors: [],
-  });
+  return `mcp-google-api install report:\n  ${cli}: MCP server registered, 1 skill(s) installed\n`;
 }
 
 /**

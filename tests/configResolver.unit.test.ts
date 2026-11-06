@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
-  applyExplicitEnvFile,
   describeRuntimeConfig,
   formatConfigDiagnostics,
   maskSecret,
@@ -12,12 +8,22 @@ import {
   resolveRuntimeConfig,
   validateHttpEndpoint,
 } from "../src/utils/configResolver.js";
+import { loadCliSettings, type CliSettings } from "../src/utils/cliSettings.js";
 
 const ALL_TOOLS = ["maps_geocode", "maps_search_places", "maps_place_details"];
 
-test("resolveRuntimeConfig applies flag > environment > default priority with sources", () => {
+/**
+ * @brief Builds a persisted-settings object with defaults except the given overrides.
+ * @param overrides {Partial<CliSettings>} Fields to override on the normalized defaults.
+ * @return {CliSettings} Settings object shaped like a fresh `loadCliSettings()` result.
+ */
+function settings(overrides: Partial<CliSettings> = {}): CliSettings {
+  return { ...loadCliSettings(), ...overrides };
+}
+
+test("resolveRuntimeConfig applies flag > settings priority with sources", () => {
   const flagConfig = resolveRuntimeConfig(
-    { GOOGLE_MAPS_API_KEY: "env-key", MCP_SERVER_HOST: "env-host", MCP_SERVER_PORT: "4000" },
+    settings({ apiKey: "settings-key", host: "settings-host", port: 4000 }),
     { apiKey: "flag-key", host: "flag-host", port: 5000 }
   );
   assert.equal(flagConfig.apiKey, "flag-key");
@@ -27,41 +33,35 @@ test("resolveRuntimeConfig applies flag > environment > default priority with so
   assert.equal(flagConfig.port, 5000);
   assert.equal(flagConfig.portSource, "flag");
 
-  const envConfig = resolveRuntimeConfig({
-    GOOGLE_MAPS_API_KEY: "env-key",
-    MCP_SERVER_HOST: "env-host",
-    MCP_SERVER_PORT: "4000",
-  });
-  assert.equal(envConfig.apiKey, "env-key");
-  assert.equal(envConfig.apiKeySource, "environment");
-  assert.equal(envConfig.host, "env-host");
-  assert.equal(envConfig.hostSource, "environment");
-  assert.equal(envConfig.port, 4000);
-  assert.equal(envConfig.portSource, "environment");
-
-  const defaultConfig = resolveRuntimeConfig({});
-  assert.equal(defaultConfig.apiKey, undefined);
-  assert.equal(defaultConfig.apiKeySource, "none");
-  assert.equal(defaultConfig.host, "127.0.0.1");
-  assert.equal(defaultConfig.hostSource, "default");
-  assert.equal(defaultConfig.port, 3000);
-  assert.equal(defaultConfig.portSource, "default");
+  const settingsConfig = resolveRuntimeConfig(
+    settings({ apiKey: "settings-key", host: "settings-host", port: 4000 })
+  );
+  assert.equal(settingsConfig.apiKey, "settings-key");
+  assert.equal(settingsConfig.apiKeySource, "settings");
+  assert.equal(settingsConfig.host, "settings-host");
+  assert.equal(settingsConfig.hostSource, "settings");
+  assert.equal(settingsConfig.port, 4000);
+  assert.equal(settingsConfig.portSource, "settings");
 });
 
-test("resolveRuntimeConfig keeps an unparsable environment port invalid and raw", () => {
-  const config = resolveRuntimeConfig({ MCP_SERVER_PORT: "not-a-number" });
+test("resolveRuntimeConfig normalizes unset keys and out-of-range settings ports", () => {
+  const config = resolveRuntimeConfig(settings({ apiKey: "", port: 70000 }));
+  assert.equal(config.apiKey, undefined);
+  assert.equal(config.apiKeySource, "none");
+  assert.equal(config.host, "127.0.0.1");
+  assert.equal(config.hostSource, "settings");
   assert.equal(config.port, undefined);
-  assert.equal(config.portRaw, "not-a-number");
-  assert.equal(config.portSource, "environment");
+  assert.equal(config.portRaw, "70000");
+  assert.equal(config.portSource, "settings");
 
   const validation = validateHttpEndpoint(config);
   assert.equal(validation.valid, false);
   assert.equal(validation.errors.length, 1);
-  assert.match(validation.errors[0], /invalid MCP_SERVER_PORT value "not-a-number"/);
+  assert.match(validation.errors[0], /invalid port value "70000"/);
 });
 
 test("validateHttpEndpoint accepts a well-formed endpoint", () => {
-  const validation = validateHttpEndpoint(resolveRuntimeConfig({ MCP_SERVER_PORT: "3000", MCP_SERVER_HOST: "127.0.0.1" }));
+  const validation = validateHttpEndpoint(resolveRuntimeConfig(settings({ port: 3000, host: "127.0.0.1" })));
   assert.equal(validation.valid, true);
   assert.deepEqual(validation.errors, []);
 });
@@ -77,41 +77,18 @@ test("maskSecret never reveals the raw secret", () => {
 
 test("describeRuntimeConfig reports masked values with per-field sources", () => {
   const diagnostics = describeRuntimeConfig(
-    resolveRuntimeConfig({ GOOGLE_MAPS_API_KEY: "AIzaSyVerySecretKey12345", MCP_SERVER_PORT: "3000" })
+    resolveRuntimeConfig(settings({ apiKey: "AIzaSyVerySecretKey12345", port: 3000 }))
   );
   assert.equal(diagnostics.apiKey.value, "AIza****2345");
-  assert.equal(diagnostics.apiKey.source, "environment");
+  assert.equal(diagnostics.apiKey.source, "settings");
   assert.equal(diagnostics.httpPort.value, 3000);
-  assert.equal(diagnostics.httpPort.source, "environment");
+  assert.equal(diagnostics.httpPort.source, "settings");
   assert.equal(diagnostics.enabledTools.value, "*");
   assert.equal(diagnostics.autoUpdateCheck.enabled, true);
 
   const line = formatConfigDiagnostics(diagnostics);
-  assert.match(line, /apiKey=AIza\*\*\*\*2345 \(environment\)/);
+  assert.match(line, /apiKey=AIza\*\*\*\*2345 \(settings\)/);
   assert.equal(line.includes("VerySecret"), false);
-});
-
-test("applyExplicitEnvFile fails on missing files and loads existing ones", () => {
-  const missing = applyExplicitEnvFile(join(tmpdir(), "definitely-missing-env-file-.env"));
-  assert.equal(missing.ok, false);
-  assert.match(missing.error ?? "", /env file not found:/);
-
-  const dir = mkdtempSync(join(tmpdir(), "mgm-env-"));
-  const envPath = join(dir, "explicit.env");
-  writeFileSync(envPath, "MGM_TEST_EXPLICIT_VALUE=loaded\n", "utf-8");
-  const previous = process.env.MGM_TEST_EXPLICIT_VALUE;
-  try {
-    const loaded = applyExplicitEnvFile(envPath);
-    assert.equal(loaded.ok, true);
-    assert.equal(process.env.MGM_TEST_EXPLICIT_VALUE, "loaded");
-  } finally {
-    if (previous === undefined) {
-      delete process.env.MGM_TEST_EXPLICIT_VALUE;
-    } else {
-      process.env.MGM_TEST_EXPLICIT_VALUE = previous;
-    }
-    rmSync(dir, { recursive: true, force: true });
-  }
 });
 
 test("resolveEnabledToolNames implements unset, subset, and zero-match semantics", () => {

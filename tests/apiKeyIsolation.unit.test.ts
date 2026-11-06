@@ -12,7 +12,6 @@ interface Session {
 }
 
 test("HTTP sessions retain distinct API keys when a server default is configured", async () => {
-  const previousDefault = process.env.GOOGLE_MAPS_API_KEY;
   ApiKeyManager.getInstance().setDefaultApiKey("GLOBAL_DEFAULT_TEST_KEY");
 
   const mcpServer = new BaseMcpServer("api-key-isolation-test", [
@@ -99,7 +98,5 @@ test("HTTP sessions retain distinct API keys when a server default is configured
     ]);
   } finally {
     await mcpServer.stopHttpServer();
-    if (previousDefault === undefined) delete process.env.GOOGLE_MAPS_API_KEY;
-    else process.env.GOOGLE_MAPS_API_KEY = previousDefault;
   }
 });

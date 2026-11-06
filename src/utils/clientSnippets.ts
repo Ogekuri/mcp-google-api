@@ -1,11 +1,3 @@
-/**
- * @brief Literal placeholder written into snippets when no `--env-key` is set.
- * @details Safe-by-default: valid on every MCP client because it contains no
- * variable-expansion syntax; the user replaces it with a real key.
- * @satisfies REQ-093
- */
-export const API_KEY_PLACEHOLDER = "<your-google-maps-api-key>";
-
 /** @brief Supported MCP client targets; selects the documented target file. */
 export type SnippetClient = "generic" | "claude" | "cursor" | "pi";
 
@@ -27,7 +19,6 @@ export interface SnippetOptions {
   commandPath?: string;
   host?: string;
   port?: number;
-  envKey?: string;
   serverName?: string;
 }
 
@@ -65,12 +56,12 @@ const SNIPPET_CLIENT_TARGETS: Readonly<Record<SnippetClient, string>> = {
  * @details stdio transport: launcher `npx` -> `npx -y mcp-google-api start
  * --stdio`; `bin` -> installed `mcp-google-api start --stdio`; `node` ->
  * `node <commandPath> start --stdio` and throws when `commandPath` is
- * missing. HTTP transport: emits
- * `{ url: "http://<host>:<port>/mcp" }`. The `env` block embeds
- * `API_KEY_PLACEHOLDER` by default; a provided `envKey` switches the value to
- * the literal `${<envKey>}` and adds a note that variable expansion is
- * client-specific (REQ-093). Pure: no filesystem or network access; output is
- * JSON.stringify'd with 2-space indent. Complexity O(1).
+ * missing. HTTP transport: emits `{ url: "http://<host>:<port>/mcp" }`.
+ * Entries embed no API key and no environment payload (REQ-093): the
+ * registered server loads its key at startup from the persisted `api-key`
+ * setting (REQ-142), and the stderr notes say so. Pure: no filesystem or
+ * network access; output is JSON.stringify'd with 2-space indent.
+ * Complexity O(1).
  * @param options {SnippetOptions} Rendering options; defaults apply when omitted.
  * @return {SnippetResult} Pretty-printed JSON snippet plus stderr notes.
  * @throws {Error} When launcher is `node` and `commandPath` is missing.
@@ -105,15 +96,8 @@ export function renderClientSnippet(options: SnippetOptions = {}): SnippetResult
     if (launcher === "npx") {
       notes.push("The npx launcher runs the published package; npm must be available on PATH.");
     }
-    const apiKeyValue = options.envKey ? `\${${options.envKey}}` : API_KEY_PLACEHOLDER;
-    entry = { command, args, env: { GOOGLE_MAPS_API_KEY: apiKeyValue } };
-    if (options.envKey) {
-      notes.push(
-        `Variable references (\${${options.envKey}}) are client-specific: confirm your client expands environment variables before relying on them.`
-      );
-    } else {
-      notes.push(`Replace ${API_KEY_PLACEHOLDER} with your Google Maps API key.`);
-    }
+    entry = { command, args };
+    notes.push("The registration carries no API key: configure it once with 'mcp-google-api api-key <key>'.");
   }
 
   const json = JSON.stringify({ mcpServers: { [serverName]: entry } }, null, 2);

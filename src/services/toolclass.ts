@@ -1,9 +1,6 @@
 import { Client, Language } from "@googlemaps/google-maps-services-js";
-import dotenv from "dotenv";
 import { Logger } from "../index.js";
 import { RoutesService } from "./RoutesService.js";
-
-dotenv.config();
 
 interface GeocodeResult {
   lat: number;

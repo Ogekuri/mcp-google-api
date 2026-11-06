@@ -10,9 +10,13 @@ const { DOCTOR_PROBES, parseDoctorProbes, runDoctor } = await import("../src/cli
 process.argv[1] = originalArgv1;
 
 const { resolveRuntimeConfig } = await import("../src/utils/configResolver.js");
+const { loadCliSettings } = await import("../src/utils/cliSettings.js");
 
 const NODE_24 = "24.11.0";
-const CLEAN_CONFIG = resolveRuntimeConfig({ GOOGLE_MAPS_API_KEY: "AIzaSyConfigKey123456789" });
+const CLEAN_CONFIG = resolveRuntimeConfig(
+  loadCliSettings(),
+  { apiKey: "AIzaSyConfigKey123456789" }
+);
 
 test("doctor enforces the Node engine floor from package.json engines", async () => {
   const oldNode = await runDoctor("1.2.3", "configured-key", false, undefined, {
@@ -44,14 +48,17 @@ test("doctor local mode reports masked configuration with per-field sources", as
 
   const configCheck = report.checks.find((check) => check.name === "config");
   assert.equal(configCheck?.status, "pass");
-  assert.match(configCheck?.detail ?? "", /host=127\.0\.0\.1 \(default\)/);
-  assert.match(configCheck?.detail ?? "", /enabledTools=\* \(default\)/);
+  assert.match(configCheck?.detail ?? "", /host=127\.0\.0\.1 \(settings\)/);
+  assert.match(configCheck?.detail ?? "", /enabledTools=\* \(settings\)/);
 });
 
 test("doctor local mode reports per-tool Google API profiles", async () => {
   const report = await runDoctor("1.2.3", "configured-key", false, undefined, {
     nodeVersion: NODE_24,
-    config: resolveRuntimeConfig({ GOOGLE_MAPS_ENABLED_TOOLS: "maps_geocode,maps_directions" }),
+    config: resolveRuntimeConfig(
+      { ...loadCliSettings(), enabledTools: "maps_geocode,maps_directions" },
+      {}
+    ),
   });
 
   const toolsCheck = report.checks.find((check) => check.name === "tools");
@@ -65,7 +72,10 @@ test("doctor local mode reports per-tool Google API profiles", async () => {
 test("doctor fails the config check when the allowlist matches zero tools", async () => {
   const report = await runDoctor("1.2.3", "configured-key", false, undefined, {
     nodeVersion: NODE_24,
-    config: resolveRuntimeConfig({ GOOGLE_MAPS_ENABLED_TOOLS: "does_not_exist" }),
+    config: resolveRuntimeConfig(
+      { ...loadCliSettings(), enabledTools: "does_not_exist" },
+      {}
+    ),
   });
 
   const configCheck = report.checks.find((check) => check.name === "config");

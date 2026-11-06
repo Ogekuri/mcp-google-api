@@ -1,6 +1,6 @@
 # Catalogo dei tool
 
-18 tool MCP, tutti prefissati `maps_`. L'elenco esposto può essere ridotto con `GOOGLE_MAPS_ENABLED_TOOLS` (vedi [CONFIGURATION.md](CONFIGURATION.md)).
+18 tool MCP, tutti prefissati `maps_`. L'elenco esposto può essere ridotto con il comando `mcp-google-api tools <list|*>` (vedi [CONFIGURATION.md](CONFIGURATION.md)).
 
 ## Ricerca e dettaglio locali (Places API — New)
 

@@ -18,16 +18,14 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { config as dotenvConfig } from "dotenv";
 import { resolve } from "node:path";
-
-// Load .env from project root
-dotenvConfig({ path: resolve(import.meta.dirname ?? ".", "../.env") });
+import { loadConfiguredApiKey } from "../src/utils/cliSettings.js";
 
 // --------------- Config ---------------
 
 const PORT = parseInt(process.argv.find((_, i, a) => a[i - 1] === "--port") ?? "13579");
-const API_KEY = process.argv.find((_, i, a) => a[i - 1] === "--apikey") ?? process.env.GOOGLE_MAPS_API_KEY ?? "";
+const CLI_API_KEY = process.argv.find((_, i, a) => a[i - 1] === "--apikey") ?? loadConfiguredApiKey() ?? "";
+const API_KEY = CLI_API_KEY;
 const MCP_ENDPOINT = `http://localhost:${PORT}/mcp`;
 const PROTOCOL_VERSION = "2025-03-26";
 
@@ -124,11 +122,10 @@ async function startServer(): Promise<void> {
 
   return new Promise((resolvePromise, reject) => {
     const args = ["--port", String(PORT)];
-    if (API_KEY) args.push("--apikey", API_KEY);
 
-    serverProcess = spawn("node", [cliPath, ...args], {
+    serverProcess = spawn("node", [cliPath, "start", ...args], {
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, MCP_SERVER_PORT: String(PORT) },
+      env: { ...process.env },
     });
 
     const timeout = setTimeout(() => reject(new Error("Server start timed out")), 15000);
