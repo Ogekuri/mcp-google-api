@@ -3,7 +3,7 @@
  *
  * @brief Guards package-lock.json against deprecated/security-flagged transitive packages.
  * @details Reproducer suite for the install-time deprecation warnings reported on
- * `npm install -g mcp-google-map`. Resolution chain observed with @googlemaps/places@2.x:
+ * `npm install -g mcp-google-api`. Resolution chain observed with @googlemaps/places@2.x:
  * `@googlemaps/places@2.5.0` -> `google-gax@5.0.8` -> `rimraf@5.0.10` -> `glob@10.5.0`
  * (npm deprecation: "widely publicized security vulnerabilities"). Upgrading the declared
  * range to `@googlemaps/places ^3.1.0` (google-gax@^6, which has no rimraf/glob dependency)

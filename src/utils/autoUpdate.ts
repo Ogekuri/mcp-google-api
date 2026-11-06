@@ -20,7 +20,7 @@ import { Logger } from "../index.js";
 export const AUTO_UPDATE_DISABLED_ENV = "MCP_AUTO_UPDATE_DISABLED";
 
 /** Default npm package name probed by the automatic update check. */
-export const DEFAULT_PACKAGE_NAME = "mcp-google-map";
+export const DEFAULT_PACKAGE_NAME = "mcp-google-api";
 
 /** Default npm registry base URL (no trailing slash). */
 export const DEFAULT_REGISTRY_BASE_URL = "https://registry.npmjs.org";
@@ -253,7 +253,7 @@ export async function checkForUpdates(
 
 /** Default GitHub releases API URL resolving the latest published release of the distribution repository. */
 export const DEFAULT_GITHUB_RELEASES_API_URL =
-  "https://api.github.com/repos/Ogekuri/mcp-google-map/releases/latest";
+  "https://api.github.com/repos/Ogekuri/mcp-google-api/releases/latest";
 
 /**
  * @brief Dependency injection surface of `probeLatestGitHubVersion`.

@@ -1,7 +1,7 @@
 {
-  "name": "mcp-google-map",
+  "name": "mcp-google-api",
   "version": "0.20.0",
-  "description": "Google Maps MCP server — 18 tools for AI agents: geocoding, Places API (New) search with server-side filters, directions, distance matrix and more, via stdio or Streamable HTTP",
+  "description": "Google API MCP server — 18 Google Maps tools for AI agents: geocoding, Places API (New) search with server-side filters, directions, distance matrix and more, via stdio or Streamable HTTP",
   "type": "module",
   "main": "dist/index.js",
   "exports": {
@@ -9,7 +9,7 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "mcp-google-map": "dist/cli.js"
+    "mcp-google-api": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -48,12 +48,12 @@
   "license": "GPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Ogekuri/mcp-google-map.git"
+    "url": "git+https://github.com/Ogekuri/mcp-google-api.git"
   },
   "bugs": {
-    "url": "https://github.com/Ogekuri/mcp-google-map/issues"
+    "url": "https://github.com/Ogekuri/mcp-google-api/issues"
   },
-  "homepage": "https://github.com/Ogekuri/mcp-google-map#readme",
+  "homepage": "https://github.com/Ogekuri/mcp-google-api#readme",
   "dependencies": {
     "@googlemaps/google-maps-services-js": "^3.4.0",
     "@googlemaps/places": "^3.1.0",

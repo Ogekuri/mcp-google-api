@@ -104,7 +104,7 @@ test("Release workflow publishes to npm only for master-reachable tags", () => {
   const gateOutputIdx = workflow.indexOf("on_master=${on_master}");
   const publishIfIdx = workflow.indexOf(`if: ${condition}`);
   const publishRunIdx = workflow.indexOf("run: npm publish --provenance --access public");
-  const releaseAssetIdx = workflow.indexOf("files: mcp-google-map-*.tgz");
+  const releaseAssetIdx = workflow.indexOf("files: mcp-google-api-*.tgz");
   const conditionCount = workflow.split(`if: ${condition}`).length - 1;
   const expected_output = {
     gateExportsMasterOutput: true,
@@ -133,7 +133,7 @@ test("Release workflow defines no typecheck, unit-test, verify, or smoke-check s
   assert.equal(workflow.includes("run: npm test"), false);
   assert.equal(workflow.includes("run: npm run verify"), false);
   assert.equal(workflow.includes("run: npm run test:e2e"), false);
-  assert.equal(workflow.includes("run: mcp-google-map doctor"), false);
+  assert.equal(workflow.includes("run: mcp-google-api doctor"), false);
   assert.equal(workflow.includes("GOOGLE_MAPS_API_KEY: release-smoke-placeholder-key"), false);
 });
 
@@ -148,7 +148,7 @@ test("Release workflow publishes via npm OIDC Trusted Publishing and attaches th
   // bundling npm >= 11.5.1 (OIDC Trusted Publishing floor).
   const workflow = readWorkflow(RELEASE_WORKFLOW_PATH);
   const packIdx = workflow.indexOf("run: npm pack");
-  const releaseIdx = workflow.indexOf("files: mcp-google-map-*.tgz");
+  const releaseIdx = workflow.indexOf("files: mcp-google-api-*.tgz");
   const expected_output = {
     oidcPermissionGranted: true,
     npmTokenSecretReferenced: false,

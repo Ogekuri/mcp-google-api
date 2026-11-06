@@ -1,5 +1,5 @@
 /**
- * Smoke test for mcp-google-map server.
+ * Smoke test for mcp-google-api server.
  *
  * Validates:
  *  1. Server starts and accepts an initialize request
@@ -1256,7 +1256,7 @@ async function testPlanRoute(session: McpSession): Promise<void> {
 
 async function main() {
   console.log("═══════════════════════════════════════════");
-  console.log(" mcp-google-map smoke test");
+  console.log(" mcp-google-api smoke test");
   console.log(`  Endpoint: ${MCP_ENDPOINT}`);
   console.log(`  API Key:  ${API_KEY ? "✅ provided" : "⚠️  not set (some tests skipped)"}`);
   console.log("═══════════════════════════════════════════");

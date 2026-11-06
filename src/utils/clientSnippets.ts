@@ -18,7 +18,7 @@ export type SnippetLauncher = "npx" | "node" | "bin";
 /**
  * @brief Options controlling snippet rendering.
  * @details All fields optional; defaults: client `generic`, transport `stdio`,
- * launcher `npx`, serverName `mcp-google-map`, HTTP host `127.0.0.1`, port 3000.
+ * launcher `npx`, serverName `mcp-google-api`, HTTP host `127.0.0.1`, port 3000.
  */
 export interface SnippetOptions {
   client?: SnippetClient;
@@ -62,8 +62,8 @@ const SNIPPET_CLIENT_TARGETS: Readonly<Record<SnippetClient, string>> = {
 
 /**
  * @brief Renders a valid MCP-client registration snippet without writing files.
- * @details stdio transport: launcher `npx` -> `npx -y mcp-google-map start
- * --stdio`; `bin` -> installed `mcp-google-map start --stdio`; `node` ->
+ * @details stdio transport: launcher `npx` -> `npx -y mcp-google-api start
+ * --stdio`; `bin` -> installed `mcp-google-api start --stdio`; `node` ->
  * `node <commandPath> start --stdio` and throws when `commandPath` is
  * missing. HTTP transport: emits
  * `{ url: "http://<host>:<port>/mcp" }`. The `env` block embeds
@@ -79,7 +79,7 @@ const SNIPPET_CLIENT_TARGETS: Readonly<Record<SnippetClient, string>> = {
 export function renderClientSnippet(options: SnippetOptions = {}): SnippetResult {
   const client = options.client ?? "generic";
   const transport = options.transport ?? "stdio";
-  const serverName = options.serverName ?? "mcp-google-map";
+  const serverName = options.serverName ?? "mcp-google-api";
 
   const notes: string[] = [`Paste this snippet into ${SNIPPET_CLIENT_TARGETS[client]}.`];
   notes.push("This command prints the snippet only; it never writes or edits configuration files.");
@@ -89,16 +89,16 @@ export function renderClientSnippet(options: SnippetOptions = {}): SnippetResult
     const host = options.host ?? SNIPPET_DEFAULT_HOST;
     const port = options.port ?? SNIPPET_DEFAULT_PORT;
     entry = { url: `http://${host}:${port}/mcp` };
-    notes.push(`Start the server first: mcp-google-map start --host ${host} --port ${port}.`);
+    notes.push(`Start the server first: mcp-google-api start --host ${host} --port ${port}.`);
   } else {
     const launcher = options.launcher ?? "npx";
     if (launcher === "node" && !options.commandPath) {
       throw new Error('--launcher node requires --command <path> pointing at dist/cli.js');
     }
-    const command = launcher === "npx" ? "npx" : launcher === "bin" ? "mcp-google-map" : "node";
+    const command = launcher === "npx" ? "npx" : launcher === "bin" ? "mcp-google-api" : "node";
     const args =
       launcher === "npx"
-        ? ["-y", "mcp-google-map", "start", "--stdio"]
+        ? ["-y", "mcp-google-api", "start", "--stdio"]
         : launcher === "bin"
           ? ["start", "--stdio"]
           : [options.commandPath as string, "start", "--stdio"];

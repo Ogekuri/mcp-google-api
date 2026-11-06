@@ -1,6 +1,6 @@
 # Skills Resources — Authoring Guide
 
-This directory ships LLM agent skills for the `mcp-google-map` MCP server. Skills are inert instruction assets: no runtime module under `src/` imports them, so adding a skill never requires source-code changes, rebuilds, or test changes.
+This directory ships LLM agent skills for the `mcp-google-api` MCP server. Skills are inert instruction assets: no runtime module under `src/` imports them, so adding a skill never requires source-code changes, rebuilds, or test changes.
 
 ## Layout contract
 
@@ -13,7 +13,7 @@ src/resources/skills/
     └── DEBUG.md               # optional debug overlay (never part of SKILL.md)
 ```
 
-Debug instructions are never embedded in `SKILL.md`. A skill that needs a debug section ships it in a dedicated overlay file declared by the manifest `debug` field; `mcp-google-map install` copies content files only and appends the overlay to the installed `SKILL.md` solely when `--debug-skills` is passed. The default install therefore produces a skill with no debug instructions.
+Debug instructions are never embedded in `SKILL.md`. A skill that needs a debug section ships it in a dedicated overlay file declared by the manifest `debug` field; `mcp-google-api install` copies content files only and appends the overlay to the installed `SKILL.md` solely when `--debug-skills` is passed. The default install therefore produces a skill with no debug instructions.
 
 ## SKILL.md format (Agent Skills compatible: pi, OpenClaw, and similar hosts)
 
@@ -22,7 +22,7 @@ Debug instructions are never embedded in `SKILL.md`. A skill that needs a debug 
   - `name`: 1–64 characters, lowercase ASCII letters, digits, hyphens; no leading, trailing, or consecutive hyphens; MUST match the containing directory name.
   - `description`: non-empty, ≤ 1024 characters; states the capability and the triggering tasks, with important routing cues first.
 - Body: operative instructions in English, self-contained, ≤ ~500 lines. Support files (if ever needed) go under canonical subdirectories (`scripts/`, `references/`, `assets/`, `images/`); `SKILL.md` stays the only file at the skill root.
-- Skills that operate on Google Maps data MUST obtain every data value through the mcp-google-map tools listed in `PRJ-001` of `usereq/docs/REQUIREMENTS.md` and MUST forbid fabricated or simulated data presented as API-verified.
+- Skills that operate on Google Maps data MUST obtain every data value through the mcp-google-api tools listed in `PRJ-001` of `usereq/docs/REQUIREMENTS.md` and MUST forbid fabricated or simulated data presented as API-verified.
 
 ## Adding a new skill
 

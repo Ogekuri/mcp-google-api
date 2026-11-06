@@ -123,11 +123,11 @@ test("checkForUpdates_returns_result_and_logs_notice_when_newer_version_exists",
 
   assert.deepEqual(result, { currentVersion: "0.3.0", latestVersion: "0.4.0" });
   assert.equal(urls.length, 1);
-  assert.equal(urls[0], "https://registry.npmjs.org/mcp-google-map/latest");
+  assert.equal(urls[0], "https://registry.npmjs.org/mcp-google-api/latest");
   assert.equal(logs.length, 1);
   assert.match(logs[0], /0\.3\.0/);
   assert.match(logs[0], /0\.4\.0/);
-  assert.match(logs[0], /npm install -g mcp-google-map@latest/);
+  assert.match(logs[0], /npm install -g mcp-google-api@latest/);
 });
 
 test("checkForUpdates_returns_null_without_network_when_disabled", async () => {

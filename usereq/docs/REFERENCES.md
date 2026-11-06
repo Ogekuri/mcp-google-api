@@ -1274,7 +1274,7 @@ network error) is returned as `{ status: "error", message }`; never throws.
 > Path: `src/utils/cliInstaller.ts`
 - @brief Orchestrate MCP-server registration and skill installation for enabled CLIs.
 - @details Loads the enabled-CLI settings, reads the packaged skills
-manifest, and for each enabled CLI registers the stdio `mcp-google-map`
+manifest, and for each enabled CLI registers the stdio `mcp-google-api`
 entry in that CLI's MCP configuration plus synchronizes every manifest
 skill into that CLI's skills directory. Uninstallation is the exact
 reciprocal operation. Per-CLI failures are collected without stopping the
@@ -1310,7 +1310,7 @@ processed manifest skills for that CLI.
 
 ### fn `export function buildServerRegistration(): { command: string; args: string[] }` (L71-73)
 - @brief Build the stdio MCP-server registration entry.
-- @details Launcher `npx -y mcp-google-map start --stdio` with no `env`
+- @details Launcher `npx -y mcp-google-api start --stdio` with no `env`
 payload: the registered server resolves its API key from its own
 configuration file at startup (REQ-142), so CLI registrations never embed
 keys or environment setup (REQ-114).
@@ -1394,7 +1394,7 @@ remaining CLIs still run.
 - @brief Persist the program configuration file for the CLI configuration-management commands.
 - @details Stores `{"enabled": ["<cli>", ...], "apiKey": "<key>", "autoUpdate": true}` at
 `<home>/.config/<SETTINGS_PROGRAM_NAME>/config.json`. The settings directory
-segment is the distribution program name `mcp-google-map` (DES-021):
+segment is the distribution program name `mcp-google-api` (DES-021):
 program-owned, never a shared or generic directory such as `skills`.
 Loading tolerates missing, unreadable, non-object, or malformed content by
 returning normalized defaults; saving serializes with two-space
@@ -1547,7 +1547,7 @@ home-relative MCP configuration path, and home-relative skills directory.
 ### fn `function buildInstallRows(home: string | undefined, resourcesRoot: string): string[][]` (L136-163)
 - @brief Build the Installation Status table rows.
 - @details Emits rows only for enabled CLIs: one `Server` row for the
-managed `mcp-google-map` entry plus one `Skill` row per manifest skill,
+managed `mcp-google-api` entry plus one `Skill` row per manifest skill,
 each with OK / MISSING / STALE detection. Skill comparison accepts both
 the plain and the debug-overlay-extended installed `SKILL.md` (REQ-158).
 - @param home {string | undefined} Home-directory override.
@@ -1586,7 +1586,7 @@ handler reports a JSON error.
 `openclaw`, `codex`, `antigravity`, `claude`) resolving the MCP
 configuration file and the skills destination directory from an injectable
 home root. MCP registration applies read-modify-write: JSON targets merge
-the `mcpServers["mcp-google-map"]` entry preserving every unrelated key;
+the `mcpServers["mcp-google-api"]` entry preserving every unrelated key;
 the TOML target (codex) appends or removes the `[mcp_servers.<name>]`
 table without touching other tables. Skill synchronization copies packaged
 skill content with overwrite and prunes stale files inside managed
@@ -1868,7 +1868,7 @@ undefined removes the entry.
 ### iface `export interface SnippetOptions` (L23-32)
 - @brief Options controlling snippet rendering.
 - @details All fields optional; defaults: client `generic`, transport `stdio`,
-launcher `npx`, serverName `mcp-google-map`, HTTP host `127.0.0.1`, port 3000.
+launcher `npx`, serverName `mcp-google-api`, HTTP host `127.0.0.1`, port 3000.
 
 ### iface `export interface SnippetResult` (L40-43)
 - @brief Rendered snippet plus stderr guidance notes.
@@ -1878,8 +1878,8 @@ prints on stderr so stdout stays pure JSON (PRJ-008).
 
 ### fn `export function renderClientSnippet(options: SnippetOptions = {}): SnippetResult` (L79-121)
 - @brief Renders a valid MCP-client registration snippet without writing files.
-- @details stdio transport: launcher `npx` -> `npx -y mcp-google-map start
---stdio`; `bin` -> installed `mcp-google-map start --stdio`; `node` ->
+- @details stdio transport: launcher `npx` -> `npx -y mcp-google-api start
+--stdio`; `bin` -> installed `mcp-google-api start --stdio`; `node` ->
 `node <commandPath> start --stdio` and throws when `commandPath` is
 missing. HTTP transport: emits
 `{ url: "http://<host>:<port>/mcp" }`. The `env` block embeds
@@ -2199,7 +2199,7 @@ freshly persisted idle deadline for callers and tests.
 
 ### fn `export function resolveIdleCachePath(home?: string): string` (L219-221)
 - @brief Resolves the program-owned idle-cache file path.
-- @details Joins `<home>/.cache/mcp-google-map/check_version_idle-time.json`
+- @details Joins `<home>/.cache/mcp-google-api/check_version_idle-time.json`
 (program-owned directory segment per the DES-021 naming rule; never a
 shared or generic directory).
 - @param home {string | undefined} Home-directory override; defaults to `os.homedir()`.
@@ -2317,7 +2317,7 @@ Pure; never throws.
 ### fn `export function runPostUpgradeSkillInstall(` (L569-571)
 - @brief Refreshes installed skills through the upgraded package after `--upgrade`.
 - @details When at least one CLI is enabled in the persisted settings, spawns
-`mcp-google-map install` — the globally installed bin of the just-upgraded
+`mcp-google-api install` — the globally installed bin of the just-upgraded
 package (`POST_UPGRADE_INSTALL_COMMAND`) — with captured child stdout
 (stderr stays inherited so child diagnostics remain visible), so the
 freshly upgraded package (not the running process, and never a stale npx
@@ -2412,7 +2412,7 @@ writes the already-latest stdout line including the installed version and
 returns 0 without spawning any child process (REQ-145) -> any other
 outcome proceeds to the update path (`newer` per REQ-146;
 `disabled`/`unknown-version`/`error` per REQ-147). The update path runs
-`npm install -g mcp-google-map@latest` with inherited stdio and propagates
+`npm install -g mcp-google-api@latest` with inherited stdio and propagates
 a non-zero exit code unchanged without printing any summary; on success
 resolves the updated version via one registry probe (REQ-134), runs the
 captured-stdout post-upgrade install (REQ-126), prints the
@@ -2432,7 +2432,7 @@ post-upgrade install exit code.
 
 ### fn `export function runUninstallCommand(deps: ManagementCommandDeps = {}): number` (L811-813)
 - @brief Handles `--uninstall`: remove the globally installed package.
-- @details Runs `npm uninstall -g mcp-google-map` with inherited stdio and
+- @details Runs `npm uninstall -g mcp-google-api` with inherited stdio and
 returns the child exit code (spawn failures map to 1 with the manual
 command hint, REQ-127, REQ-128). Managed skill/MCP removal stays the
 responsibility of the existing `uninstall` subcommand.

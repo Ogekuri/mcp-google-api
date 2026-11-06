@@ -125,7 +125,7 @@ function buildCliRows(home?: string): string[][] {
 /**
  * @brief Build the Installation Status table rows.
  * @details Emits rows only for enabled CLIs: one `Server` row for the
- * managed `mcp-google-map` entry plus one `Skill` row per manifest skill,
+ * managed `mcp-google-api` entry plus one `Skill` row per manifest skill,
  * each with OK / MISSING / STALE detection. Skill comparison accepts both
  * the plain and the debug-overlay-extended installed `SKILL.md` (REQ-158).
  * @param home {string | undefined} Home-directory override.

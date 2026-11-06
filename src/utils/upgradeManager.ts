@@ -56,7 +56,7 @@ const green = (text: string): string => `${ANSI_GREEN}${text}${ANSI_RESET}`;
 const red = (text: string): string => `${ANSI_RED}${text}${ANSI_RESET}`;
 
 /** Program-owned cache directory segment (never a shared/generic name). */
-export const IDLE_CACHE_DIR_NAME = "mcp-google-map";
+export const IDLE_CACHE_DIR_NAME = "mcp-google-api";
 
 /** Idle-cache file name mirroring the reference skills CLI layout. */
 export const IDLE_CACHE_FILE_NAME = "check_version_idle-time.json";
@@ -88,13 +88,13 @@ export const PACKAGE_UNINSTALL_COMMAND: readonly string[] = [
  * @details Invokes the globally installed bin of the package JUST upgraded by
  * `PACKAGE_UPGRADE_COMMAND` (REQ-125): the executable already on `PATH` in the
  * exact scenario where `--upgrade` runs, guaranteed to match the upgraded
- * version. MUST NOT be an unversioned `npx -y mcp-google-map` spec: npx
+ * version. MUST NOT be an unversioned `npx -y mcp-google-api` spec: npx
  * resolves from its own cache/registry rather than the upgraded global
  * install, so a stale cached copy of the CLI could execute instead — on
  * pre-`$0`-gating releases the default command starts the MCP HTTP server,
  * which never exits and blocks the parent `spawnSync` forever (observed
  * defect: `--upgrade` appears to launch the MCP server instead of running
- * `install`). Windows spawns run through a shell, so `mcp-google-map.cmd`
+ * `install`). Windows spawns run through a shell, so `mcp-google-api.cmd`
  * resolves via `PATHEXT` exactly like the `npm` executable.
  * @satisfies REQ-126
  */
@@ -209,7 +209,7 @@ export interface IdleCheckResult {
 
 /**
  * @brief Resolves the program-owned idle-cache file path.
- * @details Joins `<home>/.cache/mcp-google-map/check_version_idle-time.json`
+ * @details Joins `<home>/.cache/mcp-google-api/check_version_idle-time.json`
  * (program-owned directory segment per the DES-021 naming rule; never a
  * shared or generic directory).
  * @param home {string | undefined} Home-directory override; defaults to `os.homedir()`.
@@ -549,7 +549,7 @@ function parsePostUpgradeCliOutcomes(
 /**
  * @brief Refreshes installed skills through the upgraded package after `--upgrade`.
  * @details When at least one CLI is enabled in the persisted settings, spawns
- * `mcp-google-map install` — the globally installed bin of the just-upgraded
+ * `mcp-google-api install` — the globally installed bin of the just-upgraded
  * package (`POST_UPGRADE_INSTALL_COMMAND`) — with captured child stdout
  * (stderr stays inherited so child diagnostics remain visible), so the
  * freshly upgraded package (not the running process, and never a stale npx
@@ -624,7 +624,7 @@ export function renderUpgradeSummary(
   outcome: PostUpgradeInstallOutcome
 ): string {
   const lines: string[] = [
-    `mcp-google-map upgrade completed: ${previousVersion} -> ${updatedVersion}`,
+    `mcp-google-api upgrade completed: ${previousVersion} -> ${updatedVersion}`,
   ];
   if (outcome.clis.length === 0) {
     lines.push(
@@ -753,7 +753,7 @@ function isUpgradeNecessary(status: LatestVersionProbe["status"]): boolean {
  * returns 0 without spawning any child process (REQ-145) -> any other
  * outcome proceeds to the update path (`newer` per REQ-146;
  * `disabled`/`unknown-version`/`error` per REQ-147). The update path runs
- * `npm install -g mcp-google-map@latest` with inherited stdio and propagates
+ * `npm install -g mcp-google-api@latest` with inherited stdio and propagates
  * a non-zero exit code unchanged without printing any summary; on success
  * resolves the updated version via one registry probe (REQ-134), runs the
  * captured-stdout post-upgrade install (REQ-126), prints the
@@ -799,7 +799,7 @@ export async function runUpgradeCommand(
 
 /**
  * @brief Handles `--uninstall`: remove the globally installed package.
- * @details Runs `npm uninstall -g mcp-google-map` with inherited stdio and
+ * @details Runs `npm uninstall -g mcp-google-api` with inherited stdio and
  * returns the child exit code (spawn failures map to 1 with the manual
  * command hint, REQ-127, REQ-128). Managed skill/MCP removal stays the
  * responsibility of the existing `uninstall` subcommand.

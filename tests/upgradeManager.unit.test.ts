@@ -88,7 +88,7 @@ function createLoggerStub(): { logger: AutoUpdateLogger; logs: string[]; errors:
  */
 function createFakeHome(enabled: readonly string[]): string {
   const home = mkdtempSync(join(tmpdir(), "upgrade-manager-test-"));
-  const configDir = join(home, ".config", "mcp-google-map");
+  const configDir = join(home, ".config", "mcp-google-api");
   mkdirSync(configDir, { recursive: true });
   writeFileSync(join(configDir, "config.json"), JSON.stringify({ enabled }), "utf-8");
   return home;
@@ -178,9 +178,9 @@ test("runUpgradeCommand_spawns_post_upgrade_install_via_upgraded_package_bin", a
     assert.deepEqual([...calls[0].args], [...PACKAGE_UPGRADE_COMMAND.slice(1)]);
 
     // Assert: post-upgrade install runs the UPGRADED package's own CLI
-    // (`mcp-google-map install`), never an unversioned npx spec whose
+    // (`mcp-google-api install`), never an unversioned npx spec whose
     // resolution could yield a stale copy starting the MCP server (REQ-126).
-    assert.equal(calls[1].command, "mcp-google-map");
+    assert.equal(calls[1].command, "mcp-google-api");
     assert.deepEqual([...calls[1].args], ["install"]);
 
     // Assert: the install child keeps stdout captured and stderr inherited.
@@ -247,7 +247,7 @@ test("runUpgradeCommand_spawn_failure_maps_to_exit_one_with_manual_hint", async 
     assert.equal(exitCode, 1);
     const diagnostics = [...logs, ...errors];
     assert.ok(
-      diagnostics.some((text) => text.includes("mcp-google-map") && text.includes("install")),
+      diagnostics.some((text) => text.includes("mcp-google-api") && text.includes("install")),
       "manual-command hint names the upgraded package install command"
     );
   } finally {

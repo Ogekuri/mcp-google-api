@@ -68,7 +68,7 @@ Voce stdio per `~/.pi/agent/mcp.json` (utente) o `.pi/mcp.json` (progetto, richi
   "mcpServers": {
     "maps": {
       "command": "node",
-      "args": ["/percorso/assoluto/a/mcp-google-map/dist/cli.js", "start", "--stdio"],
+      "args": ["/percorso/assoluto/a/mcp-google-api/dist/cli.js", "start", "--stdio"],
       "env": { "GOOGLE_MAPS_API_KEY": "${GOOGLE_MAPS_API_KEY}" }
     }
   }
@@ -76,15 +76,15 @@ Voce stdio per `~/.pi/agent/mcp.json` (utente) o `.pi/mcp.json` (progetto, richi
 ```
 
 - `${VAR}` espande variabili d'ambiente: la chiave non resta cablata nel file di configurazione.
-- `pi mcp add maps -- node /percorso/assoluto/a/mcp-google-map/dist/cli.js start --stdio` registra da terminale; `/reload` in sessione dopo modifiche esterne; `/mcp` ispeziona la connessione.
+- `pi mcp add maps -- node /percorso/assoluto/a/mcp-google-api/dist/cli.js start --stdio` registra da terminale; `/reload` in sessione dopo modifiche esterne; `/mcp` ispeziona la connessione.
 
 ### OpenClaw
 
 ```bash
-openclaw mcp set maps '{"command":"node","args":["/percorso/assoluto/a/mcp-google-map/dist/cli.js","start","--stdio"],"env":{"GOOGLE_MAPS_API_KEY":"AIza..."},"description":"Google Maps MCP"}'
+openclaw mcp set maps '{"command":"node","args":["/percorso/assoluto/a/mcp-google-api/dist/cli.js","start","--stdio"],"env":{"GOOGLE_MAPS_API_KEY":"AIza..."},"description":"Google Maps MCP"}'
 ```
 
-- Alternativa senza installazione: `"command":"npx","args":["-y","mcp-google-map","start","--stdio"]`.
+- Alternativa senza installazione: `"command":"npx","args":["-y","mcp-google-api","start","--stdio"]`.
 - Ricaricare il gateway o riavviare la sessione agente dopo la modifica; `openclaw mcp list` / `openclaw mcp show maps` per verificare.
 
 ### Prerequisiti chiave e API Google

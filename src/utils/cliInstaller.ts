@@ -2,7 +2,7 @@
  * @file cliInstaller.ts
  * @brief Orchestrate MCP-server registration and skill installation for enabled CLIs.
  * @details Loads the enabled-CLI settings, reads the packaged skills
- * manifest, and for each enabled CLI registers the stdio `mcp-google-map`
+ * manifest, and for each enabled CLI registers the stdio `mcp-google-api`
  * entry in that CLI's MCP configuration plus synchronizes every manifest
  * skill into that CLI's skills directory. Uninstallation is the exact
  * reciprocal operation. Per-CLI failures are collected without stopping the
@@ -61,7 +61,7 @@ export interface CliOperationResult {
 
 /**
  * @brief Build the stdio MCP-server registration entry.
- * @details Launcher `npx -y mcp-google-map start --stdio` with no `env`
+ * @details Launcher `npx -y mcp-google-api start --stdio` with no `env`
  * payload: the registered server resolves its API key from its own
  * configuration file at startup (REQ-142), so CLI registrations never embed
  * keys or environment setup (REQ-114).

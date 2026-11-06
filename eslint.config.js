@@ -1,4 +1,4 @@
-// ESLint flat configuration for mcp-google-map.
+// ESLint flat configuration for mcp-google-api.
 // Parser-only TypeScript setup (typescript-eslint base) plus a minimal,
 // always-safe rule set: `npm run typecheck` (tsc --noEmit) remains the
 // authoritative type gate; ESLint here backs the static-check tool with

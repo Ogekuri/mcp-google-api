@@ -5,7 +5,7 @@
  * `openclaw`, `codex`, `antigravity`, `claude`) resolving the MCP
  * configuration file and the skills destination directory from an injectable
  * home root. MCP registration applies read-modify-write: JSON targets merge
- * the `mcpServers["mcp-google-map"]` entry preserving every unrelated key;
+ * the `mcpServers["mcp-google-api"]` entry preserving every unrelated key;
  * the TOML target (codex) appends or removes the `[mcp_servers.<name>]`
  * table without touching other tables. Skill synchronization copies packaged
  * skill content with overwrite and prunes stale files inside managed

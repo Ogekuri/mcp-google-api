@@ -1,6 +1,6 @@
 # EatSpot Discovery — DEBUG Overlay
 
-Appended to `SKILL.md` only when the skill is installed with `mcp-google-map install --debug-skills`.
+Appended to `SKILL.md` only when the skill is installed with `mcp-google-api install --debug-skills`.
 Without that option this file is never installed, so the installed skill contains no debug instructions.
 The overlay is additive: it never alters PART I — CORE of `SKILL.md`.
 
@@ -12,7 +12,7 @@ For every search set `DEBUG_ENABLED = TRUE`. The DEBUG section MUST always appea
 
 ### D2. Mandatory provenance
 
-Every raw datum MUST be tied to an actual call. Calling `raw` an object you reconstructed is forbidden. Distinguish `API_VERIFIED` and `MCP_SERVER_UNAVAILABLE`. If the origin is not the mcp-google-map server, do not simulate Places API fields or structures.
+Every raw datum MUST be tied to an actual call. Calling `raw` an object you reconstructed is forbidden. Distinguish `API_VERIFIED` and `MCP_SERVER_UNAVAILABLE`. If the origin is not the mcp-google-api server, do not simulate Places API fields or structures.
 
 ### D3. Call register
 
@@ -68,4 +68,4 @@ Register-entry integrity: before emitting the final JSON array, verify that ever
 
 ### D10. Final output
 
-Produce in order: A. Search summary; B. Validated venues; C. Notes and limitations; D. DEBUG — GOOGLE PLACES API VIA mcp-google-map. Section D MUST end with one valid JSON array and nothing may follow it. Excluded candidates may appear only as technical data in Section D. The DEBUG does not modify functional logic. Removing Part II entirely MUST leave PART I — CORE fully operational.
+Produce in order: A. Search summary; B. Validated venues; C. Notes and limitations; D. DEBUG — GOOGLE PLACES API VIA mcp-google-api. Section D MUST end with one valid JSON array and nothing may follow it. Excluded candidates may appear only as technical data in Section D. The DEBUG does not modify functional logic. Removing Part II entirely MUST leave PART I — CORE fully operational.

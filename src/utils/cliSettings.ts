@@ -3,7 +3,7 @@
  * @brief Persist the program configuration file for the CLI configuration-management commands.
  * @details Stores `{"enabled": ["<cli>", ...], "apiKey": "<key>", "autoUpdate": true}` at
  * `<home>/.config/<SETTINGS_PROGRAM_NAME>/config.json`. The settings directory
- * segment is the distribution program name `mcp-google-map` (DES-021):
+ * segment is the distribution program name `mcp-google-api` (DES-021):
  * program-owned, never a shared or generic directory such as `skills`.
  * Loading tolerates missing, unreadable, non-object, or malformed content by
  * returning normalized defaults; saving serializes with two-space
@@ -19,11 +19,11 @@ import { join, resolve } from "node:path";
  * @brief Distribution program name owning the settings directory.
  * @details Single source of truth for the settings directory segment
  * (DES-021): `.config/<SETTINGS_PROGRAM_NAME>/config.json`. Program-owned
- * by `mcp-google-map`; a shared or generic name such as `skills` is
+ * by `mcp-google-api`; a shared or generic name such as `skills` is
  * forbidden. Keep in sync with the `package.json` `name` field.
  * @satisfies DES-021
  */
-export const SETTINGS_PROGRAM_NAME = "mcp-google-map";
+export const SETTINGS_PROGRAM_NAME = "mcp-google-api";
 
 /**
  * @brief Ordered path segments of the settings file relative to the home root.
@@ -38,17 +38,17 @@ const CLI_SETTINGS_RELATIVE = [".config", SETTINGS_PROGRAM_NAME, "config.json"] 
  * @details Registered and removed under this exact name in JSON `mcpServers`
  * maps and TOML `mcp_servers` tables.
  */
-export const MCP_SERVER_NAME = "mcp-google-map";
+export const MCP_SERVER_NAME = "mcp-google-api";
 
 /**
  * @brief Legacy placeholder previously embedded as `GOOGLE_MAPS_API_KEY` in CLI MCP registrations.
  * @details Self-describing marker whose text invites running the
- * `mcp-google-map api-key <key>` command. No longer written by `install`
+ * `mcp-google-api api-key <key>` command. No longer written by `install`
  * (REQ-114); retained only so `isUnsetApiKey` classifies placeholder values
  * left in existing files as unset (REQ-142).
  * @satisfies REQ-142
  */
-export const INSTALL_API_KEY_PLACEHOLDER = "__RUN_mcp-google-map_api-key_TO_CONFIGURE_YOUR_API_KEY__";
+export const INSTALL_API_KEY_PLACEHOLDER = "__RUN_mcp-google-api_api-key_TO_CONFIGURE_YOUR_API_KEY__";
 
 /**
  * @brief Program configuration shape loaded at bootstrap and persisted by the configuration commands.

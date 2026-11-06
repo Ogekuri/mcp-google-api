@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 // cli.ts is also the executable entrypoint and detects direct execution from
-// process.argv[1]. The repository directory name contains "mcp-google-map", so
+// process.argv[1]. The repository directory name contains "mcp-google-api", so
 // the test runner path would otherwise trigger the CLI entrypoint.
 const originalArgv1 = process.argv[1];
 process.argv[1] = "skill-debug-install-unit-test";
@@ -46,7 +46,7 @@ interface SkillFixture {
  * @return {SkillFixture} Temporary roots and the expected installed skill path.
  */
 function createFixture(): SkillFixture {
-  const root = mkdtempSync(join(tmpdir(), "mcp-google-map-skill-debug-"));
+  const root = mkdtempSync(join(tmpdir(), "mcp-google-api-skill-debug-"));
   const resourcesRoot = join(root, "skills");
   const skillDir = join(resourcesRoot, "demo-skill");
   mkdirSync(skillDir, { recursive: true });

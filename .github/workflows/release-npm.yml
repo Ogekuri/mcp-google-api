@@ -166,7 +166,7 @@ jobs:
         with:
           draft: false
           prerelease: false
-          files: mcp-google-map-*.tgz
+          files: mcp-google-api-*.tgz
           fail_on_unmatched_files: true
           generate_release_notes: false
           tag_name: ${{ github.ref_name }}

@@ -183,12 +183,12 @@ test("no command prints the help text and exits 0 without starting a server", as
   // Act:
   const result = await spawnCli([]);
   // Assert: REQ-129 (help instead of a server start, exit 0), REQ-130 (version
-  // adjacent to the first mcp-google-map line), REQ-131 (management commands
+  // adjacent to the first mcp-google-api line), REQ-131 (management commands
   // documented in the help text).
   assert.equal(result.code, 0, `bare invocation must exit 0; stderr:\n${result.stderr}`);
   assert.equal(result.stderr, "");
-  assert.match(result.stdout, /mcp-google-map v\d+\.\d+\.\d+/);
-  assert.equal(result.stdout.includes("Usage: mcp-google-map <command>"), true);
+  assert.match(result.stdout, /mcp-google-api v\d+\.\d+\.\d+/);
+  assert.equal(result.stdout.includes("Usage: mcp-google-api <command>"), true);
   assert.equal(result.stdout.includes("--upgrade"), true);
   assert.equal(result.stdout.includes("--uninstall"), true);
   assert.equal(result.stdout.includes("--ver"), true);

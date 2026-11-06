@@ -1,4 +1,4 @@
-# mcp-google-map Requirements
+# mcp-google-api Requirements
 
 ## 1. Introduction
 
@@ -16,12 +16,12 @@ This document MUST follow these authoring rules (LLM-first, normative SRS):
   - Do NOT add YAML front matter or in-document revision history; use git history / CHANGELOG.md for change tracking.
 
 ### 1.2 Project Scope
-`mcp-google-map` (v0.0.0, GPL-3.0-only) is a Model Context Protocol (MCP) server exposing 18 Google Maps tools (geocoding, Places API (New), Routes, Weather, Air Quality, Time Zone, Elevation, Static Maps) to AI agents over stdio or Streamable HTTP, plus a standalone CLI (`doctor`, `exec`, `batch-geocode`, `setup`, `snippet`, `enable`, `disable`, `auto-update <enable|disable|1|0>`, `install`, `uninstall`, `show`, `api-key`). Boundaries: read-only Google API queries only; no persistence, no caching layer, no user management, no write operations.
+`mcp-google-api` (v0.0.0, GPL-3.0-only) is a Model Context Protocol (MCP) server exposing Google APIs to AI agents over stdio or Streamable HTTP; the currently implemented family is Google Maps with 18 tools (geocoding, Places API (New), Routes, Weather, Air Quality, Time Zone, Elevation, Static Maps), plus a standalone CLI (`doctor`, `exec`, `batch-geocode`, `setup`, `snippet`, `enable`, `disable`, `auto-update <enable|disable|1|0>`, `install`, `uninstall`, `show`, `api-key`). Boundaries: read-only Google API queries only; no persistence, no caching layer, no user management, no write operations.
 
 Project file/folder structure (evidence: repository tree):
 
 ```
-mcp-google-map/
+mcp-google-api/
 ├── .github/workflows/           # GitHub Actions: release-npm.yml (npm tag releases)
 ├── docs/                        # Usage docs (CONFIGURATION.md, TOOLS.md)
 ├── scripts/                     # Shell helpers: build.sh, setup.sh, start-http.sh, start-mcp.sh, test.sh
@@ -81,6 +81,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PRJ-012**: MUST ship LLM agent skills as self-contained English `SKILL.md` resources under `src/resources/skills/<skill-id>/`, exactly one skill per directory, plus an optional `<skill-id>/DEBUG.md` debug overlay.
 - **PRJ-013**: MUST maintain `src/resources/skills/manifest.json` indexing every skill (id, name, version, language, path, description, optional `debug` overlay path) plus `src/resources/skills/README.md` authoring conventions enabling new skills without source-code changes.
 - **PRJ-014**: MUST ship the `eatspot-discovery` skill dedicated to discovering bars, pastry shops, restaurants, cafes, and bakeries.
+- **PRJ-016**: MUST identify the distribution package, bin, CLI script name, and user-facing messages as `mcp-google-api` with no references to the superseded `mcp-google-map` name.
+- **PRJ-017**: MUST scope the server to Google APIs at large, with Google Maps as the currently implemented API family (PRJ-001).
 
 ### 2.2 Project Constraints
 - **CTN-001**: MUST declare all tools read-only, non-destructive, idempotent, and open-world via MCP tool annotations (evidence: `MAPS_TOOL_ANNOTATIONS`, `src/config.ts`).
@@ -90,7 +92,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **CTN-005**: MUST run on Node.js `>= 24`, declared in `package.json` `engines` and enforced identically by the `doctor` local check.
 - **CTN-006**: MUST build and run as ECMAScript Modules only (`"type": "module"`, tsup ESM output).
 - **CTN-007**: MUST load `.env` from the current working directory first, then from the package installation directory, unless an explicit `--env-file` is given.
-- **CTN-008**: MUST NOT use any database or file-based persistence; all state is in-memory per process, except user-authorized local configuration files and the automatic-update idle cache under `~/.cache/mcp-google-map/`.
+- **CTN-008**: MUST NOT use any database or file-based persistence; all state is in-memory per process, except user-authorized local configuration files and the automatic-update idle cache under `~/.cache/mcp-google-api/`.
 - **CTN-009**: MUST support a global `--env-file <path>` CLI option that loads exactly the given file before command execution and fails when it is missing.
 
 ### 2.3 Packaging and Publication
@@ -99,7 +101,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-003**: MUST document in `README.md` a prebuilt-package-first Quick Start and installation paths: npm install, one-shot `npx`, and from-source build via cross-platform npm commands.
 - **PKG-005**: MUST define a `prepublishOnly` script in `package.json` that runs the version guard and build before any `npm publish`.
 - **PKG-006**: MUST set one identical non-`0.0.0` semantic version across `package.json`, `package-lock.json`, and the `README.md` title for every published release.
-- **PKG-007**: MUST print only the distribution package name `mcp-google-map` in user-facing doctor messages.
+- **PKG-007**: MUST print only the distribution package name `mcp-google-api` in user-facing doctor messages.
 - **PKG-008**: MUST trigger the release workflow only on pushed tags matching `v[0-9]+.[0-9]+.[0-9]+` whose commit is reachable from `master` or `develop`.
 - **PKG-009**: MUST resolve the tagged commit's reachability from `origin/master` and `origin/develop` in one gate step preceding every install, build, pack, and publish step.
 - **PKG-010**: MUST publish the package to npm from the release workflow via npm OIDC Trusted Publishing with provenance attestation and `--access public`, without long-lived npm tokens.
@@ -135,7 +137,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-041**: MUST run GitHub Actions workflow steps on the Node.js 24 runner runtime using action versions built for Node.js 24.
 - **PKG-042**: MUST run the release `npm publish` step only when the gate resolves the tagged commit as reachable from `origin/master`.
 - **PKG-043**: MUST run build, pack, changelog, and GitHub Release creation with the tarball asset for tags reachable from `origin/develop` but not `origin/master`, skipping only npm publication.
-- **PKG-044**: MUST append an `Acknowledgments` section as the last section of `README.md`, thanking CabLate for the `mcp-google-map` contribution at `https://github.com/cablate/mcp-google-map`.
+- **PKG-044**: MUST append an `Acknowledgments` section as the last section of `README.md`, thanking CabLate for the upstream contribution without naming the superseded project.
 
 ## 3. Requirements
 
@@ -157,8 +159,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **DES-015**: MUST resolve runtime configuration (host, port, enabled tools, env file) in one typed resolver consumed by CLI commands; the API key and update flag resolve from the persisted settings.
 - **DES-016**: MUST mask secret values via a single masking helper in every diagnostic, doctor, and setup report.
 - **DES-017**: MUST implement per-CLI target adapters for pi, openclaw, codex, antigravity, and claude resolving each MCP configuration file and skills destination directory from an injectable home root.
-- **DES-018**: MUST persist `{ "enabled": [<cli>...], "apiKey": "", "autoUpdate": true }` JSON at `~/.config/mcp-google-map/config.json`, tolerating missing or malformed content and writing atomically; `apiKey` follows DES-023 and `autoUpdate` follows DES-024.
-- **DES-021**: MUST derive the enabled-CLI settings directory from the distribution program name `mcp-google-map`; shared or generic directories such as `~/.config/skills/` MUST NOT be used.
+- **DES-018**: MUST persist `{ "enabled": [<cli>...], "apiKey": "", "autoUpdate": true }` JSON at `~/.config/mcp-google-api/config.json`, tolerating missing or malformed content and writing atomically; `apiKey` follows DES-023 and `autoUpdate` follows DES-024.
+- **DES-021**: MUST derive the enabled-CLI settings directory from the distribution program name `mcp-google-api`; shared or generic directories such as `~/.config/skills/` MUST NOT be used.
 - **DES-019**: MUST apply MCP-server registration through read-modify-write preserving every unrelated configuration entry, with atomic temporary-file replacement.
 - **DES-020**: MUST synchronize packaged skills into CLI skills destinations copying packaged content files with overwrite and pruning stale files inside managed skill directories only, excluding any declared debug overlay file.
 - **DES-022**: MUST implement the idle-gated version check and self-upgrade commands in a dedicated module with injectable clock, filesystem, fetch, logger, and child-process dependencies.
@@ -276,13 +278,13 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-092**: MUST print valid JSON MCP-client registration snippets for stdio and HTTP to stdout in `snippet`, writing no file.
 - **REQ-093**: MUST embed literal placeholder values in snippets by default; `--env-key` MUST emit variable references documented as client-specific.
 - **REQ-129**: MUST print the `--help` text on stdout and exit 0 when no command argument is supplied, without starting any server.
-- **REQ-130**: MUST print the application version adjacent to the first `mcp-google-map` line in help output.
+- **REQ-130**: MUST print the application version adjacent to the first `mcp-google-api` line in help output.
 - **REQ-131**: MUST list in the help text the management commands `--upgrade`, `--uninstall`, `--ver`, and `--version`, each with a description.
 - **REQ-142**: `start`/`run` MUST resolve the effective API key exclusively from the persisted settings key (REQ-136), treating empty and placeholder values as unset.
 - **REQ-143**: `start`/`run` with `--stdio` MUST exit 1 before creating any server when REQ-142 resolves no key, printing a stderr JSON error naming the `api-key` command.
 
 #### Automatic Update Check
-- **REQ-082**: MUST run an automatic update check by default at server startup in stdio and HTTP modes, comparing the running version against the latest `mcp-google-map` version published on the npm registry, subject to the idle cache gate (REQ-121).
+- **REQ-082**: MUST run an automatic update check by default at server startup in stdio and HTTP modes, comparing the running version against the latest `mcp-google-api` version published on the npm registry, subject to the idle cache gate (REQ-121).
 - **REQ-083**: MUST skip the automatic update check and make no registry network calls when the persisted settings `autoUpdate` field is false (DES-024).
 - **REQ-084**: MUST report a newer available npm version on stderr only, including current version, latest version, and an upgrade command.
 - **REQ-085**: MUST NOT block server startup on the automatic update check and MUST tolerate registry, network, and malformed-response failures with stderr diagnostics only.
@@ -291,16 +293,16 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 #### Self-Upgrade and Version Reporting
 - **REQ-120**: MUST provide top-level `--ver` and `--version` commands that print on stdout three lines: the installed version, the npmjs latest line (REQ-162), and the GitHub latest line (REQ-163), exiting 0.
 - **REQ-161**: `--ver` and `--version` MUST probe the npm registry and the GitHub releases API online, bypassing the idle cache gate, before printing the REQ-120 lines.
-- **REQ-162**: `--ver` and `--version` MUST print the second stdout line exactly `npmjs latest: <version>` where `<version>` is the latest `mcp-google-map` version published on the npm registry.
-- **REQ-163**: `--ver` and `--version` MUST print the third stdout line exactly `GitHub latest: <version>` where `<version>` is the latest GitHub release of `Ogekuri/mcp-google-map` with any leading `v` stripped.
+- **REQ-162**: `--ver` and `--version` MUST print the second stdout line exactly `npmjs latest: <version>` where `<version>` is the latest `mcp-google-api` version published on the npm registry.
+- **REQ-163**: `--ver` and `--version` MUST print the third stdout line exactly `GitHub latest: <version>` where `<version>` is the latest GitHub release of `Ogekuri/mcp-google-api` with any leading `v` stripped.
 - **REQ-164**: `--ver` and `--version` MUST print `unknown` in place of any REQ-120 version that cannot be determined: failed, disabled, or malformed probe result, or undetermined installed version.
-- **REQ-121**: MUST gate the automatic update check with an idle cache file at `~/.cache/mcp-google-map/check_version_idle-time.json`, skipping the registry request while its `idle_time_epoch` is in the future.
+- **REQ-121**: MUST gate the automatic update check with an idle cache file at `~/.cache/mcp-google-api/check_version_idle-time.json`, skipping the registry request while its `idle_time_epoch` is in the future.
 - **REQ-122**: MUST persist cache fields `last_success_epoch`, `last_success_human`, `idle_time_epoch`, and `idle_time_human` (ISO-8601 UTC) after each executed check, tolerating missing or malformed cache content.
 - **REQ-123**: MUST set the idle window to 3600 seconds when a newer version is found and 86400 seconds otherwise.
 - **REQ-124**: MUST report each executed check on stderr only: `Available Version: <latest> | Installed Version: <current>` plus an upgrade command when newer and an error notice on failure; it MUST emit no output when no newer version exists.
-- **REQ-125**: MUST implement `--upgrade` to run `npm install -g mcp-google-map@latest` as a child process with inherited stdio, propagating its exit code.
+- **REQ-125**: MUST implement `--upgrade` to run `npm install -g mcp-google-api@latest` as a child process with inherited stdio, propagating its exit code.
 - **REQ-126**: MUST, after a successful `--upgrade` with at least one enabled CLI, run the upgraded package's `install` child command without `--debug-skills` with captured stdout, refreshing skills and MCP registrations without echoing the child JSON summary.
-- **REQ-127**: MUST implement `--uninstall` to run `npm uninstall -g mcp-google-map` as a child process with inherited stdio, propagating its exit code.
+- **REQ-127**: MUST implement `--uninstall` to run `npm uninstall -g mcp-google-api` as a child process with inherited stdio, propagating its exit code.
 - **REQ-128**: MUST print the manual package-manager command and return exit code 1 when a management child process fails to spawn.
 - **REQ-132**: MUST print on stdout a human-readable summary after a successful `--upgrade` package update stating the starting version, the updated version, and the post-upgrade install outcome.
 - **REQ-133**: MUST list in the `--upgrade` summary one entry per processed CLI with its name and per-CLI install result.
@@ -317,10 +319,10 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 
 #### Skill Resources
 - **REQ-097**: Each skill MUST provide a `SKILL.md` with YAML front matter `name` (1-64 lowercase ASCII letters, digits, hyphens, matching the directory name) and non-empty `description`.
-- **REQ-098**: Each `SKILL.md` MUST be written in English, be self-contained, and reference only mcp-google-map tool names defined by PRJ-001.
+- **REQ-098**: Each `SKILL.md` MUST be written in English, be self-contained, and reference only mcp-google-api tool names defined by PRJ-001.
 - **REQ-099**: Adding a skill MUST require only a new `src/resources/skills/<skill-id>/SKILL.md` directory plus one synchronized `manifest.json` entry.
-- **REQ-100**: The `eatspot-discovery` skill MUST mandate that every Google Maps data value originates from an executed mcp-google-map tool call and MUST forbid presenting fabricated, simulated, or reconstructed data as API-verified.
-- **REQ-101**: The `eatspot-discovery` skill MUST assign a defined workflow role to each of the 18 mcp-google-map tools across discovery, enrichment, routing, context, composite, and audit support.
+- **REQ-100**: The `eatspot-discovery` skill MUST mandate that every Google Maps data value originates from an executed mcp-google-api tool call and MUST forbid presenting fabricated, simulated, or reconstructed data as API-verified.
+- **REQ-101**: The `eatspot-discovery` skill MUST assign a defined workflow role to each of the 18 mcp-google-api tools across discovery, enrichment, routing, context, composite, and audit support.
 - **REQ-102**: The `eatspot-discovery` skill MUST define default meal budgets (breakfast EUR 10, lunch EUR 30, dinner EUR 40), user-amount precedence, cumulative `priceLevels` mapping, and numeric `price_range.endPrice` priority over `price_level`.
 - **REQ-103**: The `eatspot-discovery` skill MUST define five quality grades A-E from `rating` and `user_ratings_total` thresholds plus per-grade `minRating` mapping (4.5 for A-B, 4.0 for C-E).
 - **REQ-104**: The `eatspot-discovery` skill MUST classify venues by `primary_type`/`types` preserving raw values and MUST verify meal-window compatibility through `regular_opening_hours`/`current_opening_hours`.
@@ -344,8 +346,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-111**: `enable <cli>` MUST add and `disable <cli>` MUST remove the resolved CLI name in the persisted enabled set; both MUST be idempotent.
 - **REQ-112**: MUST resolve MCP configuration files: pi `~/.pi/agent/mcp.json`, openclaw `~/.openclaw/openclaw.json`, codex `~/.codex/config.toml` (`mcp_servers` table), antigravity `~/.gemini/settings.json`, claude `~/.claude.json` (JSON `mcpServers` map).
 - **REQ-113**: MUST resolve skills directories: pi `~/.pi/agent/skills`, openclaw `~/.openclaw/workspace/skills`, codex `~/.codex/skills`, antigravity `~/.gemini/config/skills`, claude `~/.claude/skills`.
-- **REQ-114**: `install` MUST register per enabled CLI the stdio entry `mcp-google-map` launching `npx -y mcp-google-map start --stdio` with no API-key environment setup, and install every manifest skill.
-- **REQ-115**: `uninstall` MUST remove per enabled CLI the `mcp-google-map` MCP entry and managed skill directories; absent entries MUST count as removed without failure.
+- **REQ-114**: `install` MUST register per enabled CLI the stdio entry `mcp-google-api` launching `npx -y mcp-google-api start --stdio` with no API-key environment setup, and install every manifest skill.
+- **REQ-115**: `uninstall` MUST remove per enabled CLI the `mcp-google-api` MCP entry and managed skill directories; absent entries MUST count as removed without failure.
 - **REQ-116**: `install` and `uninstall` MUST process enabled CLIs only, report per-CLI counts, continue on per-CLI failures, and exit 1 when any failure occurs.
 - **REQ-117**: `show` MUST print a CLI Configuration table with columns CLI, Enabled, MCP Config Path, Skills Config Path covering all five supported CLIs in registry order.
 - **REQ-118**: `show` MUST print an Installation Status table with columns Type, Name, CLI, Enabled, Installed listing the server and each manifest skill per enabled CLI with OK, MISSING, or STALE status.

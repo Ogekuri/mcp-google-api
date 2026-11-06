@@ -622,7 +622,7 @@ export async function runDoctor(
       status: packageVersion !== "0.0.0" ? "pass" : "fail",
       detail:
         packageVersion !== "0.0.0"
-          ? `mcp-google-map ${packageVersion} is available.`
+          ? `mcp-google-api ${packageVersion} is available.`
           : "Could not read the installed package version.",
     },
     {
@@ -950,7 +950,7 @@ export function runApiKeyCommand(
   if (!ApiKeyManager.getInstance().isValidApiKeyFormat(trimmed)) {
     streams.stderr.write(
       "api-key: invalid Google Maps API key. Expected 20-50 characters of letters, digits, hyphens, or underscores.\n" +
-        "Usage: mcp-google-map api-key <your-api-key>\n"
+        "Usage: mcp-google-api api-key <your-api-key>\n"
     );
     return 1;
   }
@@ -973,7 +973,7 @@ export function runApiKeyCommand(
     return 1;
   }
   if (install.summaries.length === 0 && install.errors.length === 0) {
-    streams.stdout.write("No CLI agent enabled. Run 'mcp-google-map enable <cli name>' first.\n");
+    streams.stdout.write("No CLI agent enabled. Run 'mcp-google-api enable <cli name>' first.\n");
     return 0;
   }
   for (const summary of install.summaries) {
@@ -1059,7 +1059,7 @@ export function runInstallUninstallCommand(
       JSON.stringify(
         {
           success: true,
-          message: "No CLI enabled. Use 'mcp-google-map enable <cli name>' first.",
+          message: "No CLI enabled. Use 'mcp-google-api enable <cli name>' first.",
           summaries: [],
           errors: [],
         },
@@ -1123,8 +1123,8 @@ const isRunDirectly =
   process.argv[1] &&
   (process.argv[1].endsWith("cli.ts") ||
     process.argv[1].endsWith("cli.js") ||
-    process.argv[1].endsWith("mcp-google-map") ||
-    process.argv[1].includes("mcp-google-map"));
+    process.argv[1].endsWith("mcp-google-api") ||
+    process.argv[1].includes("mcp-google-api"));
 
 const isMainModule = import.meta.url === `file://${process.argv[1]}`;
 
@@ -1236,7 +1236,7 @@ if (isRunDirectly || isMainModule) {
             JSON.stringify(
               {
                 error:
-                  "Google Maps API key is not configured. Run 'mcp-google-map api-key <your-api-key>' to configure it.",
+                  "Google Maps API key is not configured. Run 'mcp-google-api api-key <your-api-key>' to configure it.",
               },
               null,
               2
@@ -1256,7 +1256,7 @@ if (isRunDirectly || isMainModule) {
 
         if (effectiveApiKey === undefined) {
           Logger.log("⚠️  Google Maps API Key not found!");
-          Logger.log("   Run 'mcp-google-map api-key <your-api-key>' to configure it.");
+          Logger.log("   Run 'mcp-google-api api-key <your-api-key>' to configure it.");
           Logger.log("");
         }
 
@@ -1278,18 +1278,18 @@ if (isRunDirectly || isMainModule) {
      * @details Registers the `start`/`run` server-start commands (REQ-079),
      * every onboarding and management subcommand, and a `$0` fallback that
      * prints the help text so a bare invocation starts nothing (REQ-129).
-     * Help output opens with `mcp-google-map v<version>` (REQ-130) and the
+     * Help output opens with `mcp-google-api v<version>` (REQ-130) and the
      * epilog documents the pre-yargs management commands `--ver`, `--version`,
      * `--upgrade`, `--uninstall` (REQ-131).
      * @return {Argv} Configured yargs instance ready for `parse()`.
      * @satisfies REQ-079, REQ-129, REQ-130, REQ-131
      */
     const cli = yargs(hideBin(process.argv))
-      .scriptName("mcp-google-map")
+      .scriptName("mcp-google-api")
       .usage(
-        `mcp-google-map v${packageVersion}\n\n` +
-          `Usage: mcp-google-map <command> [options]\n` +
-          `       mcp-google-map start|run [--stdio] [options]`
+        `mcp-google-api v${packageVersion}\n\n` +
+          `Usage: mcp-google-api <command> [options]\n` +
+          `       mcp-google-api start|run [--stdio] [options]`
       )
       .command(
         "doctor",
@@ -1403,7 +1403,7 @@ if (isRunDirectly || isMainModule) {
             })
             .option("name", {
               type: "string",
-              default: "mcp-google-map",
+              default: "mcp-google-api",
               description: "Server name inside mcpServers",
             })
             .example([
@@ -1510,7 +1510,7 @@ if (isRunDirectly || isMainModule) {
       )
       .command(
         "install",
-        "Register the mcp-google-map stdio server and install packaged skills for every enabled CLI",
+        "Register the mcp-google-api stdio server and install packaged skills for every enabled CLI",
         (yargs) =>
           yargs
             .option("home", {
@@ -1538,7 +1538,7 @@ if (isRunDirectly || isMainModule) {
       )
       .command(
         "uninstall",
-        "Remove the mcp-google-map server entry and managed skills from every enabled CLI",
+        "Remove the mcp-google-api server entry and managed skills from every enabled CLI",
         (yargs) =>
           yargs
             .option("home", {
@@ -1600,7 +1600,7 @@ if (isRunDirectly || isMainModule) {
               JSON.stringify(
                 {
                   error:
-                    "Google Maps API key is not configured. Run 'mcp-google-map api-key <your-api-key>' to configure it.",
+                    "Google Maps API key is not configured. Run 'mcp-google-api api-key <your-api-key>' to configure it.",
                 },
                 null,
                 2
@@ -1650,7 +1650,7 @@ if (isRunDirectly || isMainModule) {
           // CTN-002/REQ-142: batch-geocode resolves the key from the persisted settings only.
           const apiKey = loadConfiguredApiKey();
           if (!apiKey) {
-            console.error("Error: Google Maps API key is not configured. Run 'mcp-google-map api-key <your-api-key>'.");
+            console.error("Error: Google Maps API key is not configured. Run 'mcp-google-api api-key <your-api-key>'.");
             process.exit(1);
           }
 
@@ -1767,7 +1767,7 @@ if (isRunDirectly || isMainModule) {
           `  --ver         Print the installed version and force one update check\n` +
           `  --version     Alias of --ver\n` +
           `  --upgrade     Upgrade the global package to the latest version and refresh installed skills\n` +
-          `  --uninstall   Remove the globally installed mcp-google-map package`
+          `  --uninstall   Remove the globally installed mcp-google-api package`
       )
       .help();
     cli.parse();
