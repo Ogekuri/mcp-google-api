@@ -24,7 +24,7 @@ Project file/folder structure (evidence: repository tree):
 mcp-google-api/
 ├── .github/workflows/           # GitHub Actions: release-npm.yml (npm tag releases)
 ├── docs/                        # Usage docs (CONFIGURATION.md, TOOLS.md)
-├── scripts/                     # Shell helpers: build.sh, setup.sh, start-http.sh, start-mcp.sh, test.sh
+├── scripts/                     # Shell helpers: build.sh, mcp-google-api.sh, setup.sh, start-http.sh, start-mcp.sh, test.sh
 ├── src/
 │   ├── cli.ts                   # yargs entry: doctor, exec, batch-geocode, server start
 │   ├── config.ts                # serverConfigs registry, tool annotations, filterTools()
@@ -83,6 +83,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PRJ-014**: MUST ship the `eatspot-discovery` skill dedicated to discovering bars, pastry shops, restaurants, cafes, and bakeries.
 - **PRJ-016**: MUST identify the distribution package, bin, CLI script name, and user-facing messages as `mcp-google-api` with no references to the superseded `mcp-google-map` name.
 - **PRJ-017**: MUST scope the server to Google APIs at large, with Google Maps as the currently implemented API family (PRJ-001).
+- **PRJ-018**: MUST ship `scripts/mcp-google-api.sh`, named after the installed `mcp-google-api` distribution bin, launching the local repository copy.
+- **PRJ-019**: `scripts/mcp-google-api.sh` MUST forward every argument to the local `dist/cli.js` entry without implicit install or build steps.
 
 ### 2.2 Project Constraints
 - **CTN-001**: MUST declare all tools read-only, non-destructive, idempotent, and open-world via MCP tool annotations (evidence: `MAPS_TOOL_ANNOTATIONS`, `src/config.ts`).
