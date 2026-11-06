@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.22.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.21.0..v0.22.0) - 2026-11-06
+### 🐛  Bug Fixes
+- symlink-aware main-module gate restores CLI dispatch [useReq] *(cli)*
+  - The entry gate compared import.meta.url with a string-concatenated file:// argv[1], false for every symlinked launcher (npm global bin links, _npx .bin shims), so a stale pre-rename dist silently exited 0 with no output after the 0.21.0 bin rename; pi reported 'MCP connection closed'.
+  - Add isEntryMainModule(): symmetric realpathSync comparison of argv[1] and the module URL; name-independent dispatch for symlink launches, false on plain imports.
+  - Add tests/cliEntryGate.unit.test.ts reproducer (symlink dispatch + direct control); update WORKFLOW.md TRACE-A; regenerate REFERENCES.md.
+  - Verification: reproducer fails pre-fix and passes post-fix; npm run verify green (typecheck, 135/135 tests, build); eslint clean.
+
+### 🚜  Changes
+- BREAKING CHANGE: remove env-var configuration, add settings commands and readable install report [useReq] *(cli)*
+  - Remove GOOGLE_MAPS_API_KEY/GOOGLE_MAPS_ENABLED_TOOLS/MCP_SERVER_* env support and all .env/--env-file/setup logic (REQ removed: PRJ-011, CTN-007, CTN-009, REQ-087/088; dotenv dep and .env.example dropped)
+  - Add tools/host/port config commands persisting enabledTools, host, port in ~/.config/mcp-google-api/config.json (REQ-167/168/169, DES-018)
+  - install/uninstall now print a human-readable per-CLI activity report (REQ-166); post-upgrade parser updated
+  - Startup banners identify the app as 'MCP Google API server' (REQ-165)
+  - README.md documents the standard flow only; CONFIGURATION.md rewritten around the settings file
+  - Requirements/docs updated (REQ-165..169, TST-022); tests aligned, new cliConfigCommands suite; all 129 unit tests pass
+
 ## [0.21.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.20.0..v0.21.0) - 2026-11-06
 ### 🚜  Changes
 - pin release automation compliance to the mcp-google-api npm package [useReq] *(release-npm)*
@@ -375,6 +392,7 @@
 - \[0.19.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.19.0
 - \[0.20.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.20.0
 - \[0.21.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.21.0
+- \[0.22.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.22.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.2.0..v0.3.0
@@ -395,3 +413,4 @@
 [0.19.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.18.0..v0.19.0
 [0.20.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.19.0..v0.20.0
 [0.21.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.20.0..v0.21.0
+[0.22.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.21.0..v0.22.0
