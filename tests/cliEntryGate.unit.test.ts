@@ -30,7 +30,7 @@ import { fileURLToPath } from "node:url";
 // does not start a server or print a snippet as a side effect.
 const originalArgv1 = process.argv[1];
 process.argv[1] = "cli-entry-gate-unit-test";
-await import("../src/cli.js");
+const cliModule = await import("../src/cli.js");
 process.argv[1] = originalArgv1;
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -139,4 +139,56 @@ test("direct argv[1] path still dispatches CLI commands", async () => {
   const result = await spawnCliEntry(CLI_ENTRY);
   // Assert.
   assertSnippetDispatched(result);
+});
+
+test("describeUndispatchedServerStart returns build remediation for server-start argv only", () => {
+  // Act + Assert: stdio server-start shape detected (REQ-094 remediation).
+  const message: unknown = cliModule.describeUndispatchedServerStart(["start", "--stdio"]);
+  assert.equal(typeof message, "string", "server-start argv MUST produce a diagnostic message");
+  assert.match(String(message), /npm run build/);
+  assert.match(String(message), /mcp-google-api@latest/);
+
+  // Non-server-start argv shapes stay silent (plain imports, other commands).
+  assert.equal(cliModule.describeUndispatchedServerStart(["snippet"]), undefined);
+  assert.equal(cliModule.describeUndispatchedServerStart(["exec", "geocode", "{}"]), undefined);
+  assert.equal(cliModule.describeUndispatchedServerStart(["run"]), undefined);
+  assert.equal(cliModule.describeUndispatchedServerStart([]), undefined);
+});
+
+test("handleUndispatchedEntry emits a JSON stderr diagnostic and exits non-zero for server-start argv", () => {
+  // Regression for the stale renamed-distribution launch shape: the entry
+  // gate used to skip dispatch SILENTLY (exit 0, zero output), observed by
+  // MCP clients as "MCP connection closed"; REQ-094 requires failing with
+  // build remediation guidance instead. The spawn-time shape cannot be
+  // reproduced under tsx (it rewrites argv[1] to the entry realpath inside
+  // this project directory, which always matches the gate), so the wiring
+  // is covered by injected-streams unit tests plus built-artifact evidence.
+  // Arrange: injectable stderr sink (no process streams touched).
+  const chunks: string[] = [];
+  const streams = { stderr: { write(text: string): void { chunks.push(text); } } };
+
+  // Act: server-start shape that the entry gate skipped.
+  const code = cliModule.handleUndispatchedEntry(["start", "--stdio"], streams);
+
+  // Assert: exit code 1 plus one JSON diagnostic; stdout stays untouched
+  // (CTN-003) and the diagnostic carries the REQ-094 build remediation.
+  assert.equal(code, 1);
+  assert.equal(chunks.length, 1);
+  const parsed = JSON.parse(chunks[0]) as { error: string; remediation: string[] };
+  assert.match(parsed.error, /dispatch/);
+  assert.ok(parsed.remediation.length >= 2);
+  assert.ok(parsed.remediation.includes("npm run build"));
+  assert.ok(parsed.remediation.includes("npm install -g mcp-google-api@latest"));
+});
+
+test("handleUndispatchedEntry stays silent for non-server-start argv", () => {
+  // Arrange: injectable stderr sink.
+  const chunks: string[] = [];
+  const streams = { stderr: { write(text: string): void { chunks.push(text); } } };
+
+  // Act + Assert: plain import / unrelated command shapes keep the legacy
+  // silent exit-0 behavior (backward compatibility).
+  assert.equal(cliModule.handleUndispatchedEntry(["snippet"], streams), 0);
+  assert.equal(cliModule.handleUndispatchedEntry([], streams), 0);
+  assert.equal(chunks.length, 0);
 });

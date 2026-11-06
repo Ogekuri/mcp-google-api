@@ -73,3 +73,25 @@ mcp-google-api doctor             # local self-check: Node >= 24, package, key, 
 mcp-google-api doctor --live      # billable probes against Geocoding, Places (New), and Routes
 mcp-google-api show               # CLI configuration and installation status tables
 ```
+
+### MCP connection closed after a rename or upgrade
+
+The registered entry launches `npx -y mcp-google-api start --stdio`. When the
+MCP client spawns this command from a directory that hosts a same-name local
+project (for example a repository checkout), `npm exec` prefers that local
+project's own `dist/cli.js` over the installed package. A stale `dist/` build
+from before a distribution rename then launches old code that silently exits
+without answering the MCP handshake, and the client reports
+`MCP connection closed`.
+
+Remediation (run inside that checkout, then reconnect the MCP client):
+
+```bash
+npm run verify        # typecheck + unit tests + fresh dist/ build
+# or, to ignore the local checkout and use the published package only:
+npm install -g mcp-google-api@latest
+```
+
+Since 0.22.0 the CLI prints a JSON diagnostic on stderr naming this exact
+condition and the remediation commands instead of exiting silently, so a
+stale-artifact launch is visible in MCP client logs.

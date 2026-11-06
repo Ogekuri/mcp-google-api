@@ -1072,6 +1072,73 @@ function isEntryMainModule(): boolean {
   }
 }
 
+/**
+ * @brief Detects a stdio server-start argv shape that the entry gate skipped.
+ * @details Matches the registered MCP-client stdio launch shape (REQ-114
+ * launcher `npx -y mcp-google-api start --stdio`): the post-entry argument
+ * vector contains the `start` or `run` command token (REQ-079) together with
+ * the `--stdio` flag. This shape reaching the skipped-dispatch branch means
+ * the running artifact is not the current entrypoint — the stale-build
+ * signature of a renamed distribution, which previously exited 0 with no
+ * output and surfaced to MCP clients as "MCP connection closed". Pure;
+ * complexity O(n) in argument count; no side effects.
+ * @param args {readonly string[]} Post-entry process arguments (argv slice 2).
+ * @return {string | undefined} Build-remediation guidance text (REQ-094)
+ * naming the local rebuild and the global-refresh commands; undefined for
+ * any other argv shape (plain module imports, unrelated commands).
+ * @satisfies REQ-094
+ */
+export function describeUndispatchedServerStart(args: readonly string[]): string | undefined {
+  const isServerStart = (args.includes("start") || args.includes("run")) && args.includes("--stdio");
+  if (!isServerStart) {
+    return undefined;
+  }
+  return (
+    "CLI dispatch was skipped for this server-start launch: the running artifact is not the " +
+    "mcp-google-api entrypoint (stale build after a distribution rename). Rebuild the local " +
+    "artifact with 'npm run build' (or 'npm run verify'), or refresh the global installation " +
+    "with 'npm install -g mcp-google-api@latest', then reconnect the MCP client."
+  );
+}
+
+/**
+ * @brief Reports an undispatched server-start launch on stderr and exits non-zero.
+ * @details Detects the server-start argv shape via
+ * `describeUndispatchedServerStart`; when present, writes exactly one JSON
+ * diagnostic object (`error`, `requestedEntry`, `modulePath`, `remediation`)
+ * to the injected stderr sink and returns exit code 1. stdout is never
+ * touched, preserving JSON-RPC framing in stdio mode (CTN-003, REQ-015).
+ * Non-server-start argv shapes keep the legacy silent exit-0 no-op so plain
+ * module imports and unrelated tooling are unaffected (PRJ-003). The exit
+ * code is returned, never exited inline.
+ * @param args {readonly string[]} Post-entry process arguments (argv slice 2).
+ * @param streams {object} Injectable stderr sink; defaults to `process.stderr`.
+ * @return {number} 1 when the remediation diagnostic was emitted; 0 otherwise.
+ * @satisfies REQ-094, REQ-015, CTN-003
+ */
+export function handleUndispatchedEntry(
+  args: readonly string[],
+  streams: { stderr: { write: (text: string) => unknown } } = process
+): number {
+  const error = describeUndispatchedServerStart(args);
+  if (error === undefined) {
+    return 0;
+  }
+  streams.stderr.write(
+    JSON.stringify(
+      {
+        error,
+        requestedEntry: process.argv[1] ?? null,
+        modulePath: fileURLToPath(import.meta.url),
+        remediation: ["npm run build", "npm install -g mcp-google-api@latest"],
+      },
+      null,
+      2
+    ) + "\n"
+  );
+  return 1;
+}
+
 const isRunDirectly =
   process.argv[1] &&
   (process.argv[1].endsWith("cli.ts") ||
@@ -1748,4 +1815,6 @@ if (isRunDirectly || isMainModule) {
       .help();
     cli.parse();
   }
+} else {
+  process.exitCode = handleUndispatchedEntry(process.argv.slice(2));
 }

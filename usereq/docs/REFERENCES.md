@@ -46,7 +46,7 @@
         └── upgradeManager.ts
 ```
 
-# cli.ts | TypeScript | 1751L | 36 symbols | 20 imports | 56 comments
+# cli.ts | TypeScript | 1820L | 38 symbols | 20 imports | 58 comments
 > Path: `src/cli.ts`
 
 ## Imports
@@ -336,7 +336,38 @@ metadata lookups; no side effects.
 - @return {boolean} True when this module was launched as the main module.
 - @satisfies PRJ-003
 
-### fn `const buildServerCommandOptions = (yargs: Argv) =>` (L1120-1145)
+### fn `export function describeUndispatchedServerStart(args: readonly string[]): string | undefined` (L1091-1102)
+- @brief Detects a stdio server-start argv shape that the entry gate skipped.
+- @details Matches the registered MCP-client stdio launch shape (REQ-114
+launcher `npx -y mcp-google-api start --stdio`): the post-entry argument
+vector contains the `start` or `run` command token (REQ-079) together with
+the `--stdio` flag. This shape reaching the skipped-dispatch branch means
+the running artifact is not the current entrypoint — the stale-build
+signature of a renamed distribution, which previously exited 0 with no
+output and surfaced to MCP clients as "MCP connection closed". Pure;
+complexity O(n) in argument count; no side effects.
+- @param args {readonly string[]} Post-entry process arguments (argv slice 2).
+- @return {string | undefined} Build-remediation guidance text (REQ-094)
+naming the local rebuild and the global-refresh commands; undefined for
+any other argv shape (plain module imports, unrelated commands).
+- @satisfies REQ-094
+
+### fn `export function handleUndispatchedEntry(` (L1119-1121)
+- @brief Reports an undispatched server-start launch on stderr and exits non-zero.
+- @details Detects the server-start argv shape via
+`describeUndispatchedServerStart`; when present, writes exactly one JSON
+diagnostic object (`error`, `requestedEntry`, `modulePath`, `remediation`)
+to the injected stderr sink and returns exit code 1. stdout is never
+touched, preserving JSON-RPC framing in stdio mode (CTN-003, REQ-015).
+Non-server-start argv shapes keep the legacy silent exit-0 no-op so plain
+module imports and unrelated tooling are unaffected (PRJ-003). The exit
+code is returned, never exited inline.
+- @param args {readonly string[]} Post-entry process arguments (argv slice 2).
+- @param streams {object} Injectable stderr sink; defaults to `process.stderr`.
+- @return {number} 1 when the remediation diagnostic was emitted; 0 otherwise.
+- @satisfies REQ-094, REQ-015, CTN-003
+
+### fn `const buildServerCommandOptions = (yargs: Argv) =>` (L1187-1212)
 - @brief Applies the shared server-start options to a yargs builder.
 - @details Declares `--port`, `--host`, and `--stdio` with defaults taken
 from the persisted settings (DES-015) plus the server-mode examples.
@@ -346,8 +377,8 @@ identical option surface (PRJ-003). Complexity O(1).
 - @return {Argv} The same builder instance with the typed server options attached.
 - @satisfies REQ-079, REQ-008
 
-- type `type ServerCommandArgs = BuilderArguments<typeof buildServerCommandOptions>;` (L1148)
-### fn `const runServerCommand = async (argv: ServerCommandArgs): Promise<void> =>` (L1167-1226)
+- type `type ServerCommandArgs = BuilderArguments<typeof buildServerCommandOptions>;` (L1215)
+### fn `const runServerCommand = async (argv: ServerCommandArgs): Promise<void> =>` (L1234-1293)
 - @brief Server-start handler shared by the `start` and `run` commands.
 - @details Resolves the effective API key exclusively from the persisted
 settings key (REQ-142) and injects it into `ApiKeyManager` (DES-006);
@@ -364,7 +395,7 @@ HTTP mode without an API key logs a warning and still starts (REQ-080).
 - @return {Promise<void>} Resolves when stdio mode stops; HTTP mode persists.
 - @satisfies REQ-079, REQ-080, REQ-082, REQ-095, REQ-142, REQ-143, REQ-165
 
-### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1670-1682)
+### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1737-1749)
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
@@ -401,10 +432,12 @@ HTTP mode without an API key logs a warning and still starts (REQ-080).
 |`runInstallUninstallCommand`|fn||976-978|export function runInstallUninstallCommand(|
 |`runShowCommand`|fn||1026-1027|export function runShowCommand(|
 |`isEntryMainModule`|fn||1063-1073|function isEntryMainModule(): boolean|
-|`buildServerCommandOptions`|fn||1120-1145|const buildServerCommandOptions = (yargs: Argv) =>|
-|`ServerCommandArgs`|type||1148||
-|`runServerCommand`|fn||1167-1226|const runServerCommand = async (argv: ServerCommandArgs):...|
-|`semaphore`|fn||1670-1682|const semaphore = async (tasks: (() => Promise<void>)[], ...|
+|`describeUndispatchedServerStart`|fn||1091-1102|export function describeUndispatchedServerStart(args: rea...|
+|`handleUndispatchedEntry`|fn||1119-1121|export function handleUndispatchedEntry(|
+|`buildServerCommandOptions`|fn||1187-1212|const buildServerCommandOptions = (yargs: Argv) =>|
+|`ServerCommandArgs`|type||1215||
+|`runServerCommand`|fn||1234-1293|const runServerCommand = async (argv: ServerCommandArgs):...|
+|`semaphore`|fn||1737-1749|const semaphore = async (tasks: (() => Promise<void>)[], ...|
 
 
 ---
