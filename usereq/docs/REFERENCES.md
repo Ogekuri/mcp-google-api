@@ -46,7 +46,7 @@
         └── upgradeManager.ts
 ```
 
-# cli.ts | TypeScript | 1775L | 40 symbols | 22 imports | 67 comments
+# cli.ts | TypeScript | 1807L | 41 symbols | 22 imports | 68 comments
 > Path: `src/cli.ts`
 
 ## Imports
@@ -62,7 +62,7 @@ import { Logger } from "./index.js";
 import { PlacesSearcher } from "./services/PlacesSearcher.js";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, realpathSync } from "fs";
 import { createInterface } from "readline";
 import { checkVersionIdle, parseManagementCommand, runManagementCommand } from "./utils/upgradeManager.js";
 import {
@@ -326,7 +326,27 @@ failures surface as a JSON stderr error with exit code 1.
 - @see buildCliShowReport
 - @satisfies REQ-117, REQ-118, REQ-119
 
-### fn `const buildServerCommandOptions = (yargs: Argv) =>` (L1171-1178)
+### fn `function isEntryMainModule(): boolean` (L1142-1152)
+- @brief Detects whether this module is the process main module.
+- @details Compares the REAL paths of both sides after symlink resolution:
+`realpathSync(process.argv[1])` versus the real path of this module
+derived from `import.meta.url`. Node resolves the main module through
+symlinks (preserve-symlinks off), so `import.meta.url` carries the real
+path while `process.argv[1]` keeps the invocation path; resolving BOTH
+sides makes every symlinked launcher (npm global `bin/` links, `_npx`
+`.bin` shims, user aliases, renamed distribution bins) match regardless
+of the launcher basename. The previous string-concatenated comparison
+`import.meta.url === `file://${process.argv[1]}`` was false for every
+symlinked launch, silently skipping the whole CLI dispatch (exit 0 with
+no output; MCP stdio clients report "MCP connection closed"). Returns
+false when `process.argv[1]` is missing, empty, or not an existing path
+(plain module import, REPL); never throws. Complexity O(1) filesystem
+metadata lookups; no side effects.
+- @return {boolean} True when this module was launched as the main module.
+- @see loadEnvironment
+- @satisfies PRJ-003
+
+### fn `const buildServerCommandOptions = (yargs: Argv) =>` (L1203-1210)
 - @brief Applies the shared server-start options to a yargs builder.
 - @details Declares `--port`, `--host`, and `--stdio` with
 environment-derived defaults plus the server-mode examples. Shared
@@ -336,8 +356,8 @@ option surface (PRJ-003). Complexity O(1).
 - @return {Argv} The same builder instance with the typed server options attached.
 - @satisfies REQ-079
 
-- type `type ServerCommandArgs = BuilderArguments<typeof buildServerCommandOptions>;` (L1197)
-### fn `const runServerCommand = async (argv: ServerCommandArgs): Promise<void> =>` (L1215-1274)
+- type `type ServerCommandArgs = BuilderArguments<typeof buildServerCommandOptions>;` (L1229)
+### fn `const runServerCommand = async (argv: ServerCommandArgs): Promise<void> =>` (L1247-1306)
 - @brief Server-start handler shared by the `start` and `run` commands.
 - @details Resolves the effective API key exclusively from the persisted
 settings key (REQ-142) and injects it into `ApiKeyManager` (DES-006);
@@ -353,7 +373,7 @@ starts (REQ-080).
 - @return {Promise<void>} Resolves when stdio mode stops; HTTP mode persists.
 - @satisfies REQ-079, REQ-080, REQ-082, REQ-095, REQ-142, REQ-143
 
-### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1689-1701)
+### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1721-1733)
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
@@ -394,10 +414,11 @@ starts (REQ-080).
 |`runAutoUpdateCommand`|fn||1005-1007|export function runAutoUpdateCommand(|
 |`runInstallUninstallCommand`|fn||1052-1054|export function runInstallUninstallCommand(|
 |`runShowCommand`|fn||1104-1105|export function runShowCommand(|
-|`buildServerCommandOptions`|fn||1171-1178|const buildServerCommandOptions = (yargs: Argv) =>|
-|`ServerCommandArgs`|type||1197||
-|`runServerCommand`|fn||1215-1274|const runServerCommand = async (argv: ServerCommandArgs):...|
-|`semaphore`|fn||1689-1701|const semaphore = async (tasks: (() => Promise<void>)[], ...|
+|`isEntryMainModule`|fn||1142-1152|function isEntryMainModule(): boolean|
+|`buildServerCommandOptions`|fn||1203-1210|const buildServerCommandOptions = (yargs: Argv) =>|
+|`ServerCommandArgs`|type||1229||
+|`runServerCommand`|fn||1247-1306|const runServerCommand = async (argv: ServerCommandArgs):...|
+|`semaphore`|fn||1721-1733|const semaphore = async (tasks: (() => Promise<void>)[], ...|
 
 
 ---

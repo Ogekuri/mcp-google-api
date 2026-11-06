@@ -34,8 +34,10 @@
 - Internal Call-Trace Tree:
 
   TRACE-A: module load and command dispatch [`src/cli.ts`]
-  - `(module scope)`: computes `__dirname`; builds `serverConfigs` indirectly via import of `src/config.ts`
+  - `(module scope)`: computes `__dirname`; builds `serverConfigs` indirectly via import of `src/config.ts`; evaluates the entry gate guarding every dispatch path below
     - external: `fileURLToPath`/`dirname`
+    - `isEntryMainModule()`: symlink-aware main-module detection comparing `realpathSync(process.argv[1])` with the real path of this module derived from `import.meta.url`; true for every symlinked launcher (npm global `bin/` links, `_npx` `.bin` shims, renamed aliases) and false for plain module imports, so the CLI never silently no-ops under a renamed bin and never dispatches on import [`src/cli.ts`]
+      - external: `realpathSync`
   - `loadEnvironment(extractEnvFileOption(process.argv))`: direct-run entry loads environment before command dispatch; explicit `--env-file <path>` loads exactly that file (missing -> JSON stderr error, exit 1, no implicit fallback); otherwise dotenv loads cwd `.env`, then package `.env` [`src/cli.ts`]
     - `extractEnvFileOption(argv)`: scans argv for `--env-file <path>` and `--env-file=<path>` forms
       - `applyExplicitEnvFile(path)`: existence-checked dotenv load [`src/utils/configResolver.ts`]

@@ -11,7 +11,7 @@ import { Logger } from "./index.js";
 import { PlacesSearcher } from "./services/PlacesSearcher.js";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, realpathSync } from "fs";
 import { createInterface } from "readline";
 import { checkVersionIdle, parseManagementCommand, runManagementCommand } from "./utils/upgradeManager.js";
 import {
@@ -1119,6 +1119,38 @@ export function runShowCommand(
 // --------------- Entry Point ---------------
 
 // Check if this script is being run directly
+/**
+ * @brief Detects whether this module is the process main module.
+ * @details Compares the REAL paths of both sides after symlink resolution:
+ * `realpathSync(process.argv[1])` versus the real path of this module
+ * derived from `import.meta.url`. Node resolves the main module through
+ * symlinks (preserve-symlinks off), so `import.meta.url` carries the real
+ * path while `process.argv[1]` keeps the invocation path; resolving BOTH
+ * sides makes every symlinked launcher (npm global `bin/` links, `_npx`
+ * `.bin` shims, user aliases, renamed distribution bins) match regardless
+ * of the launcher basename. The previous string-concatenated comparison
+ * `import.meta.url === `file://${process.argv[1]}`` was false for every
+ * symlinked launch, silently skipping the whole CLI dispatch (exit 0 with
+ * no output; MCP stdio clients report "MCP connection closed"). Returns
+ * false when `process.argv[1]` is missing, empty, or not an existing path
+ * (plain module import, REPL); never throws. Complexity O(1) filesystem
+ * metadata lookups; no side effects.
+ * @return {boolean} True when this module was launched as the main module.
+ * @satisfies PRJ-003
+ * @see loadEnvironment
+ */
+function isEntryMainModule(): boolean {
+  const entryPath = process.argv[1];
+  if (entryPath === undefined || entryPath === "") {
+    return false;
+  }
+  try {
+    return realpathSync(entryPath) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
 const isRunDirectly =
   process.argv[1] &&
   (process.argv[1].endsWith("cli.ts") ||
@@ -1126,7 +1158,7 @@ const isRunDirectly =
     process.argv[1].endsWith("mcp-google-api") ||
     process.argv[1].includes("mcp-google-api"));
 
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+const isMainModule = isEntryMainModule();
 
 if (isRunDirectly || isMainModule) {
   // Load environment files before command dispatch: explicit --env-file wins
