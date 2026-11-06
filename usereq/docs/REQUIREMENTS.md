@@ -140,6 +140,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-042**: MUST run the release `npm publish` step only when the gate resolves the tagged commit as reachable from `origin/master`.
 - **PKG-043**: MUST run build, pack, changelog, and GitHub Release creation with the tarball asset for tags reachable from `origin/develop` but not `origin/master`, skipping only npm publication.
 - **PKG-044**: MUST append an `Acknowledgments` section as the last section of `README.md`, thanking CabLate for the upstream contribution without naming the superseded project.
+- **PKG-045**: MUST derive the published npm package, packed tarball name, and GitHub-Release asset glob from the distribution package name `mcp-google-api` (PRJ-016, PKG-040).
 
 ## 3. Requirements
 
