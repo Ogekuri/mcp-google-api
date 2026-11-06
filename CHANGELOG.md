@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.22.1](https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.22.1) - 2026-11-06
+### 🐛  Bug Fixes
+- report skipped server-start dispatch with build remediation [useReq] *(cli)*
+  - Root cause of the persistent pi 'MCP connection closed' after the 0.21.0 rename:
+  - the REQ-114 launcher 'npx -y mcp-google-api start --stdio' resolves a same-name
+  - local project in the spawn cwd, launching a stale pre-rename dist artifact that
+  - skips dispatch and exits 0 silently (reproduced: exit 0, zero stdout bytes).
+  - Add describeUndispatchedServerStart() and handleUndispatchedEntry() to the CLI
+  - entry gate: server-start-shaped argv that matches no gate rule now emits a JSON
+  - build-remediation diagnostic on stderr (REQ-094) and exits 1; stdout stays
+  - JSON-RPC-clean (CTN-003); non-server-start argv keeps the silent exit-0 no-op.
+  - Extend tests/cliEntryGate.unit.test.ts with failing-first reproducers (3 tests);
+  - full suite 132/132 green; typecheck, static checks, and build clean.
+  - Document the stale-artifact remediation in docs/CONFIGURATION.md; update
+  - WORKFLOW.md TRACE-A/EDGE-06 and regenerate REFERENCES.md.
+
 ## [0.22.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.21.0..v0.22.0) - 2026-11-06
 ### 🐛  Bug Fixes
 - symlink-aware main-module gate restores CLI dispatch [useReq] *(cli)*
@@ -393,6 +409,7 @@
 - \[0.20.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.20.0
 - \[0.21.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.21.0
 - \[0.22.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.22.0
+- \[0.22.1\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.22.1
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.2.0..v0.3.0
@@ -414,3 +431,4 @@
 [0.20.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.19.0..v0.20.0
 [0.21.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.20.0..v0.21.0
 [0.22.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.21.0..v0.22.0
+[0.22.1]: https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.22.1
