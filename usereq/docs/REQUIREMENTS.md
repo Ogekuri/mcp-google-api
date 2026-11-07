@@ -317,10 +317,12 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-145**: When the pre-upgrade check reports no newer version, `--upgrade` MUST print on stdout that the installed version is the latest available including the version number, terminate with exit code 0, and spawn no child process.
 - **REQ-146**: `--upgrade` MUST proceed with the REQ-125 package update, the REQ-126 post-upgrade install, and the REQ-132 summary exactly when the pre-upgrade check reports a newer available version.
 - **REQ-147**: When the pre-upgrade check cannot determine a newer version (installed version unknown or probe failure), `--upgrade` MUST proceed with the package update.
-- **REQ-170**: `--upgrade` MUST accept a `--develop` option and its equivalent alias `--dev`, selecting the GitHub `develop` branch as the package install source.
-- **REQ-171**: With `--develop` or `--dev` selected, `--upgrade` MUST run `npm install -g github:Ogekuri/mcp-google-api#develop` with inherited stdio, propagating its exit code.
-- **REQ-172**: The develop-channel `--upgrade` MUST skip the REQ-144 registry comparison and the REQ-145 already-latest skip path, proceeding directly with the package update.
-- **REQ-173**: The develop-channel `--upgrade` summary MUST report `unknown` as the updated version because the npm registry carries no develop builds.
+- **REQ-170**: `--upgrade` MUST accept a `--develop` option and its equivalent alias `--dev`, selecting the latest tagged GitHub release as the package install source.
+- **REQ-171**: With `--develop` or `--dev` selected, `--upgrade` MUST run `npm install -g github:Ogekuri/mcp-google-api#<tag>` where `<tag>` is the latest release `tag_name` (REQ-177), with inherited stdio, propagating its exit code.
+- **REQ-172**: The develop-channel `--upgrade` MUST skip the REQ-144 registry comparison and the REQ-145 already-latest skip path, always proceeding with the tagged GitHub update regardless of the installed version or the branch carrying the tag.
+- **REQ-173**: The develop-channel `--upgrade` summary MUST report the probed latest GitHub release version (REQ-177) as the updated version.
+- **REQ-177**: The develop-channel `--upgrade` MUST run one forced probe of `https://api.github.com/repos/Ogekuri/mcp-google-api/releases/latest` bypassing the idle cache gate before spawning any child process.
+- **REQ-178**: When the develop-channel GitHub probe fails, `--upgrade` MUST print a stderr diagnostic carrying the probe message, spawn no child process, and exit non-zero.
 - **REQ-148**: The `auto-update <value>` command MUST accept `enable`, `disable`, `1`, and `0` case-insensitively, resolving to the boolean automatic-update enablement.
 - **REQ-149**: `auto-update` MUST persist the resolved boolean into the DES-018 settings `autoUpdate` field with an atomic write before printing any result.
 - **REQ-150**: `auto-update` MUST print on stdout a human-readable confirmation naming the resulting automatic-update state and exit 0.

@@ -275,10 +275,11 @@ export interface GitHubProbeDeps {
  * @brief Discriminated outcome of one GitHub latest-release probe without side effects.
  * @details Logging-free core result consumed by the `--ver`/`--version`
  * command (`runVersionCommand`, `src/utils/upgradeManager.ts`), which maps
- * `error` to the `unknown` placeholder (REQ-164).
+ * `error` to the `unknown` placeholder (REQ-164), and by the develop-channel
+ * `--upgrade` flow, which installs the raw `tag` ref (REQ-171, REQ-177).
  */
 export type GitHubLatestVersionProbe =
-  | { status: "ok"; version: string }
+  | { status: "ok"; version: string; tag: string }
   | { status: "error"; message: string };
 
 /**
@@ -300,11 +301,11 @@ function stripReleaseTagPrefix(tag: string): string {
  * `response.ok` validation -> `payload.tag_name` validation -> leading `v`
  * prefix strip. Never consults the idle cache and never gates on the
  * persisted settings `autoUpdate` field: callers own the manual-command
- * context (REQ-161). Every failure (non-OK status, malformed payload,
+ * context (REQ-161, REQ-177). Every failure (non-OK status, malformed payload,
  * network error) is returned as `{ status: "error", message }`; never throws.
  * @param deps {GitHubProbeDeps} Optional dependency overrides; production defaults when omitted.
- * @return {Promise<GitHubLatestVersionProbe>} `ok` with the stripped version text, or `error` with the diagnostic message.
- * @satisfies REQ-161, REQ-163
+ * @return {Promise<GitHubLatestVersionProbe>} `ok` with the stripped version text plus the raw `tag_name`, or `error` with the diagnostic message.
+ * @satisfies REQ-161, REQ-163, REQ-171, REQ-177
  * @note Complexity: O(n) in tag length plus one HTTP round-trip bounded by `timeoutMs`.
  * @see probeLatestVersion
  */
@@ -339,7 +340,7 @@ export async function probeLatestGitHubVersion(
     if (!version) {
       return { status: "error", message: "GitHub release tag carries no version." };
     }
-    return { status: "ok", version };
+    return { status: "ok", version, tag: payload.tag_name };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     return { status: "error", message };

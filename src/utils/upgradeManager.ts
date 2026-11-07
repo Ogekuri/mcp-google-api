@@ -8,8 +8,8 @@
  * GitHub bypassing the idle gate and print the three-line
  * installed/npmjs/GitHub latest-version report (REQ-120, REQ-161, REQ-162,
  * REQ-163, REQ-164); `--upgrade` accepts the `--develop` option and its
- * equivalent `--dev` alias selecting the GitHub `develop` branch as the
- * install source (REQ-170); in the default npm channel it first probes the
+ * equivalent `--dev` alias selecting the latest tagged GitHub release as the
+ * install source (REQ-170, REQ-177); in the default npm channel it first probes the
  * registry and proceeds only when an upgrade is necessary or necessity is
  * undeterminable (REQ-144, REQ-145, REQ-146,
  * REQ-147), reinstalls the latest package via npm, re-runs the upgraded
@@ -78,22 +78,26 @@ export const PACKAGE_UPGRADE_COMMAND: readonly string[] = [
   `${DEFAULT_PACKAGE_NAME}@latest`,
 ];
 
+/** GitHub repository (owner/name) resolved by the develop upgrade channel (REQ-177). */
+export const GITHUB_UPGRADE_REPOSITORY = "Ogekuri/mcp-google-api";
+
 /**
- * @brief Package-manager command executed by `--upgrade --develop`/`--dev` (REQ-171).
- * @details Installs the GitHub `develop` branch build of the distribution
- * repository: the npm registry never carries develop-channel builds because
- * develop-reachable tags release on GitHub only (PKG-043), so the develop
- * channel MUST resolve from GitHub. npm fetches and builds the referenced
- * commit; child exit-code and spawn-failure semantics are identical to
+ * @brief Builds the package-manager command installing one GitHub release tag (REQ-171).
+ * @details Produces `npm install -g github:<repository>#<tag>` where `<tag>`
+ * is the raw `tag_name` probed from the GitHub releases API (REQ-177), so the
+ * develop channel installs the latest tagged release regardless of the branch
+ * carrying it (REQ-170, REQ-172). npm fetches and builds the referenced tag;
+ * child exit-code and spawn-failure semantics are identical to
  * `PACKAGE_UPGRADE_COMMAND` (REQ-125, REQ-128).
- * @satisfies REQ-170, REQ-171
+ * @param tag {string} Raw GitHub release tag (`tag_name`, e.g. `v1.2.3`); MUST be non-empty.
+ * @return {readonly string[]} Executable-plus-arguments command tuple.
+ * @satisfies REQ-170, REQ-171, REQ-177
+ * @note Complexity: O(n) in tag length. Pure; no side effects.
+ * @see probeLatestGitHubVersion
  */
-export const PACKAGE_DEVELOP_UPGRADE_COMMAND: readonly string[] = [
-  "npm",
-  "install",
-  "-g",
-  "github:Ogekuri/mcp-google-api#develop",
-];
+export function buildDevelopUpgradeCommand(tag: string): readonly string[] {
+  return ["npm", "install", "-g", `github:${GITHUB_UPGRADE_REPOSITORY}#${tag}`];
+}
 
 /** Package-manager command executed by `--uninstall` (REQ-127). */
 export const PACKAGE_UNINSTALL_COMMAND: readonly string[] = [
@@ -402,9 +406,10 @@ export type ManagementCommandName = "--ver" | "--version" | "--upgrade" | "--uni
 /**
  * @brief Install source selected for the `--upgrade` command.
  * @details `npm` (default) resolves `mcp-google-api@latest` from the npm
- * registry (REQ-125); `develop` resolves the GitHub `develop` branch build
- * via `github:Ogekuri/mcp-google-api#develop` (REQ-171) because develop
- * builds never publish to npm (PKG-043).
+ * registry (REQ-125); `develop` resolves the latest tagged GitHub release of
+ * `Ogekuri/mcp-google-api` via the releases API (REQ-177) and installs it as
+ * `github:Ogekuri/mcp-google-api#<tag>` (REQ-171), independent of the branch
+ * carrying the tag (REQ-170).
  * @satisfies REQ-170
  */
 export type UpgradeChannel = "npm" | "develop";
@@ -428,14 +433,14 @@ export interface PackageManagerDeps {
  * online check, and the starting version of the `--upgrade` summary; `home`
  * scopes the enabled-CLI settings read performed by the post-upgrade skill
  * installation; `channel` selects the `--upgrade` install source (`npm`
- * default; `develop` = GitHub develop branch, REQ-170).
+ * default; `develop` = latest tagged GitHub release, REQ-170, REQ-177).
  */
 export interface ManagementCommandOptions {
   /** Running package version printed by `--ver`/`--version`. */
   currentVersion: string;
   /** Home-directory override for the enabled-CLI settings read. */
   home?: string;
-  /** `--upgrade` install channel; `develop` selects the GitHub develop branch (REQ-170). Default: `npm`. */
+  /** `--upgrade` install channel; `develop` selects the latest tagged GitHub release (REQ-170, REQ-177). Default: `npm`. */
   channel?: UpgradeChannel;
 }
 
@@ -788,10 +793,14 @@ function isUpgradeNecessary(status: LatestVersionProbe["status"]): boolean {
  * @brief Handles `--upgrade`: channel selection, package reinstall, then refresh skills with a stdout summary.
  * @details Develop channel (`options.channel === "develop"`, selected by the
  * `--develop` option or its equivalent `--dev` alias, REQ-170): skips the
- * registry comparison and the already-latest skip path entirely (REQ-172),
- * runs `PACKAGE_DEVELOP_UPGRADE_COMMAND` (REQ-171), then the post-upgrade
- * install and summary with `unknown` as the updated version because the npm
- * registry carries no develop builds (REQ-173). Default npm channel
+ * registry comparison and the already-latest skip path entirely, always
+ * proceeding with the tagged GitHub update (REQ-172). It first runs one
+ * forced GitHub releases probe bypassing the idle cache gate (REQ-177); on
+ * probe failure it prints a stderr diagnostic carrying the probe message and
+ * returns 1 without spawning any child process (REQ-178); on success it runs
+ * `buildDevelopUpgradeCommand(tag)` (REQ-171), then the post-upgrade
+ * install and summary with the probed latest GitHub release version as the
+ * updated version (REQ-173). Default npm channel
  * resolution order: one forced logging-free `probeLatestVersion`
  * registry probe bypassing the idle cache gate (REQ-144) -> `current` status
  * writes the already-latest stdout line including the installed version and
@@ -808,10 +817,12 @@ function isUpgradeNecessary(status: LatestVersionProbe["status"]): boolean {
  * @param options {ManagementCommandOptions} Options carrying `currentVersion`, `home`, and `channel`.
  * @param deps {ManagementCommandDeps} Optional spawner/idle-check/stdout overrides.
  * @return {Promise<number>} 0 when the installed version is already the latest available; otherwise the upgrade exit code when non-zero, else the post-upgrade install exit code.
- * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-144, REQ-145, REQ-146, REQ-147, REQ-170, REQ-171, REQ-172, REQ-173
+ * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-144, REQ-145, REQ-146, REQ-147, REQ-170, REQ-171, REQ-172, REQ-173, REQ-177, REQ-178
  * @see probeLatestVersion
+ * @see probeLatestGitHubVersion
  * @see isUpgradeNecessary
  * @see runPackageManagerCommand
+ * @see buildDevelopUpgradeCommand
  * @see resolveUpdatedVersion
  * @see runPostUpgradeSkillInstall
  * @see renderUpgradeSummary
@@ -821,13 +832,18 @@ export async function runUpgradeCommand(
   deps: ManagementCommandDeps = {}
 ): Promise<number> {
   if ((options.channel ?? "npm") === "develop") {
-    const upgraded = runPackageManagerCommand(PACKAGE_DEVELOP_UPGRADE_COMMAND, deps);
+    const githubProbe = await probeLatestGitHubVersion(deps.githubCheck);
+    if (githubProbe.status !== "ok") {
+      (deps.logger ?? Logger).error(`GitHub upgrade channel probe failed: ${githubProbe.message}`);
+      return 1;
+    }
+    const upgraded = runPackageManagerCommand(buildDevelopUpgradeCommand(githubProbe.tag), deps);
     if (upgraded !== 0) {
       return upgraded;
     }
     const outcome = runPostUpgradeSkillInstall(options, deps);
     const stdout = deps.stdout ?? process.stdout;
-    stdout.write(renderUpgradeSummary(options.currentVersion, "unknown", outcome));
+    stdout.write(renderUpgradeSummary(options.currentVersion, githubProbe.version, outcome));
     return outcome.exitCode;
   }
   const precheck = await probeLatestVersion({

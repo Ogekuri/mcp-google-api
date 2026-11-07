@@ -1136,7 +1136,8 @@ if (isMainModule) {
   // forced idle-bypassing version check and the child-process upgrade flows
   // run exclusively here (REQ-120, REQ-125, REQ-126, REQ-127). The --upgrade
   // command additionally accepts the --develop option or its equivalent
-  // --dev alias selecting the GitHub develop-branch install source (REQ-170).
+  // --dev alias selecting the latest tagged GitHub release install source
+  // (REQ-170, REQ-177).
   const managementCommand = parseManagementCommand(hideBin(process.argv));
   if (managementCommand !== undefined) {
     const upgradeChannel = parseUpgradeChannel(hideBin(process.argv));
@@ -1786,7 +1787,7 @@ if (isMainModule) {
           `  --ver         Print the installed, npmjs-latest, and GitHub-latest versions\n` +
           `  --version     Alias of --ver\n` +
           `  --upgrade     Upgrade the global package to the latest version and refresh installed skills\n` +
-          `                --develop | --dev: install from the GitHub develop branch\n` +
+          `                --develop | --dev: install the latest tagged GitHub release (any branch)\n` +
           `  --uninstall   Remove the globally installed mcp-google-api package`
       )
       .help();
