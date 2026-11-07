@@ -18,7 +18,10 @@
  * and MCP registrations refresh from the upgraded package (REQ-125, REQ-126),
  * and prints a human-readable stdout summary with starting/updated versions,
  * install outcome, and per-CLI results (REQ-132, REQ-133, REQ-134, REQ-135);
- * `--uninstall` removes the globally installed package (REQ-127). Every
+ * `--uninstall` removes the globally installed package (REQ-127). Package-update
+ * children run with captured output echoed on stderr and self-heal the
+ * `spawn sh ENOENT` global-reify corruption class through one tolerated
+ * clean-slate uninstall plus a single retry (REQ-182, REQ-183). Every
  * diagnostic is stderr-only; cache write failures never throw (REQ-128).
  */
 
@@ -554,6 +557,115 @@ export function runPackageManagerCommand(
 }
 
 /**
+ * @brief Diagnostic signature of the npm global-reify ENOENT corruption class.
+ * @details Matches the `spawn sh ENOENT` / ENOENT reify failures emitted when
+ * npm global reify runs dependency lifecycle scripts against directories
+ * removed mid-reify over a previously corrupted same-name install tree; the
+ * signature gates the REQ-182 clean-slate recovery in `runPackageUpdateCommand`.
+ */
+const REIFY_ENOENT_SIGNATURE = /\bENOENT\b/;
+
+/**
+ * @brief Renders a captured child-process stream chunk as UTF-8 text.
+ * @param value {string | Buffer | undefined} Raw `spawnSync` stream chunk.
+ * @return {string} Decoded text; empty for undefined or null chunks.
+ * @note Complexity: O(n) in chunk size. Pure.
+ */
+function toStreamText(value: string | Buffer | undefined): string {
+  return typeof value === "string" ? value : (value?.toString("utf8") ?? "");
+}
+
+/**
+ * @brief Runs one package-manager child with captured output echoed to stderr.
+ * @details Spawns `command[0]` with the remaining tokens using
+ * `stdio: ["inherit", "pipe", "pipe"]` (stdin inherited so interactive prompts
+ * stay usable; stdout/stderr captured), the neutral user-home working
+ * directory, and the win32 shell bridge; after completion the captured stdout
+ * fragment goes through `logger.log` and the captured stderr fragment through
+ * `logger.error`, keeping the child output visible on the stderr diagnostic
+ * channel (REQ-125, REQ-171). A spawn failure (missing executable or thrown
+ * spawn error) prints the error plus the exact manual command hint on stderr
+ * and maps to exit code 1 (REQ-128); otherwise the child exit code propagates
+ * (null status maps to 1).
+ * @param command {readonly string[]} Executable plus arguments.
+ * @param deps {PackageManagerDeps} Optional spawner/logger overrides.
+ * @return {{ code: number; stderr: string }} Child exit code (1 on spawn failure) plus the captured stderr text used by the REQ-182 failure-signature match.
+ * @satisfies REQ-125, REQ-128, REQ-171
+ * @note Complexity: O(n) in captured output size plus one child round-trip.
+ * @see runPackageManagerCommand
+ * @see runPackageUpdateCommand
+ */
+function runCapturedPackageManagerCommand(
+  command: readonly string[],
+  deps: PackageManagerDeps
+): { code: number; stderr: string } {
+  const logger = deps.logger ?? Logger;
+  const spawnImpl = deps.spawn ?? spawnSync;
+  const reportSpawnFailure = (message: string): { code: number; stderr: string } => {
+    logger.error(`Error executing ${command[0]}: ${message}`);
+    logger.log(`Warning: run this command manually: ${command.join(" ")}`);
+    return { code: 1, stderr: "" };
+  };
+  try {
+    const result = spawnImpl(command[0], [...command.slice(1)], {
+      cwd: homedir(),
+      stdio: ["inherit", "pipe", "pipe"],
+      shell: process.platform === "win32",
+      maxBuffer: 16 * 1024 * 1024,
+    });
+    if (result.error) {
+      return reportSpawnFailure(result.error.message);
+    }
+    const stdoutText = toStreamText(result.stdout).replace(/\n+$/, "");
+    const stderrText = toStreamText(result.stderr).replace(/\n+$/, "");
+    if (stdoutText.length > 0) {
+      logger.log(stdoutText);
+    }
+    if (stderrText.length > 0) {
+      logger.error(stderrText);
+    }
+    return { code: result.status ?? 1, stderr: toStreamText(result.stderr) };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return reportSpawnFailure(message);
+  }
+}
+
+/**
+ * @brief Runs the `--upgrade` package-update child with clean-slate ENOENT recovery.
+ * @details First attempt runs the captured-stdio child
+ * (`runCapturedPackageManagerCommand`). When it exits non-zero and its
+ * captured stderr matches `REIFY_ENOENT_SIGNATURE` — the
+ * `spawn sh ENOENT` class produced by npm global reify over a corrupted
+ * same-name install tree, where dependency lifecycle scripts (e.g. the
+ * protobufjs postinstall) run against directories removed mid-reify — it
+ * runs one tolerated `PACKAGE_UNINSTALL_COMMAND` child that removes the
+ * broken global tree including every dangling nested entry, then retries the
+ * update child exactly once so the fresh install rebuilds the full dependency
+ * directory set (REQ-182). Any other failure propagates immediately; after
+ * the recovery uninstall no further recovery children are spawned and the
+ * final exit code is the retry outcome (REQ-183).
+ * @param command {readonly string[]} Executable-plus-arguments update command (`PACKAGE_UPGRADE_COMMAND` or `buildDevelopUpgradeCommand(tag)`).
+ * @param deps {PackageManagerDeps} Optional spawner/logger overrides.
+ * @return {number} Child exit code; 0 only when the (possibly retried) update succeeded.
+ * @satisfies REQ-125, REQ-171, REQ-182, REQ-183
+ * @note Complexity: one or two update children plus at most one uninstall child.
+ * @see runCapturedPackageManagerCommand
+ * @see runPackageManagerCommand
+ */
+function runPackageUpdateCommand(
+  command: readonly string[],
+  deps: PackageManagerDeps
+): number {
+  const first = runCapturedPackageManagerCommand(command, deps);
+  if (first.code === 0 || !REIFY_ENOENT_SIGNATURE.test(first.stderr)) {
+    return first.code;
+  }
+  runPackageManagerCommand(PACKAGE_UNINSTALL_COMMAND, deps);
+  return runCapturedPackageManagerCommand(command, deps).code;
+}
+
+/**
  * @brief Parses the child `install` activity report into per-CLI outcomes.
  * @details Accepts the human-readable report emitted by the `install` command
  * on stdout (REQ-166): lines of the form `  <cli>: <activity>` under the
@@ -818,9 +930,12 @@ function isUpgradeNecessary(status: LatestVersionProbe["status"]): boolean {
  * writes the already-latest stdout line including the installed version and
  * returns 0 without spawning any child process (REQ-145) -> any other
  * outcome proceeds to the update path (`newer` per REQ-146;
- * `disabled`/`unknown-version`/`error` per REQ-147). The update path runs
- * `npm install -g mcp-google-api@latest` with inherited stdio and propagates
- * a non-zero exit code unchanged without printing any summary; on success
+ * `disabled`/`unknown-version`/`error` per REQ-147). The update path runs the
+ * package-update child via `runPackageUpdateCommand` with captured output
+ * echoed on stderr; a non-zero exit carrying an ENOENT reify diagnostic
+ * triggers one tolerated clean-slate uninstall plus a single update retry
+ * (REQ-182, REQ-183) and propagates the final exit code unchanged without
+ * printing any summary; on success
  * resolves the updated version from the pre-upgrade probe's npmjs latest when
  * that probe reported a newer version, avoiding a second registry round-trip
  * (REQ-181), else via one post-upgrade registry probe (REQ-134), runs the
@@ -831,11 +946,12 @@ function isUpgradeNecessary(status: LatestVersionProbe["status"]): boolean {
  * @param options {ManagementCommandOptions} Options carrying `currentVersion`, `home`, and `channel`.
  * @param deps {ManagementCommandDeps} Optional spawner/idle-check/stdout overrides.
  * @return {Promise<number>} 0 when the installed version is already the latest available; otherwise the upgrade exit code when non-zero, else the post-upgrade install exit code.
- * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-144, REQ-145, REQ-146, REQ-147, REQ-170, REQ-171, REQ-172, REQ-173, REQ-177, REQ-178, REQ-181
+ * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-144, REQ-145, REQ-146, REQ-147, REQ-170, REQ-171, REQ-172, REQ-173, REQ-177, REQ-178, REQ-181, REQ-182, REQ-183
  * @see probeLatestVersion
  * @see probeLatestGitHubVersion
  * @see isUpgradeNecessary
  * @see runPackageManagerCommand
+ * @see runPackageUpdateCommand
  * @see buildDevelopUpgradeCommand
  * @see resolveUpdatedVersion
  * @see runPostUpgradeSkillInstall
@@ -851,7 +967,7 @@ export async function runUpgradeCommand(
       (deps.logger ?? Logger).error(`GitHub upgrade channel probe failed: ${githubProbe.message}`);
       return 1;
     }
-    const upgraded = runPackageManagerCommand(buildDevelopUpgradeCommand(githubProbe.tag), deps);
+    const upgraded = runPackageUpdateCommand(buildDevelopUpgradeCommand(githubProbe.tag), deps);
     if (upgraded !== 0) {
       return upgraded;
     }
@@ -874,7 +990,7 @@ export async function runUpgradeCommand(
   // REQ-181: reuse the pre-upgrade npmjs latest when resolved (`newer`); the
   // post-upgrade probe only backs the undeterminable precheck outcomes (REQ-134).
   const knownLatest = precheck.status === "newer" ? precheck.latestVersion : undefined;
-  const upgraded = runPackageManagerCommand(PACKAGE_UPGRADE_COMMAND, deps);
+  const upgraded = runPackageUpdateCommand(PACKAGE_UPGRADE_COMMAND, deps);
   if (upgraded !== 0) {
     return upgraded;
   }

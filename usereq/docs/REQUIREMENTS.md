@@ -316,7 +316,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-122**: MUST persist cache fields `last_success_epoch`, `last_success_human`, `idle_time_epoch`, and `idle_time_human` (ISO-8601 UTC) after each executed check, tolerating missing or malformed cache content.
 - **REQ-123**: MUST set the idle window to 3600 seconds when a newer version is found and 86400 seconds otherwise.
 - **REQ-124**: MUST report each executed check on stderr only: `Available Version: <latest> | Installed Version: <current>` plus an upgrade command when newer and an error notice on failure; it MUST emit no output when no newer version exists.
-- **REQ-125**: In the default npm channel, `--upgrade` MUST run `npm install -g mcp-google-api@latest` as a child process with inherited stdio, propagating its exit code.
+- **REQ-125**: In the default npm channel, `--upgrade` MUST run `npm install -g mcp-google-api@latest` as a child process, echoing its captured output on stderr and propagating its exit code.
 - **REQ-126**: MUST, after a successful `--upgrade` with at least one enabled CLI, run the upgraded package's `install` child command without `--debug-skills` with captured stdout, refreshing skills and MCP registrations without echoing the child activity report.
 - **REQ-127**: MUST implement `--uninstall` to run `npm uninstall -g mcp-google-api` as a child process with inherited stdio, propagating its exit code.
 - **REQ-128**: MUST print the manual package-manager command and return exit code 1 when a management child process fails to spawn.
@@ -328,7 +328,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-146**: `--upgrade` MUST proceed with the REQ-125 package update, the REQ-126 post-upgrade install, and the REQ-132 summary exactly when the pre-upgrade check reports a newer available version.
 - **REQ-147**: When the pre-upgrade check cannot determine a newer version (installed version unknown or probe failure), `--upgrade` MUST proceed with the package update.
 - **REQ-170**: `--upgrade` MUST accept a `--develop` option and its equivalent alias `--dev`, selecting the latest tagged GitHub release as the package install source.
-- **REQ-171**: With `--develop` or `--dev` selected, `--upgrade` MUST run `npm install -g github:Ogekuri/mcp-google-api#<tag>` where `<tag>` is the latest release `tag_name` (REQ-177), with inherited stdio, propagating its exit code.
+- **REQ-171**: With `--develop` or `--dev` selected, `--upgrade` MUST run `npm install -g github:Ogekuri/mcp-google-api#<tag>` where `<tag>` is the latest release `tag_name` (REQ-177), echoing its captured output on stderr and propagating its exit code.
 - **REQ-172**: The develop-channel `--upgrade` MUST skip the REQ-144 registry comparison and the REQ-145 already-latest skip path, always proceeding with the tagged GitHub update regardless of the installed version or the branch carrying the tag.
 - **REQ-173**: The develop-channel `--upgrade` summary MUST report the probed latest GitHub release version (REQ-177) as the updated version.
 - **REQ-177**: The develop-channel `--upgrade` MUST run one forced probe of `https://api.github.com/repos/Ogekuri/mcp-google-api/releases/latest` bypassing the idle cache gate before spawning any child process.
@@ -336,6 +336,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-179**: The `--ver`/`--version` npm probe MUST fetch the npm registry packument manifest listing all published package versions using the abbreviated-manifest Accept header.
 - **REQ-180**: The `--ver`/`--version` npm probe MUST resolve the npmjs latest version from the packument `dist-tags.latest` field.
 - **REQ-181**: In the default npm channel, `--upgrade` MUST report the npmjs latest version resolved by its pre-upgrade registry probe as the summary updated version when that probe reports a newer version.
+- **REQ-182**: When a `--upgrade` package-update child exits non-zero with an ENOENT diagnostic in its captured stderr, `--upgrade` MUST run one tolerated `npm uninstall -g mcp-google-api` child and retry the package update once.
+- **REQ-183**: `--upgrade` MUST propagate the final non-zero exit code of the recovery retry and spawn no further recovery children after it.
 - **REQ-148**: The `auto-update <value>` command MUST accept `enable`, `disable`, `1`, and `0` case-insensitively, resolving to the boolean automatic-update enablement.
 - **REQ-149**: `auto-update` MUST persist the resolved boolean into the DES-018 settings `autoUpdate` field with an atomic write before printing any result.
 - **REQ-150**: `auto-update` MUST print on stdout a human-readable confirmation naming the resulting automatic-update state and exit 0.
@@ -393,6 +395,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **LIM-005**: Transit routing has regional coverage gaps; the server surfaces Google's regional limitations (notably Japan and India) as errors or warnings rather than fallbacks.
 - **LIM-006**: No explicit performance optimizations identified beyond bounded concurrency batching (grid scan concurrency 5 in `scanKeywordGrid`; CLI semaphore clamp 1-50).
 - **LIM-007**: `maps_search_places` `pageToken` is copied into the request but silently dropped by `@googlemaps/places` SDK protos (verified up to v3.1.0), so pagination requests have no server-side effect.
+- **LIM-008**: npm global reify over a previously corrupted same-name install tree can fail dependency lifecycle spawns (`spawn sh ENOENT` against directories removed mid-reify); `--upgrade` mitigates it with the REQ-182 clean-slate uninstall plus single retry.
 
 ## 4. Test Requirements
 - **TST-001**: MUST verify REQ-073/REQ-074/REQ-075 by running `npm test` (`tests/cliExec.unit.test.ts`): injected runners assert stdout JSON on success, stderr JSON plus exit code 1 on failure responses, thrown errors, and canonical tool-name resolution; pass when all assertions hold.
