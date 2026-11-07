@@ -95,14 +95,14 @@ test("doctor --live probes only the selected subset with --probes", async () => 
     probes: ["routes"],
   });
 
-  assert.deepEqual(calledTools, ["directions"]);
+  assert.deepEqual(calledTools, ["maps_directions"]);
   assert.equal(report.checks.find((check) => check.name === "routes-api")?.status, "pass");
   assert.equal(report.checks.find((check) => check.name === "geocoding-api"), undefined);
   assert.equal(report.checks.find((check) => check.name === "places-api-new"), undefined);
   assert.equal(report.success, true);
 });
 
-test("doctor --live without --probes keeps the legacy three-probe invocation", async () => {
+test("doctor --live without --probes keeps the default three-probe invocation", async () => {
   const calledTools: string[] = [];
   const report = await runDoctor("1.2.3", "secret-key", true, async (toolName) => {
     calledTools.push(toolName);
@@ -112,7 +112,7 @@ test("doctor --live without --probes keeps the legacy three-probe invocation", a
     config: CLEAN_CONFIG,
   });
 
-  assert.deepEqual(calledTools, ["geocode", "search-places", "directions"]);
+  assert.deepEqual(calledTools, ["maps_geocode", "maps_search_places", "maps_directions"]);
   assert.equal(DOCTOR_PROBES.length, 3);
   assert.equal(report.success, true);
 });

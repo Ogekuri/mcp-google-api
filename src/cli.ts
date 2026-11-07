@@ -177,24 +177,24 @@ export function installShutdownHandlers(servers: readonly BaseMcpServer[]): void
 // --------------- Exec Mode ---------------
 
 export const EXEC_TOOLS = [
-  "geocode",
-  "reverse-geocode",
-  "search-nearby",
-  "search-places",
-  "place-details",
-  "directions",
-  "distance-matrix",
-  "elevation",
-  "timezone",
-  "weather",
-  "explore-area",
-  "plan-route",
-  "compare-places",
-  "air-quality",
-  "static-map",
-  "batch-geocode-tool",
-  "search-along-route",
-  "local-rank-tracker",
+  "maps_geocode",
+  "maps_reverse_geocode",
+  "maps_search_nearby",
+  "maps_search_places",
+  "maps_place_details",
+  "maps_directions",
+  "maps_distance_matrix",
+  "maps_elevation",
+  "maps_timezone",
+  "maps_weather",
+  "maps_explore_area",
+  "maps_plan_route",
+  "maps_compare_places",
+  "maps_air_quality",
+  "maps_static_map",
+  "maps_batch_geocode",
+  "maps_search_along_route",
+  "maps_local_rank_tracker",
 ] as const;
 
 type ExecFailureResponse = {
@@ -251,20 +251,15 @@ export async function execTool(toolName: string, params: any, apiKey: string): P
   const searcher = new PlacesSearcher(apiKey);
 
   switch (toolName) {
-    case "geocode":
     case "maps_geocode":
       return searcher.geocode(params.address);
 
-    case "reverse-geocode":
     case "maps_reverse_geocode":
       return searcher.reverseGeocode(params.latitude, params.longitude);
 
-    case "search-nearby":
-    case "search_nearby":
     case "maps_search_nearby":
       return searcher.searchNearby(params);
 
-    case "search-places":
     case "maps_search_places":
       return searcher.searchText({
         query: params.query,
@@ -280,12 +275,9 @@ export async function execTool(toolName: string, params: any, apiKey: string): P
         includeRaw: params.includeRaw,
       });
 
-    case "place-details":
-    case "get_place_details":
     case "maps_place_details":
       return searcher.getPlaceDetails(params.placeId, params.maxPhotos || 0, params.includeRaw || false);
 
-    case "directions":
     case "maps_directions":
       return searcher.getDirections(
         params.origin,
@@ -297,7 +289,6 @@ export async function execTool(toolName: string, params: any, apiKey: string): P
         params.avoid_highways
       );
 
-    case "distance-matrix":
     case "maps_distance_matrix":
       return searcher.calculateDistanceMatrix(
         params.origins,
@@ -308,15 +299,12 @@ export async function execTool(toolName: string, params: any, apiKey: string): P
         params.avoid_highways
       );
 
-    case "elevation":
     case "maps_elevation":
       return searcher.getElevation(params.locations);
 
-    case "timezone":
     case "maps_timezone":
       return searcher.getTimezone(params.latitude, params.longitude, params.timestamp);
 
-    case "weather":
     case "maps_weather":
       return searcher.getWeather(
         params.latitude,
@@ -326,19 +314,15 @@ export async function execTool(toolName: string, params: any, apiKey: string): P
         params.forecastHours
       );
 
-    case "explore-area":
     case "maps_explore_area":
       return searcher.exploreArea(params);
 
-    case "plan-route":
     case "maps_plan_route":
       return searcher.planRoute(params);
 
-    case "compare-places":
     case "maps_compare_places":
       return searcher.comparePlaces(params);
 
-    case "air-quality":
     case "maps_air_quality":
       return searcher.getAirQuality(
         params.latitude,
@@ -347,11 +331,9 @@ export async function execTool(toolName: string, params: any, apiKey: string): P
         params.includePollutants
       );
 
-    case "static-map":
     case "maps_static_map":
       return searcher.getStaticMap(params);
 
-    case "batch-geocode-tool":
     case "maps_batch_geocode": {
       const results = await Promise.all(
         (params.addresses as string[]).map(async (address: string) => {
@@ -370,11 +352,9 @@ export async function execTool(toolName: string, params: any, apiKey: string): P
       };
     }
 
-    case "search-along-route":
     case "maps_search_along_route":
       return searcher.searchAlongRoute(params);
 
-    case "local-rank-tracker":
     case "maps_local_rank_tracker":
       return searcher.localRankTracker(params);
 
@@ -434,12 +414,12 @@ export interface DoctorLiveProbe {
  * @satisfies REQ-072, REQ-091
  */
 export const DOCTOR_PROBES: readonly DoctorLiveProbe[] = [
-  { id: "geocoding", name: "geocoding-api", tool: "geocode", params: { address: "Tokyo Tower" } },
-  { id: "places-new", name: "places-api-new", tool: "search-places", params: { query: "Tokyo Tower" } },
+  { id: "geocoding", name: "geocoding-api", tool: "maps_geocode", params: { address: "Tokyo Tower" } },
+  { id: "places-new", name: "places-api-new", tool: "maps_search_places", params: { query: "Tokyo Tower" } },
   {
     id: "routes",
     name: "routes-api",
-    tool: "directions",
+    tool: "maps_directions",
     params: { origin: "Tokyo Tower", destination: "Tokyo Station", mode: "walking" },
   },
 ];
@@ -1139,16 +1119,9 @@ export function handleUndispatchedEntry(
   return 1;
 }
 
-const isRunDirectly =
-  process.argv[1] &&
-  (process.argv[1].endsWith("cli.ts") ||
-    process.argv[1].endsWith("cli.js") ||
-    process.argv[1].endsWith("mcp-google-api") ||
-    process.argv[1].includes("mcp-google-api"));
-
 const isMainModule = isEntryMainModule();
 
-if (isRunDirectly || isMainModule) {
+if (isMainModule) {
   let packageVersion = "0.0.0";
   try {
     const packageJsonPath = resolve(__dirname, "../package.json");
@@ -1236,7 +1209,7 @@ if (isRunDirectly || isMainModule) {
      */
     const runServerCommand = async (argv: ServerCommandArgs): Promise<void> => {
       // REQ-142: the effective key resolves exclusively from the persisted
-      // settings (`api-key` command); empty and placeholder values are unset.
+      // settings (`api-key` command); empty values are unset.
       // Injected into the key manager so every default-key consumer sees it.
       const effectiveApiKey = loadConfiguredApiKey();
       ApiKeyManager.getInstance().setDefaultApiKey(effectiveApiKey);
@@ -1635,12 +1608,12 @@ if (isRunDirectly || isMainModule) {
               describe: "JSON parameters string",
             })
             .example([
-              ['$0 exec geocode \'{"address":"Tokyo Tower"}\'', "Geocode an address"],
+              ['$0 exec maps_geocode \'{"address":"Tokyo Tower"}\'', "Geocode an address"],
               [
-                '$0 exec search-nearby \'{"center":{"value":"35.68,139.74","isCoordinates":true},"keyword":"restaurant"}\'',
+                '$0 exec maps_search_nearby \'{"center":{"value":"35.68,139.74","isCoordinates":true},"keyword":"restaurant"}\'',
                 "Search nearby",
               ],
-              ['$0 exec search-places \'{"query":"ramen in Tokyo"}\'', "Text search"],
+              ['$0 exec maps_search_places \'{"query":"ramen in Tokyo"}\'', "Text search"],
             ]);
         },
         async (argv) => {

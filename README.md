@@ -177,7 +177,7 @@ mcp-google-api doctor --live --apikey "AIza..." # override the key for the probe
 ## One-shot CLI tools
 
 ```bash
-mcp-google-api exec geocode '{"address":"Tokyo Tower"}'        # run one tool; short/snake_case/maps_-prefixed names accepted
+mcp-google-api exec maps_geocode '{"address":"Tokyo Tower"}'    # run one tool by its canonical maps_ name
 mcp-google-api batch-geocode -i addresses.txt -o results.json # geocode one address per line
 cat addresses.txt | mcp-google-api batch-geocode -i -          # from stdin
 ```

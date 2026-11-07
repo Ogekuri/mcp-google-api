@@ -42,11 +42,11 @@ function createStreams(): {
 test("runExecCommand writes successful service responses as JSON to stdout", async () => {
   const { output, streams } = createStreams();
   const exitCode = await runExecCommand(
-    "geocode",
+    "maps_geocode",
     { address: "Tokyo Tower" },
     "test-api-key",
     async (toolName, params, apiKey) => {
-      assert.equal(toolName, "geocode");
+      assert.equal(toolName, "maps_geocode");
       assert.deepEqual(params, { address: "Tokyo Tower" });
       assert.equal(apiKey, "test-api-key");
       return { success: true, data: { location: { lat: 35.6586, lng: 139.7454 } } };
@@ -65,7 +65,7 @@ test("runExecCommand writes successful service responses as JSON to stdout", asy
 test("runExecCommand treats a failed service response as a command failure", async () => {
   const { output, streams } = createStreams();
   const exitCode = await runExecCommand(
-    "geocode",
+    "maps_geocode",
     { address: "Not A Real Address" },
     "test-api-key",
     async () => ({ success: false, error: "Geocoding API request failed" }),
@@ -80,7 +80,7 @@ test("runExecCommand treats a failed service response as a command failure", asy
 test("runExecCommand reports thrown errors on stderr", async () => {
   const { output, streams } = createStreams();
   const exitCode = await runExecCommand(
-    "geocode",
+    "maps_geocode",
     {},
     "test-api-key",
     async () => {
@@ -94,29 +94,29 @@ test("runExecCommand reports thrown errors on stderr", async () => {
   assert.deepEqual(JSON.parse(output.stderr), { error: "request timed out" });
 });
 
-test("exec mode exposes all 18 short tool names", () => {
+test("exec mode exposes all 18 canonical tool names", () => {
   assert.equal(EXEC_TOOLS.length, 18);
   assert.deepEqual(
     [...EXEC_TOOLS],
     [
-      "geocode",
-      "reverse-geocode",
-      "search-nearby",
-      "search-places",
-      "place-details",
-      "directions",
-      "distance-matrix",
-      "elevation",
-      "timezone",
-      "weather",
-      "explore-area",
-      "plan-route",
-      "compare-places",
-      "air-quality",
-      "static-map",
-      "batch-geocode-tool",
-      "search-along-route",
-      "local-rank-tracker",
+      "maps_geocode",
+      "maps_reverse_geocode",
+      "maps_search_nearby",
+      "maps_search_places",
+      "maps_place_details",
+      "maps_directions",
+      "maps_distance_matrix",
+      "maps_elevation",
+      "maps_timezone",
+      "maps_weather",
+      "maps_explore_area",
+      "maps_plan_route",
+      "maps_compare_places",
+      "maps_air_quality",
+      "maps_static_map",
+      "maps_batch_geocode",
+      "maps_search_along_route",
+      "maps_local_rank_tracker",
     ]
   );
 });
@@ -147,11 +147,11 @@ test("doctor live mode checks geocoding, places, and routes independently", asyn
   const calledTools: string[] = [];
   const report = await runDoctor("1.2.3", "secret-key", true, async (toolName) => {
     calledTools.push(toolName);
-    if (toolName === "search-places") return { success: false, error: "Places API (New) is disabled" };
+    if (toolName === "maps_search_places") return { success: false, error: "Places API (New) is disabled" };
     return { success: true };
   });
 
-  assert.deepEqual(calledTools, ["geocode", "search-places", "directions"]);
+  assert.deepEqual(calledTools, ["maps_geocode", "maps_search_places", "maps_directions"]);
   assert.equal(report.success, false);
   assert.equal(report.checks.find((check) => check.name === "geocoding-api")?.status, "pass");
   assert.equal(report.checks.find((check) => check.name === "places-api-new")?.status, "fail");
@@ -159,7 +159,7 @@ test("doctor live mode checks geocoding, places, and routes independently", asyn
   assert.equal(JSON.stringify(report).includes("secret-key"), false);
 });
 
-test("execTool maps short and MCP geocode aliases to the same service", async () => {
+test("execTool resolves the canonical maps_geocode tool name", async () => {
   const originalGeocode = PlacesSearcher.prototype.geocode;
   const addresses: string[] = [];
   PlacesSearcher.prototype.geocode = async (address) => {
@@ -175,18 +175,16 @@ test("execTool maps short and MCP geocode aliases to the same service", async ()
   };
 
   try {
-    const shortNameResult = await execTool("geocode", { address: "Tokyo Tower" }, "test-api-key");
-    const mcpNameResult = await execTool("maps_geocode", { address: "Eiffel Tower" }, "test-api-key");
+    const result = await execTool("maps_geocode", { address: "Eiffel Tower" }, "test-api-key");
 
-    assert.equal(shortNameResult.success, true);
-    assert.equal(mcpNameResult.success, true);
-    assert.deepEqual(addresses, ["Tokyo Tower", "Eiffel Tower"]);
+    assert.equal(result.success, true);
+    assert.deepEqual(addresses, ["Eiffel Tower"]);
   } finally {
     PlacesSearcher.prototype.geocode = originalGeocode;
   }
 });
 
-test("execTool accepts the snake_case search-nearby alias", async () => {
+test("execTool accepts the canonical maps_search_nearby tool name", async () => {
   const originalSearchNearby = PlacesSearcher.prototype.searchNearby;
   let receivedKeyword: string | undefined;
   PlacesSearcher.prototype.searchNearby = async (params) => {
@@ -196,7 +194,7 @@ test("execTool accepts the snake_case search-nearby alias", async () => {
 
   try {
     const result = await execTool(
-      "search_nearby",
+      "maps_search_nearby",
       { center: { value: "35.68,139.74", isCoordinates: true }, keyword: "restaurant" },
       "test-api-key"
     );

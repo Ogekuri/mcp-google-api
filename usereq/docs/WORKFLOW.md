@@ -39,7 +39,7 @@
     - external: `fileURLToPath`/`dirname`
     - `isEntryMainModule()`: symlink-aware main-module detection comparing `realpathSync(process.argv[1])` with the real path of this module derived from `import.meta.url`; true for every symlinked launcher (npm global `bin/` links, `_npx` `.bin` shims, renamed aliases) and false for plain module imports, so the CLI never silently no-ops under a renamed bin and never dispatches on import [`src/cli.ts`]
       - external: `realpathSync`
-    - `handleUndispatchedEntry(argv.slice(2))`: else-branch guard evaluated when neither `isRunDirectly` nor `isEntryMainModule()` matches; for the registered stdio server-start argv shape (`start`/`run` plus `--stdio`) it emits the REQ-094 build-remediation JSON diagnostic on stderr (skipped dispatch, requested entry path, running module path, remediation commands) and returns exit code 1; any other argv shape keeps the legacy silent exit-0 no-op (plain imports, unrelated tooling) [`src/cli.ts`]
+    - `handleUndispatchedEntry(argv.slice(2))`: else-branch guard evaluated when the `isEntryMainModule()` entry gate does not match; for the registered stdio server-start argv shape (`start`/`run` plus `--stdio`) it emits the REQ-094 build-remediation JSON diagnostic on stderr (skipped dispatch, requested entry path, running module path, remediation commands) and returns exit code 1; any other argv shape keeps the legacy silent exit-0 no-op (plain imports, unrelated tooling) [`src/cli.ts`]
       - `describeUndispatchedServerStart(argv)`: pure server-start argv-shape detector returning the build-remediation guidance text (`npm run build` / `npm install -g mcp-google-api@latest`) for the skipped-dispatch case [`src/cli.ts`]
   - `parseManagementCommand(hideBin(process.argv))`: pre-yargs dispatch of the exact management-command argv shapes (single-token flags, or `--upgrade` paired with the `--develop` option or its equivalent `--dev` alias in either order, REQ-170); a match runs TRACE-L and skips yargs entirely, otherwise [`src/utils/upgradeManager.ts`]
   - `cli = yargs(...)` builder: `.scriptName("mcp-google-api")`, `.usage()` opening with `mcp-google-api v<version>` plus the `start|run` usage lines, `.epilog()` documenting the management flags `--ver`/`--version`/`--upgrade`/`--uninstall` and the `--upgrade` `--develop`/`--dev` upgrade-channel option (REQ-175); then `cli.parse()`: dispatches to the command handler selected by argv; the `$0` fallback handler prints the help text via `showHelp("log")` and starts no server
@@ -136,7 +136,7 @@
   | `maps_compare_places` | `PlacesSearcher.comparePlaces` | `searchText` + `getPlaceDetails` + `calculateDistanceMatrix` |
   | `maps_local_rank_tracker` | `PlacesSearcher.localRankTracker` | `getPlaceDetails` + `NewPlacesService.searchText` via `scanKeywordGrid` |
 
-  Note: CLI `exec` accepts short, snake_case, and `maps_`-prefixed aliases (`EXEC_TOOLS` switch in `src/cli.ts`) resolving to the same facade methods.
+  Note: CLI `exec` accepts exactly the canonical `maps_`-prefixed tool names (PRJ-001) via the `EXEC_TOOLS` switch in `src/cli.ts`, resolving each to its facade method.
 
   Shared facade subtrees (leaves = external boundaries):
   - `PlacesSearcher.geocode(address)`: wrap legacy geocode [`src/services/PlacesSearcher.ts`]

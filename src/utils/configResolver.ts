@@ -68,7 +68,7 @@ export interface ResolvedRuntimeConfig {
  * source (DES-015); no environment variable is consulted. Port handling:
  * flag port used as-is; settings port kept when it is an integer in 1..65535,
  * otherwise left undefined with the raw rendering preserved in `portRaw`.
- * `apiKey` normalizes unset and placeholder settings values to undefined
+ * `apiKey` normalizes unset settings values to undefined
  * (DES-023). `autoUpdateDisabled` is the negation of the persisted
  * `autoUpdate` field (DES-024). Pure: reads inputs only, mutates nothing.
  * Complexity O(1).

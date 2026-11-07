@@ -170,7 +170,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **DES-019**: MUST apply MCP-server registration through read-modify-write preserving every unrelated configuration entry, with atomic temporary-file replacement.
 - **DES-020**: MUST synchronize packaged skills into CLI skills destinations copying packaged content files with overwrite and pruning stale files inside managed skill directories only, excluding any declared debug overlay file.
 - **DES-022**: MUST implement the idle-gated version check and self-upgrade commands in a dedicated module with injectable clock, filesystem, fetch, logger, and child-process dependencies.
-- **DES-023**: MUST persist the user-configured Google Maps API key as the `apiKey` field of the DES-018 settings file, reusing atomic write and malformed-content tolerance; unset keys persist and load as the empty string, and the legacy install placeholder value loads as unset.
+- **DES-023**: MUST persist the user-configured Google Maps API key as the `apiKey` field of the DES-018 settings file, reusing atomic write and malformed-content tolerance; unset keys persist and load as the empty string.
 - **DES-024**: MUST persist the automatic-update enablement as the boolean `autoUpdate` field of the DES-018 settings file; missing or malformed content loads as enabled.
 
 ### 3.2 Functions
@@ -271,7 +271,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-089**: MUST report effective configuration with per-field sources and masked secrets in `doctor` local mode.
 - **REQ-090**: MUST report the Google APIs required by each enabled tool from the tool/API profiles in `doctor` local mode without network calls.
 - **REQ-091**: MUST probe a `--probes`-selected subset of Geocoding, Places (New), and Routes in `doctor --live`, probing all three when `--probes` is absent.
-- **REQ-073**: MUST execute a named tool with JSON parameters for `exec`, accepting short, snake_case, and `maps_`-prefixed aliases per the `EXEC_TOOLS` mapping.
+- **REQ-073**: MUST execute a named tool with JSON parameters for `exec`, accepting exactly the canonical `maps_`-prefixed tool names defined by PRJ-001.
 - **REQ-074**: MUST exit 1 with a JSON error on stderr for `exec` when no API key is configured, when the tool reports `{ success: false }`, when parameters are not valid JSON, or when the tool name is unknown.
 - **REQ-075**: MUST write successful `exec` results as pretty-printed JSON to stdout with exit code 0.
 - **REQ-076**: MUST read one address per line for `batch-geocode` from `--input` file or stdin when `--input -`, rejecting empty input with exit 1.
@@ -286,7 +286,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-174**: The `--help` text MUST limit command and option descriptions to user-facing usage (purpose, arguments, defaults, examples) without internal implementation details.
 - **REQ-175**: The `--help` text MUST document the `--develop` and `--dev` upgrade-channel options of `--upgrade`.
 - **REQ-176**: The `--help` text MUST describe `--ver`/`--version` as printing the installed, npmjs-latest, and GitHub-latest versions.
-- **REQ-142**: `start`/`run` MUST resolve the effective API key exclusively from the persisted settings key (REQ-136), treating empty and placeholder values as unset.
+- **REQ-142**: `start`/`run` MUST resolve the effective API key exclusively from the persisted settings key (REQ-136), treating empty values as unset.
 - **REQ-143**: `start`/`run` with `--stdio` MUST exit 1 before creating any server when REQ-142 resolves no key, printing a stderr JSON error naming the `api-key` command.
 
 #### Automatic Update Check
@@ -380,7 +380,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **LIM-007**: `maps_search_places` `pageToken` is copied into the request but silently dropped by `@googlemaps/places` SDK protos (verified up to v3.1.0), so pagination requests have no server-side effect.
 
 ## 4. Test Requirements
-- **TST-001**: MUST verify REQ-073/REQ-074/REQ-075 by running `npm test` (`tests/cliExec.unit.test.ts`): injected runners assert stdout JSON on success, stderr JSON plus exit code 1 on failure responses, thrown errors, and alias resolution; pass when all assertions hold.
+- **TST-001**: MUST verify REQ-073/REQ-074/REQ-075 by running `npm test` (`tests/cliExec.unit.test.ts`): injected runners assert stdout JSON on success, stderr JSON plus exit code 1 on failure responses, thrown errors, and canonical tool-name resolution; pass when all assertions hold.
 - **TST-002**: MUST verify REQ-070/REQ-071/REQ-072/REQ-089/REQ-090/REQ-091 by running `npm test` (`tests/cliExec.unit.test.ts`, `tests/doctorExt.unit.test.ts`): local mode makes zero API calls, engines floor enforced, settings-derived config diagnostics masked, tool profiles reported, probes selectable and independent; pass when reports match expectations.
 - **TST-003**: MUST verify REQ-024-REQ-030 and REQ-081 by running `npm test` (`tests/placesFilters.unit.test.ts`): mocked `PlacesClient` assertions confirm forwarded filters, field masks, priceRange preservation, `pageSize`→`maxResultCount` translation, `nextPageToken`, `pageToken` forwarding, raw payloads, and legacy array contract.
 - **TST-004**: MUST verify REQ-054/REQ-055/REQ-057 by running `npm test` (`tests/locationResolution.unit.test.ts`): mocked clients assert resolved waypoints, geocode→text-search fallback, thrown errors on unresolvable stops, and coordinate handling without API calls.

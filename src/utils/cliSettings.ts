@@ -66,16 +66,6 @@ const CLI_SETTINGS_RELATIVE = [".config", SETTINGS_PROGRAM_NAME, "config.json"] 
 export const MCP_SERVER_NAME = "mcp-google-api";
 
 /**
- * @brief Legacy placeholder previously embedded in CLI MCP registrations.
- * @details Self-describing marker whose text invites running the
- * `mcp-google-api api-key <key>` command. No longer written by `install`
- * (REQ-114); retained only so `isUnsetApiKey` classifies placeholder values
- * left in existing files as unset (REQ-142).
- * @satisfies REQ-142
- */
-export const INSTALL_API_KEY_PLACEHOLDER = "__RUN_mcp-google-api_api-key_TO_CONFIGURE_YOUR_API_KEY__";
-
-/**
  * @brief Program configuration shape loaded at bootstrap and persisted by the configuration commands.
  * @details `enabled` lists canonical CLI names in persistence order; `apiKey`
  * is the Google Maps API key (DES-023) and defaults to the empty string;
@@ -175,22 +165,14 @@ function defaultSettings(): CliSettings {
 
 /**
  * @brief Classify a candidate API key value as unset.
- * @details True for undefined/null, empty or whitespace-only strings, and the
- * literal `INSTALL_API_KEY_PLACEHOLDER` marker, so placeholder-bearing client
- * configurations never count as a configured key (REQ-142). Pure;
- * complexity O(1).
+ * @details True for undefined/null and empty or whitespace-only strings
+ * (REQ-142). Pure; complexity O(1).
  * @param value {string | undefined | null} Candidate key from the settings file or another injection source.
  * @return {boolean} True when the value must be treated as no key.
- * @see INSTALL_API_KEY_PLACEHOLDER
  * @satisfies REQ-142
  */
 export function isUnsetApiKey(value: string | undefined | null): boolean {
-  return (
-    value === undefined ||
-    value === null ||
-    value.trim().length === 0 ||
-    value === INSTALL_API_KEY_PLACEHOLDER
-  );
+  return value === undefined || value === null || value.trim().length === 0;
 }
 
 /**
@@ -243,11 +225,11 @@ export function loadCliSettings(home?: string): CliSettings {
 
 /**
  * @brief Load the user-configured API key from the persisted configuration.
- * @details Reads `loadCliSettings().apiKey` and normalizes placeholder and
- * empty values to undefined so callers receive only a usable key (DES-023,
- * REQ-142). Tolerates any malformed configuration content by delegation.
+ * @details Reads `loadCliSettings().apiKey` and normalizes empty values to
+ * undefined so callers receive only a usable key (DES-023, REQ-142).
+ * Tolerates any malformed configuration content by delegation.
  * @param home {string | undefined} Home-directory override.
- * @return {string | undefined} Configured key; undefined when unset or placeholder.
+ * @return {string | undefined} Configured key; undefined when unset.
  * @see isUnsetApiKey
  * @satisfies DES-023, REQ-142
  */
