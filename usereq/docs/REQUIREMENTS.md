@@ -136,6 +136,14 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-043**: MUST run build, pack, changelog, and GitHub Release creation with the tarball asset for tags reachable from `origin/develop` but not `origin/master`, skipping only npm publication.
 - **PKG-044**: MUST append an `Acknowledgments` section as the last section of `README.md`, thanking CabLate for the upstream contribution without naming the superseded project.
 - **PKG-045**: MUST derive the published npm package, packed tarball name, and GitHub-Release asset glob from the distribution package name `mcp-google-api` (PRJ-016, PKG-040).
+- **PKG-046**: MUST open README.md with a `[!CAUTION]` pre-header disclaimer marking the project as strictly experimental, pre-alpha, and personal-use-only.
+- **PKG-047**: MUST format the README.md title exactly as `# mcp-google-api / MCP Google API server (<version>)` with `<version>` matching the `package.json` version.
+- **PKG-048**: MUST group the README.md badges in one `<p align="center">` block placed immediately below the title.
+- **PKG-049**: MUST place the README.md description in a `<p align="center">` block starting with an HTML `<strong>` one-line summary followed by `<br>` and a detailed explanation.
+- **PKG-050**: MUST place the README.md quick index in a `<p align="center">` block as `<a href="#anchor">` links to Feature Highlights, Quick Start, Requirements, User's Guide, and Acknowledgments separated by `|`.
+- **PKG-051**: MUST place the README.md status line and IMPORTANT NOTICE line in one final header `<p align="center">` block separated by `<br>`.
+- **PKG-052**: After its title, README.md MUST contain exactly these level-1 sections in order: Feature Highlights, Quick Start, Requirements, User's Guide, Documentation, License, Acknowledgments.
+- **PKG-053**: MUST present README.md Quick Start steps in the order installation, configuration, execution, deferring optional configuration details to the User's Guide.
 
 ## 3. Requirements
 

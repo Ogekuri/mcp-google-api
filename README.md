@@ -19,15 +19,25 @@
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-6A7EC2?style=flat-square&logo=terminal&logoColor=white" alt="Platforms">
 </p>
 
-**MCP Google API server** — Google APIs for AI agents over the [Model Context Protocol](https://modelcontextprotocol.io).
+<p align="center">
+  <strong>MCP Google API server — Google APIs for AI agents over the <a href="https://modelcontextprotocol.io">Model Context Protocol</a></strong>
+  <br>
+  The server exposes Google API families to AI agents over stdio or Streamable HTTP. The currently implemented family is <strong>Google Maps</strong>, providing 18 read-only tools: geocoding and reverse geocoding, Places API (New) text/nearby search with server-side filters (<code>priceLevels</code>, <code>minRating</code>, <code>strictTypeFiltering</code>), place details, directions, distance matrix, timezone, elevation, weather, air quality, static maps, batch geocode, and the composite tools explore-area, plan-route, compare-places, search-along-route, and local-rank-tracker. Tools are declared read-only, non-destructive, idempotent, and open-world via MCP annotations. The server ships the <strong>eatspot-discovery</strong> agent skill for budget-, quality-, category-, and schedule-validated venue search, and installs itself plus its skills into supported CLI agents (pi, OpenClaw, Codex, Antigravity, Claude) with one command.
+</p>
 
-The server exposes Google API families to AI agents over stdio or Streamable HTTP. The currently implemented family is **Google Maps**, providing 18 read-only tools: geocoding and reverse geocoding, Places API (New) text/nearby search with server-side filters (`priceLevels`, `minRating`, `strictTypeFiltering`), place details, directions, distance matrix, timezone, elevation, weather, air quality, static maps, batch geocode, and the composite tools explore-area, plan-route, compare-places, search-along-route, and local-rank-tracker. Tools are declared read-only, non-destructive, idempotent, and open-world via MCP annotations. The server ships the **eatspot-discovery** agent skill for budget-, quality-, category-, and schedule-validated venue search, and installs itself plus its skills into supported CLI agents (pi, OpenClaw, Codex, Antigravity, Claude) with one command.
+<p align="center">
+  <a href="#feature-highlights">Feature Highlights</a> |
+  <a href="#quick-start">Quick Start</a> |
+  <a href="#requirements">Requirements</a> |
+  <a href="#users-guide">User's Guide</a> |
+  <a href="#acknowledgments">Acknowledgments</a>
+</p>
 
-[Feature Highlights](#feature-highlights) | [Quick Start](#quick-start) | [User's Guide](#users-guide) | [Acknowledgments](#acknowledgments)
-
-🚧 **DRAFT:** Proof-of-Concept (PoC) Version 📝 — Work in Progress 🏗️ 🚧
-
-⚠️ **IMPORTANT NOTICE**: Created with [**PI-useReq/pi-usereq**](https://www.npmjs.com/package/pi-usereq) 🤖✨ ⚠️
+<p align="center">
+  🚧 <strong>STAGE:</strong> PRE-ALPHA 📝 — Proof-of-Concept (PoC), Work in Progress 🏗️ 🚧
+  <br>
+  ⚠️ <strong>IMPORTANT NOTICE</strong>: Created with <a href="https://www.npmjs.com/package/pi-usereq"><strong>PI-useReq/pi-usereq</strong></a> 🤖✨ ⚠️
+</p>
 
 # Feature Highlights
 
