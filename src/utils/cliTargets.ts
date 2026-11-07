@@ -2,7 +2,7 @@
  * @file cliTargets.ts
  * @brief Provide per-CLI MCP-configuration and skills-destination adapters.
  * @details Defines one adapter for each supported CLI agent (`pi`,
- * `openclaw`, `codex`, `antigravity`, `claude`) resolving the MCP
+ * `openclaw`, `codex`, `antigravity`, `claude`, `copilot`) resolving the MCP
  * configuration file and the skills destination directory from an injectable
  * home root. MCP registration applies read-modify-write: JSON targets merge
  * the `mcpServers["mcp-google-api"]` entry preserving every unrelated key;
@@ -32,9 +32,9 @@ import { join, relative, resolve } from "node:path";
 
 /**
  * @brief Canonical identifiers of the supported CLI agents.
- * @details Registry order: pi, openclaw, codex, antigravity, claude.
+ * @details Registry order: pi, openclaw, codex, antigravity, claude, copilot.
  */
-export type CliTargetId = "pi" | "openclaw" | "codex" | "antigravity" | "claude";
+export type CliTargetId = "pi" | "openclaw" | "codex" | "antigravity" | "claude" | "copilot";
 
 /**
  * @brief MCP-server registration entry written into CLI configurations.
@@ -110,6 +110,14 @@ const CLAUDE_TARGET: CliTarget = {
   skillsDir: (home) => join(homeRoot(home), ".claude", "skills"),
 };
 
+/** @brief copilot adapter: `~/.copilot/mcp.json` + `~/.copilot/skills`. */
+const COPILOT_TARGET: CliTarget = {
+  id: "copilot",
+  configFormat: "json",
+  mcpConfigPath: (home) => join(homeRoot(home), ".copilot", "mcp.json"),
+  skillsDir: (home) => join(homeRoot(home), ".copilot", "skills"),
+};
+
 /**
  * @brief Registry of supported CLI adapters keyed by canonical name.
  * @details Insertion order defines the `show` CLI Configuration table order
@@ -122,13 +130,14 @@ export const CLI_TARGETS: Record<CliTargetId, CliTarget> = {
   codex: CODEX_TARGET,
   antigravity: ANTIGRAVITY_TARGET,
   claude: CLAUDE_TARGET,
+  copilot: COPILOT_TARGET,
 };
 
 /**
  * @brief Resolve a CLI adapter by user-supplied name.
  * @details Trims surrounding whitespace and lowercases before the registry
- * lookup, matching `pi`, `openclaw`, `codex`, `antigravity`, `claude`
- * case-insensitively.
+ * lookup, matching `pi`, `openclaw`, `codex`, `antigravity`, `claude`,
+ * `copilot` case-insensitively.
  * @param name {string} CLI name from the command line.
  * @return {CliTarget | undefined} Matching adapter; undefined when unsupported.
  * @satisfies REQ-110
@@ -139,7 +148,7 @@ export function resolveCliTarget(name: string): CliTarget | undefined {
 
 /**
  * @brief Comma-separated list of supported CLI names for diagnostics.
- * @return {string} Ordered `pi, openclaw, codex, antigravity, claude`.
+ * @return {string} Ordered `pi, openclaw, codex, antigravity, claude, copilot`.
  * @satisfies REQ-110
  */
 export function supportedCliNames(): string {

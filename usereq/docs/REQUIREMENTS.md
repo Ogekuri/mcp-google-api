@@ -164,7 +164,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **DES-014**: MUST implement doctor self-checks decoupled from server startup with injectable tool runner, Node version, and configuration dependencies for testing (`runDoctor`, `src/cli.ts`).
 - **DES-015**: MUST resolve runtime configuration (host, port, enabled tools) in one typed resolver consuming the persisted settings file plus per-invocation CLI flag overrides; the API key and update flag resolve from the persisted settings.
 - **DES-016**: MUST mask secret values via a single masking helper in every diagnostic and command report.
-- **DES-017**: MUST implement per-CLI target adapters for pi, openclaw, codex, antigravity, and claude resolving each MCP configuration file and skills destination directory from an injectable home root.
+- **DES-017**: MUST implement per-CLI target adapters for pi, openclaw, codex, antigravity, claude, and copilot resolving each MCP configuration file and skills destination directory from an injectable home root.
 - **DES-018**: MUST persist `{ "enabled": [<cli>...], "apiKey": "", "autoUpdate": true, "enabledTools": "*", "host": "127.0.0.1", "port": 3000 }` JSON at `~/.config/mcp-google-api/config.json`, tolerating missing or malformed content and writing atomically; `apiKey` follows DES-023, `autoUpdate` follows DES-024, and `enabledTools`/`host`/`port` follow REQ-167/REQ-168/REQ-169 with default-normalizing loaders.
 - **DES-021**: MUST derive the enabled-CLI settings directory from the distribution program name `mcp-google-api`; shared or generic directories such as `~/.config/skills/` MUST NOT be used.
 - **DES-019**: MUST apply MCP-server registration through read-modify-write preserving every unrelated configuration entry, with atomic temporary-file replacement.
@@ -351,14 +351,14 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-160**: The `eatspot-discovery` debug file MUST define the debug output section, the per-call JSON register schema, bounded raw capture, and provenance rules for every executed tool call.
 
 #### CLI Configuration Management
-- **REQ-110**: MUST resolve CLI names pi, openclaw, codex, antigravity, claude case-insensitively; unsupported names MUST fail listing supported names.
+- **REQ-110**: MUST resolve CLI names pi, openclaw, codex, antigravity, claude, copilot case-insensitively; unsupported names MUST fail listing supported names.
 - **REQ-111**: `enable <cli>` MUST add and `disable <cli>` MUST remove the resolved CLI name in the persisted enabled set; both MUST be idempotent.
-- **REQ-112**: MUST resolve MCP configuration files: pi `~/.pi/agent/mcp.json`, openclaw `~/.openclaw/openclaw.json`, codex `~/.codex/config.toml` (`mcp_servers` table), antigravity `~/.gemini/settings.json`, claude `~/.claude.json` (JSON `mcpServers` map).
-- **REQ-113**: MUST resolve skills directories: pi `~/.pi/agent/skills`, openclaw `~/.openclaw/workspace/skills`, codex `~/.codex/skills`, antigravity `~/.gemini/config/skills`, claude `~/.claude/skills`.
+- **REQ-112**: MUST resolve MCP configuration files: pi `~/.pi/agent/mcp.json`, openclaw `~/.openclaw/openclaw.json`, codex `~/.codex/config.toml` (`mcp_servers` table), antigravity `~/.gemini/settings.json`, claude `~/.claude.json`, copilot `~/.copilot/mcp.json` (JSON `mcpServers` map).
+- **REQ-113**: MUST resolve skills directories: pi `~/.pi/agent/skills`, openclaw `~/.openclaw/workspace/skills`, codex `~/.codex/skills`, antigravity `~/.gemini/config/skills`, claude `~/.claude/skills`, copilot `~/.copilot/skills`.
 - **REQ-114**: `install` MUST register per enabled CLI the stdio entry `mcp-google-api` launching `npx -y mcp-google-api start --stdio` with no embedded API key or environment payload, and install every manifest skill.
 - **REQ-115**: `uninstall` MUST remove per enabled CLI the `mcp-google-api` MCP entry and managed skill directories; absent entries MUST count as removed without failure.
 - **REQ-116**: `install` and `uninstall` MUST process enabled CLIs only, report per-CLI counts, continue on per-CLI failures, and exit 1 when any failure occurs.
-- **REQ-117**: `show` MUST print a CLI Configuration table with columns CLI, Enabled, MCP Config Path, Skills Config Path covering all five supported CLIs in registry order.
+- **REQ-117**: `show` MUST print a CLI Configuration table with columns CLI, Enabled, MCP Config Path, Skills Config Path covering all six supported CLIs in registry order.
 - **REQ-118**: `show` MUST print an Installation Status table with columns Type, Name, CLI, Enabled, Installed listing the server and each manifest skill per enabled CLI with OK, MISSING, or STALE status.
 - **REQ-119**: `install` and `uninstall` with zero enabled CLIs MUST print the enable hint and exit 0; `show` MUST always print the CLI Configuration table.
 - **REQ-136**: `api-key <key>` MUST persist the supplied Google Maps API key into the DES-018 user settings file before running any install operation.

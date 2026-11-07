@@ -68,7 +68,7 @@ mcp-google-api api-key "AIza..."
 mcp-google-api doctor          # local self-check: Node, package, key, settings (no network)
 ```
 
-**3. Run** — register the server into your CLI agents (supported: `pi`, `openclaw`, `codex`, `antigravity`, `claude`), then start it:
+**3. Run** — register the server into your CLI agents (supported: `pi`, `openclaw`, `codex`, `antigravity`, `claude`, `copilot`), then start it:
 
 ```bash
 mcp-google-api enable pi
@@ -139,10 +139,11 @@ The `--host` and `--port` flags override the persisted settings for a single `st
 | codex | `~/.codex/config.toml` (`mcp_servers` table) | `~/.codex/skills` |
 | antigravity | `~/.gemini/settings.json` | `~/.gemini/config/skills` |
 | claude | `~/.claude.json` | `~/.claude/skills` |
+| copilot | `~/.copilot/mcp.json` | `~/.copilot/skills` |
 
 - **pi**: after installing, run `/reload` in the session if the configuration was changed externally; `/mcp` inspects status, tools, and connection errors.
 - **OpenClaw**: reload the gateway or restart the agent session so the new server gets connected.
-- `mcp-google-api show` prints the CLI Configuration table (all five agents) and the Installation Status table (server + each skill per enabled CLI with OK / MISSING / STALE).
+- `mcp-google-api show` prints the CLI Configuration table (all six agents) and the Installation Status table (server + each skill per enabled CLI with OK / MISSING / STALE).
 - `mcp-google-api install --debug-skills` additionally appends each skill's packaged debug overlay to the installed `SKILL.md`; plain installs and `api-key`/`--upgrade` refreshes never append it, and `show` reports OK in both modes.
 
 ## Running the server
