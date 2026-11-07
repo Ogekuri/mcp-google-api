@@ -20,6 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
+  buildDevelopUpgradeCommand,
   PACKAGE_UPGRADE_COMMAND,
   PACKAGE_UNINSTALL_COMMAND,
   parseManagementCommand,
@@ -28,7 +29,7 @@ import {
   type ManagementCommandDeps,
   type ManagementCommandOptions,
 } from "../src/utils/upgradeManager.js";
-import type { AutoUpdateLogger } from "../src/utils/autoUpdate.js";
+import { DEFAULT_GITHUB_RELEASES_API_URL, type AutoUpdateLogger } from "../src/utils/autoUpdate.js";
 
 /** Recorded record of one spawned child process. */
 interface RecordedSpawn {
@@ -264,4 +265,113 @@ test("runUninstallCommand_spawns_npm_uninstall_and_propagates_exit_code", async 
   assert.equal(calls[0].command, PACKAGE_UNINSTALL_COMMAND[0]);
   assert.deepEqual([...calls[0].args], [...PACKAGE_UNINSTALL_COMMAND.slice(1)]);
   assert.equal(exitCode, 5);
+});
+
+// ---------------------------------------------------------------------------
+// Level 0 — buildDevelopUpgradeCommand (pure tag-install command builder)
+// ---------------------------------------------------------------------------
+
+test("buildDevelopUpgradeCommand_builds_tagged_github_install_command", () => {
+  assert.deepEqual(
+    [...buildDevelopUpgradeCommand("v1.2.3")],
+    ["npm", "install", "-g", "github:Ogekuri/mcp-google-api#v1.2.3"]
+  );
+});
+
+// ---------------------------------------------------------------------------
+// Level 1 — runUpgradeCommand develop channel (probe-gated tagged GitHub install)
+// ---------------------------------------------------------------------------
+
+test("runUpgradeCommand_develop_channel_spawns_latest_tagged_github_release", async () => {
+  const home = createFakeHome([]);
+  try {
+    const requestedUrls: string[] = [];
+    const fetchImpl = (async (url: string | URL) => {
+      requestedUrls.push(String(url));
+      return { ok: true, json: async () => ({ tag_name: "v1.2.3" }) } as unknown as Response;
+    }) as unknown as typeof fetch;
+    const { spawnStub, calls } = createSpawnStub([{ status: 0 }]);
+    const { logger, errors } = createLoggerStub();
+    const chunks: string[] = [];
+    const stdout = { write: (data: string | Uint8Array) => void chunks.push(String(data)) } as NodeJS.WritableStream;
+    const deps: ManagementCommandDeps = {
+      ...buildDeps(spawnStub, logger, stdout),
+      githubCheck: { fetchImpl },
+    };
+    const options: ManagementCommandOptions = { currentVersion: "0.8.0", home, channel: "develop" };
+
+    // Act: run the full develop-channel flow with injected probe and children.
+    const exitCode = await runUpgradeCommand(options, deps);
+
+    // Assert: REQ-177 — exactly one forced probe, against the GitHub releases
+    // endpoint only; no npm-registry request (REQ-172 skip semantics).
+    assert.deepEqual(requestedUrls, [DEFAULT_GITHUB_RELEASES_API_URL]);
+
+    // Assert: REQ-171 — the single spawned child installs the RAW tag_name ref.
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].command, "npm");
+    assert.deepEqual([...calls[0].args], ["install", "-g", "github:Ogekuri/mcp-google-api#v1.2.3"]);
+
+    // Assert: REQ-173 — the summary reports the probed GitHub release version.
+    assert.ok(chunks.join("").includes("0.8.0 -> 1.2.3"));
+    assert.equal(exitCode, 0);
+    assert.equal(errors.length, 0);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("runUpgradeCommand_develop_channel_installs_even_when_tag_matches_installed", async () => {
+  const home = createFakeHome([]);
+  try {
+    const fetchImpl = (async () => {
+      return { ok: true, json: async () => ({ tag_name: "v0.8.0" }) } as unknown as Response;
+    }) as unknown as typeof fetch;
+    const { spawnStub, calls } = createSpawnStub([{ status: 0 }]);
+    const { logger } = createLoggerStub();
+    const deps: ManagementCommandDeps = {
+      ...buildDeps(spawnStub, logger, process.stdout),
+      githubCheck: { fetchImpl },
+    };
+    const options: ManagementCommandOptions = { currentVersion: "0.8.0", home, channel: "develop" };
+
+    const exitCode = await runUpgradeCommand(options, deps);
+
+    // Assert: REQ-172 — no installed-vs-latest comparison (the channel always
+    // downloads): the tagged GitHub update runs even when the probed tag equals
+    // the installed version; the ref carries the RAW tag_name (REQ-171).
+    assert.equal(calls.length, 1);
+    assert.deepEqual([...calls[0].args], ["install", "-g", "github:Ogekuri/mcp-google-api#v0.8.0"]);
+    assert.equal(exitCode, 0);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("runUpgradeCommand_develop_channel_fails_fast_when_github_probe_errors", async () => {
+  const home = createFakeHome(["pi"]);
+  try {
+    const fetchImpl = (async () => {
+      return { ok: false, status: 404 } as unknown as Response;
+    }) as unknown as typeof fetch;
+    const { spawnStub, calls } = createSpawnStub([{ status: 0 }]);
+    const { logger, errors } = createLoggerStub();
+    const deps: ManagementCommandDeps = {
+      ...buildDeps(spawnStub, logger, process.stdout),
+      githubCheck: { fetchImpl },
+    };
+    const options: ManagementCommandOptions = { currentVersion: "0.8.0", home, channel: "develop" };
+
+    const exitCode = await runUpgradeCommand(options, deps);
+
+    // Assert: REQ-178 — stderr diagnostic carries the probe message, no child
+    // process is spawned, and the exit code is non-zero.
+    assert.equal(exitCode, 1);
+    assert.equal(calls.length, 0);
+    assert.ok(
+      errors.some((text) => text.includes("GitHub upgrade channel probe failed") && text.includes("HTTP 404"))
+    );
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });
