@@ -283,6 +283,9 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-093**: MUST NOT embed API keys or environment variables in snippets; snippet notes MUST point to the `api-key` command as the configuration path.
 - **REQ-129**: MUST print the `--help` text on stdout and exit 0 when no command argument is supplied, without starting any server.- **REQ-130**: MUST print the application version adjacent to the first `mcp-google-api` line in help output.
 - **REQ-131**: MUST list in the help text the management commands `--upgrade`, `--uninstall`, `--ver`, and `--version`, each with a description.
+- **REQ-174**: The `--help` text MUST limit command and option descriptions to user-facing usage (purpose, arguments, defaults, examples) without internal implementation details.
+- **REQ-175**: The `--help` text MUST document the `--develop` and `--dev` upgrade-channel options of `--upgrade`.
+- **REQ-176**: The `--help` text MUST describe `--ver`/`--version` as printing the installed, npmjs-latest, and GitHub-latest versions.
 - **REQ-142**: `start`/`run` MUST resolve the effective API key exclusively from the persisted settings key (REQ-136), treating empty and placeholder values as unset.
 - **REQ-143**: `start`/`run` with `--stdio` MUST exit 1 before creating any server when REQ-142 resolves no key, printing a stderr JSON error naming the `api-key` command.
 

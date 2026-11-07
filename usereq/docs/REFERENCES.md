@@ -46,7 +46,7 @@
         └── upgradeManager.ts
 ```
 
-# cli.ts | TypeScript | 1823L | 38 symbols | 20 imports | 60 comments
+# cli.ts | TypeScript | 1824L | 38 symbols | 20 imports | 60 comments
 > Path: `src/cli.ts`
 
 ## Imports

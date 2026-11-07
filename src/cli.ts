@@ -1193,12 +1193,12 @@ if (isRunDirectly || isMainModule) {
         .option("port", {
           alias: "p",
           type: "number",
-          description: "Port to run the MCP server on (default: persisted 'port' setting)",
+          description: "Port to run the MCP server on (default: configured 'port' setting or 3000)",
           default: settings.port,
         })
         .option("host", {
           type: "string",
-          description: "Hostname to bind the server to (default: persisted 'host' setting; 0.0.0.0 for all interfaces)",
+          description: "Hostname to bind the server to (default: configured 'host' setting or 127.0.0.1; 0.0.0.0 for all interfaces)",
           default: settings.host,
         })
         .option("stdio", {
@@ -1330,7 +1330,7 @@ if (isRunDirectly || isMainModule) {
             .option("apikey", {
               alias: "k",
               type: "string",
-              description: "Google Maps API key override for live probes (default: persisted api-key setting)",
+              description: "Google Maps API key override for live probes (default: configured api-key setting)",
             })
             .example([
               ["$0 doctor", "Check local runtime and API key configuration without network calls"],
@@ -1378,7 +1378,7 @@ if (isRunDirectly || isMainModule) {
             })
             .option("command", {
               type: "string",
-              description: "Absolute path to dist/cli.js (required for --launcher node)",
+              description: "Absolute path to the CLI entry script (required for --launcher node)",
             })
             .option("host", {
               type: "string",
@@ -1423,7 +1423,7 @@ if (isRunDirectly || isMainModule) {
             })
             .option("home", {
               type: "string",
-              description: "Home-directory override for the settings file (default: user home)",
+              description: "Home-directory override (default: user home)",
             })
             .example([["$0 enable pi", "Enable pi for install/uninstall/show"]]),
         (argv) => {
@@ -1443,7 +1443,7 @@ if (isRunDirectly || isMainModule) {
             })
             .option("home", {
               type: "string",
-              description: "Home-directory override for the settings file (default: user home)",
+              description: "Home-directory override (default: user home)",
             })
             .example([["$0 disable claude", "Disable claude for install/uninstall/show"]]),
         (argv) => {
@@ -1454,7 +1454,7 @@ if (isRunDirectly || isMainModule) {
       )
       .command(
         "auto-update <state>",
-        "Enable or disable the automatic update check in the persisted configuration",
+        "Enable or disable the automatic update check at startup",
         (yargs) =>
           yargs
             .positional("state", {
@@ -1463,11 +1463,11 @@ if (isRunDirectly || isMainModule) {
             })
             .option("home", {
               type: "string",
-              description: "Home-directory override for the settings file (default: user home)",
+              description: "Home-directory override (default: user home)",
             })
             .example([[
               "$0 auto-update disable",
-              "Disable the automatic update check in the persisted configuration",
+              "Disable the automatic update check",
             ]]),
         (argv) => {
           process.exitCode = runAutoUpdateCommand(argv.state as string | undefined, {
@@ -1477,7 +1477,7 @@ if (isRunDirectly || isMainModule) {
       )
       .command(
         "tools <tools>",
-        "Persist the enabled-tool allowlist in the configuration file ('*' = all 18 tools)",
+        "Set the enabled tools ('*' = all 18 tools)",
         (yargs) =>
           yargs
             .positional("tools", {
@@ -1486,7 +1486,7 @@ if (isRunDirectly || isMainModule) {
             })
             .option("home", {
               type: "string",
-              description: "Home-directory override for the settings file (default: user home)",
+              description: "Home-directory override (default: user home)",
             })
             .example([
               ["$0 tools '*'", "Expose every registered tool (default)"],
@@ -1500,7 +1500,7 @@ if (isRunDirectly || isMainModule) {
       )
       .command(
         "host <host>",
-        "Persist the HTTP bind host in the configuration file (default 127.0.0.1)",
+        "Set the HTTP bind host (default 127.0.0.1)",
         (yargs) =>
           yargs
             .positional("host", {
@@ -1509,7 +1509,7 @@ if (isRunDirectly || isMainModule) {
             })
             .option("home", {
               type: "string",
-              description: "Home-directory override for the settings file (default: user home)",
+              description: "Home-directory override (default: user home)",
             })
             .example([["$0 host 0.0.0.0", "Bind the HTTP server on all interfaces"]]),
         (argv) => {
@@ -1520,7 +1520,7 @@ if (isRunDirectly || isMainModule) {
       )
       .command(
         "port <port>",
-        "Persist the HTTP listen port in the configuration file (default 3000)",
+        "Set the HTTP listen port (default 3000)",
         (yargs) =>
           yargs
             .positional("port", {
@@ -1529,7 +1529,7 @@ if (isRunDirectly || isMainModule) {
             })
             .option("home", {
               type: "string",
-              description: "Home-directory override for the settings file (default: user home)",
+              description: "Home-directory override (default: user home)",
             })
             .example([["$0 port 3100", "Serve Streamable HTTP on port 3100"]]),
         (argv) => {
@@ -1540,7 +1540,7 @@ if (isRunDirectly || isMainModule) {
       )
       .command(
         "api-key <key>",
-        "Save the Google Maps API key in the user settings and refresh every enabled CLI registration",
+        "Save the Google Maps API key and refresh every enabled CLI registration",
         (yargs) =>
           yargs
             .positional("key", {
@@ -1549,7 +1549,7 @@ if (isRunDirectly || isMainModule) {
             })
             .option("home", {
               type: "string",
-              description: "Home-directory override for CLI configuration paths (default: user home)",
+              description: "Home-directory override (default: user home)",
             })
             .example([["$0 api-key AIzaSy...", "Save the key and reinstall every enabled CLI"]]),
         (argv) => {
@@ -1566,7 +1566,7 @@ if (isRunDirectly || isMainModule) {
           yargs
             .option("home", {
               type: "string",
-              description: "Home-directory override for CLI configuration paths (default: user home)",
+              description: "Home-directory override (default: user home)",
             })
             .option("debug-skills", {
               type: "boolean",
@@ -1594,7 +1594,7 @@ if (isRunDirectly || isMainModule) {
           yargs
             .option("home", {
               type: "string",
-              description: "Home-directory override for CLI configuration paths (default: user home)",
+              description: "Home-directory override (default: user home)",
             })
             .example([["$0 uninstall", "Reciprocal removal of install for every enabled CLI"]]),
         (argv) => {
@@ -1611,7 +1611,7 @@ if (isRunDirectly || isMainModule) {
           yargs
             .option("home", {
               type: "string",
-              description: "Home-directory override for CLI configuration paths (default: user home)",
+              description: "Home-directory override (default: user home)",
             })
             .example([["$0 show", "Print CLI Configuration and Installation Status tables"]]),
         (argv) => {
@@ -1809,10 +1809,11 @@ if (isRunDirectly || isMainModule) {
       .version(packageVersion)
       .alias("version", "v")
       .epilog(
-        `Management commands (single flags, dispatched before subcommands):\n` +
-          `  --ver         Print the installed version and force one update check\n` +
+        `Management commands (single flags):\n` +
+          `  --ver         Print the installed, npmjs-latest, and GitHub-latest versions\n` +
           `  --version     Alias of --ver\n` +
           `  --upgrade     Upgrade the global package to the latest version and refresh installed skills\n` +
+          `                --develop | --dev: install from the GitHub develop branch\n` +
           `  --uninstall   Remove the globally installed mcp-google-api package`
       )
       .help();
