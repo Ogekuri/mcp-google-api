@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.22.4](https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.22.4) - 2026-11-07
+## [0.23.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.23.0) - 2026-11-07
 ### ⛰️  Features
 - add copilot CLI agent support (DES-017, REQ-110/112/113/117) [useReq] *(cli-targets)*
   - Requirements: extend DES-017, REQ-110, REQ-112, REQ-113, REQ-117 with the copilot target
@@ -9,6 +9,18 @@
   - Verification: eslint/tsc clean, npm test 132/132 pass, enable/show/install runtime smoke on isolated HOME
 
 ### 🐛  Bug Fixes
+- build dist via prepare lifecycle for GitHub installs [useReq] *(packaging)*
+  - Develop-channel installs (npm install -g github:Ogekuri/mcp-google-api#<tag>,
+  - REQ-171) packed the fetched git tree without dist/: no build lifecycle ran, so
+  - every installed package hit the PRJ-021 remediation error and the post-upgrade
+  - install child failed (evidence: v0.22.4 pack listing had 0 dist entries).
+  - package.json: declare scripts.prepare = npm run build so npm git-dep
+  - preparation builds dist/ into the packed tarball (PRJ-020; verified by
+  - local git-sim packs: 8 dist entries incl. dist/cli.js).
+  - tests/npmPublishContract.unit.test.ts: add failing-first reproducer test
+  - pinning the prepare lifecycle contract (no chained installs, PKG-019) and
+  - restore deterministic pack listing via --ignore-scripts.
+  - usereq/docs/WORKFLOW.md: document the prepare build inside EDGE-09.
 - spawn package-manager child with neutral home cwd [useReq] *(upgrade)*
   - Defect: --upgrade (npm and --dev|--develop channels) and --uninstall
   - spawned npm from the caller's working directory. When invoked from the
@@ -39,6 +51,26 @@
   - WORKFLOW.md TRACE-A/EDGE-06 and regenerate REFERENCES.md.
 
 ### 🚜  Changes
+- make --upgrade update unconditionally [useReq] *(upgradeManager)*
+  - --upgrade now reinstalls mcp-google-api@latest in every invocation,
+  - without any pre-upgrade version comparison (REQ-146 rewrite).
+  - Removed the pre-upgrade registry necessity check and the
+  - already-latest skip path (REQ-144, REQ-145, REQ-147 deleted) and the
+  - pre-upgrade-latest summary shortcut (REQ-181 deleted); REQ-172
+  - reworded since the comparison no longer exists.
+  - The summary updated version now comes from the post-upgrade probe
+  - (REQ-134); unused isUpgradeNecessary removed.
+  - Requirements, workflow model, and references updated; typecheck and
+  - 136 unit tests pass.
+- self-heal npm reify ENOENT in --upgrade [useReq] *(upgradeManager)*
+  - --upgrade update children (npm and --develop/--dev channels) run with
+  - captured output echoed on stderr (REQ-125, REQ-171).
+  - A non-zero exit carrying an ENOENT reify diagnostic triggers one
+  - tolerated npm uninstall -g clean-slate child plus a single retry,
+  - repairing corrupted global trees whose dependency lifecycle spawns
+  - fail like the reported 'spawn sh ENOENT' (REQ-182, REQ-183).
+  - Requirements, workflow model, and references updated; typecheck and
+  - 136 unit tests pass.
 - resolve npmjs latest via packument manifest [useReq] *(upgradeManager)*
   - --ver/--version now probe the npm packument manifest with the
   - abbreviated Accept header and print dist-tags.latest (REQ-179, REQ-180).
@@ -523,7 +555,7 @@
 - \[0.20.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.20.0
 - \[0.21.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.21.0
 - \[0.22.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.22.0
-- \[0.22.4\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.22.4
+- \[0.23.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.23.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.2.0..v0.3.0
@@ -545,4 +577,4 @@
 [0.20.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.19.0..v0.20.0
 [0.21.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.20.0..v0.21.0
 [0.22.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.21.0..v0.22.0
-[0.22.4]: https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.22.4
+[0.23.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.23.0
