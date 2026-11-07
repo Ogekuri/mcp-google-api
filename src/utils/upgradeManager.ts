@@ -10,10 +10,9 @@
  * installed/npmjs/GitHub latest-version report (REQ-120, REQ-161, REQ-162,
  * REQ-163, REQ-164); `--upgrade` accepts the `--develop` option and its
  * equivalent `--dev` alias selecting the latest tagged GitHub release as the
- * install source (REQ-170, REQ-177); in the default npm channel it first probes the
- * registry and proceeds only when an upgrade is necessary or necessity is
- * undeterminable (REQ-144, REQ-145, REQ-146,
- * REQ-147), reinstalls the latest package via npm, re-runs the upgraded
+ * install source (REQ-170, REQ-177); in the default npm channel it reinstalls
+ * the latest package via npm in every invocation without any pre-upgrade
+ * version comparison (REQ-125, REQ-146), re-runs the upgraded
  * package's `install` child command with captured stdout so packaged skills
  * and MCP registrations refresh from the upgraded package (REQ-125, REQ-126),
  * and prints a human-readable stdout summary with starting/updated versions,
@@ -842,8 +841,7 @@ function resolveProbeLatestVersion(probe: LatestVersionProbe): string {
  * delegates the outcome-to-version mapping to `resolveProbeLatestVersion`:
  * `newer` maps to the registry latest version, `current` to the running
  * version, and every other outcome to `unknown` (REQ-134). Never throws.
- * Invoked by `runUpgradeCommand` only when the pre-upgrade probe did not
- * resolve an npmjs latest version (REQ-181).
+ * Invoked by `runUpgradeCommand` after the package-update child succeeds.
  * @param options {ManagementCommandOptions} Options carrying `currentVersion`.
  * @param deps {ManagementCommandDeps} Optional idle-check dependency overrides.
  * @return {Promise<string>} Updated version string; `unknown` when undeterminable.
@@ -898,22 +896,6 @@ export async function runVersionCommand(
 }
 
 /**
- * @brief Decides whether the `--upgrade` flow must proceed after the pre-upgrade check.
- * @details Decision table over `LatestVersionProbe.status`: `newer` -> true
- * (REQ-146); `current` -> false (REQ-145: the installed version is already
- * the latest available); `disabled`, `unknown-version`, `error` -> true
- * (REQ-147: upgrade necessity undeterminable, legacy update path preserved).
- * @param status {LatestVersionProbe["status"]} Status of the pre-upgrade registry probe.
- * @return {boolean} True when the REQ-125 package-update child process must run.
- * @satisfies REQ-144, REQ-145, REQ-146, REQ-147
- * @note Complexity: O(1). Pure; no side effects.
- * @see probeLatestVersion
- */
-function isUpgradeNecessary(status: LatestVersionProbe["status"]): boolean {
-  return status !== "current";
-}
-
-/**
  * @brief Handles `--upgrade`: channel selection, package reinstall, then refresh skills with a stdout summary.
  * @details Develop channel (`options.channel === "develop"`, selected by the
  * `--develop` option or its equivalent `--dev` alias, REQ-170): skips the
@@ -924,32 +906,23 @@ function isUpgradeNecessary(status: LatestVersionProbe["status"]): boolean {
  * returns 1 without spawning any child process (REQ-178); on success it runs
  * `buildDevelopUpgradeCommand(tag)` (REQ-171), then the post-upgrade
  * install and summary with the probed latest GitHub release version as the
- * updated version (REQ-173). Default npm channel
- * resolution order: one forced logging-free `probeLatestVersion`
- * registry probe bypassing the idle cache gate (REQ-144) -> `current` status
- * writes the already-latest stdout line including the installed version and
- * returns 0 without spawning any child process (REQ-145) -> any other
- * outcome proceeds to the update path (`newer` per REQ-146;
- * `disabled`/`unknown-version`/`error` per REQ-147). The update path runs the
+ * updated version (REQ-173). Default npm channel: unconditional flow with no
+ * pre-upgrade version comparison (REQ-146): the update path runs the
  * package-update child via `runPackageUpdateCommand` with captured output
  * echoed on stderr; a non-zero exit carrying an ENOENT reify diagnostic
  * triggers one tolerated clean-slate uninstall plus a single update retry
  * (REQ-182, REQ-183) and propagates the final exit code unchanged without
- * printing any summary; on success
- * resolves the updated version from the pre-upgrade probe's npmjs latest when
- * that probe reported a newer version, avoiding a second registry round-trip
- * (REQ-181), else via one post-upgrade registry probe (REQ-134), runs the
+ * printing any summary; on success resolves the updated version via one
+ * post-upgrade registry probe (REQ-134), runs the
  * captured-stdout post-upgrade install (REQ-126), prints the
  * human-readable stdout summary with starting version, updated version,
  * install outcome, and per-CLI entries (REQ-132, REQ-133), and returns the
  * post-upgrade install exit code.
  * @param options {ManagementCommandOptions} Options carrying `currentVersion`, `home`, and `channel`.
  * @param deps {ManagementCommandDeps} Optional spawner/idle-check/stdout overrides.
- * @return {Promise<number>} 0 when the installed version is already the latest available; otherwise the upgrade exit code when non-zero, else the post-upgrade install exit code.
- * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-144, REQ-145, REQ-146, REQ-147, REQ-170, REQ-171, REQ-172, REQ-173, REQ-177, REQ-178, REQ-181, REQ-182, REQ-183
- * @see probeLatestVersion
+ * @return {Promise<number>} The upgrade exit code when non-zero, else the post-upgrade install exit code.
+ * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-146, REQ-170, REQ-171, REQ-172, REQ-173, REQ-177, REQ-178, REQ-182, REQ-183
  * @see probeLatestGitHubVersion
- * @see isUpgradeNecessary
  * @see runPackageManagerCommand
  * @see runPackageUpdateCommand
  * @see buildDevelopUpgradeCommand
@@ -976,25 +949,12 @@ export async function runUpgradeCommand(
     stdout.write(renderUpgradeSummary(options.currentVersion, githubProbe.version, outcome));
     return outcome.exitCode;
   }
-  const precheck = await probeLatestVersion({
-    ...deps.idleCheck,
-    currentVersion: options.currentVersion,
-  });
-  if (!isUpgradeNecessary(precheck.status)) {
-    const stdout = deps.stdout ?? process.stdout;
-    stdout.write(
-      `${DEFAULT_PACKAGE_NAME} ${options.currentVersion} is already the latest available version.\n`
-    );
-    return 0;
-  }
-  // REQ-181: reuse the pre-upgrade npmjs latest when resolved (`newer`); the
-  // post-upgrade probe only backs the undeterminable precheck outcomes (REQ-134).
-  const knownLatest = precheck.status === "newer" ? precheck.latestVersion : undefined;
+  // REQ-146: unconditional package update — no pre-upgrade version comparison.
   const upgraded = runPackageUpdateCommand(PACKAGE_UPGRADE_COMMAND, deps);
   if (upgraded !== 0) {
     return upgraded;
   }
-  const updatedVersion = knownLatest ?? (await resolveUpdatedVersion(options, deps));
+  const updatedVersion = await resolveUpdatedVersion(options, deps);
   const outcome = runPostUpgradeSkillInstall(options, deps);
   const stdout = deps.stdout ?? process.stdout;
   stdout.write(renderUpgradeSummary(options.currentVersion, updatedVersion, outcome));

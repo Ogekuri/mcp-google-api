@@ -323,19 +323,16 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-132**: MUST print on stdout a human-readable summary after a successful `--upgrade` package update stating the starting version, the updated version, and the post-upgrade install outcome.
 - **REQ-133**: MUST list in the `--upgrade` summary one entry per processed CLI with its name and per-CLI install result.
 - **REQ-134**: MUST print `unknown` as the updated version in the `--upgrade` summary when the post-upgrade latest-version probe fails.
-- **REQ-135**: MUST derive the `--upgrade` summary CLI list from persisted enabled settings when the child `install` output is absent or unparseable.- **REQ-144**: In the default npm channel, `--upgrade` MUST first run one online npm-registry latest-version check comparing the installed version, bypassing the idle cache gate, before spawning any child process.
-- **REQ-145**: When the pre-upgrade check reports no newer version, `--upgrade` MUST print on stdout that the installed version is the latest available including the version number, terminate with exit code 0, and spawn no child process.
-- **REQ-146**: `--upgrade` MUST proceed with the REQ-125 package update, the REQ-126 post-upgrade install, and the REQ-132 summary exactly when the pre-upgrade check reports a newer available version.
-- **REQ-147**: When the pre-upgrade check cannot determine a newer version (installed version unknown or probe failure), `--upgrade` MUST proceed with the package update.
+- **REQ-135**: MUST derive the `--upgrade` summary CLI list from persisted enabled settings when the child `install` output is absent or unparseable.
+- **REQ-146**: `--upgrade` MUST run the REQ-125 package update, the REQ-126 post-upgrade install, and the REQ-132 summary in every default-channel invocation.
 - **REQ-170**: `--upgrade` MUST accept a `--develop` option and its equivalent alias `--dev`, selecting the latest tagged GitHub release as the package install source.
 - **REQ-171**: With `--develop` or `--dev` selected, `--upgrade` MUST run `npm install -g github:Ogekuri/mcp-google-api#<tag>` where `<tag>` is the latest release `tag_name` (REQ-177), echoing its captured output on stderr and propagating its exit code.
-- **REQ-172**: The develop-channel `--upgrade` MUST skip the REQ-144 registry comparison and the REQ-145 already-latest skip path, always proceeding with the tagged GitHub update regardless of the installed version or the branch carrying the tag.
+- **REQ-172**: The develop-channel `--upgrade` MUST install the latest tagged GitHub release in every invocation regardless of the installed version or the branch carrying the tag.
 - **REQ-173**: The develop-channel `--upgrade` summary MUST report the probed latest GitHub release version (REQ-177) as the updated version.
 - **REQ-177**: The develop-channel `--upgrade` MUST run one forced probe of `https://api.github.com/repos/Ogekuri/mcp-google-api/releases/latest` bypassing the idle cache gate before spawning any child process.
 - **REQ-178**: When the develop-channel GitHub probe fails, `--upgrade` MUST print a stderr diagnostic carrying the probe message, spawn no child process, and exit non-zero.
 - **REQ-179**: The `--ver`/`--version` npm probe MUST fetch the npm registry packument manifest listing all published package versions using the abbreviated-manifest Accept header.
 - **REQ-180**: The `--ver`/`--version` npm probe MUST resolve the npmjs latest version from the packument `dist-tags.latest` field.
-- **REQ-181**: In the default npm channel, `--upgrade` MUST report the npmjs latest version resolved by its pre-upgrade registry probe as the summary updated version when that probe reports a newer version.
 - **REQ-182**: When a `--upgrade` package-update child exits non-zero with an ENOENT diagnostic in its captured stderr, `--upgrade` MUST run one tolerated `npm uninstall -g mcp-google-api` child and retry the package update once.
 - **REQ-183**: `--upgrade` MUST propagate the final non-zero exit code of the recovery retry and spawn no further recovery children after it.
 - **REQ-148**: The `auto-update <value>` command MUST accept `enable`, `disable`, `1`, and `0` case-insensitively, resolving to the boolean automatic-update enablement.
