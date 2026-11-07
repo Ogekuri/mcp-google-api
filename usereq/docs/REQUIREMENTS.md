@@ -303,17 +303,21 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-122**: MUST persist cache fields `last_success_epoch`, `last_success_human`, `idle_time_epoch`, and `idle_time_human` (ISO-8601 UTC) after each executed check, tolerating missing or malformed cache content.
 - **REQ-123**: MUST set the idle window to 3600 seconds when a newer version is found and 86400 seconds otherwise.
 - **REQ-124**: MUST report each executed check on stderr only: `Available Version: <latest> | Installed Version: <current>` plus an upgrade command when newer and an error notice on failure; it MUST emit no output when no newer version exists.
-- **REQ-125**: MUST implement `--upgrade` to run `npm install -g mcp-google-api@latest` as a child process with inherited stdio, propagating its exit code.
+- **REQ-125**: In the default npm channel, `--upgrade` MUST run `npm install -g mcp-google-api@latest` as a child process with inherited stdio, propagating its exit code.
 - **REQ-126**: MUST, after a successful `--upgrade` with at least one enabled CLI, run the upgraded package's `install` child command without `--debug-skills` with captured stdout, refreshing skills and MCP registrations without echoing the child activity report.
 - **REQ-127**: MUST implement `--uninstall` to run `npm uninstall -g mcp-google-api` as a child process with inherited stdio, propagating its exit code.
 - **REQ-128**: MUST print the manual package-manager command and return exit code 1 when a management child process fails to spawn.
 - **REQ-132**: MUST print on stdout a human-readable summary after a successful `--upgrade` package update stating the starting version, the updated version, and the post-upgrade install outcome.
 - **REQ-133**: MUST list in the `--upgrade` summary one entry per processed CLI with its name and per-CLI install result.
 - **REQ-134**: MUST print `unknown` as the updated version in the `--upgrade` summary when the post-upgrade latest-version probe fails.
-- **REQ-135**: MUST derive the `--upgrade` summary CLI list from persisted enabled settings when the child `install` output is absent or unparseable.- **REQ-144**: `--upgrade` MUST first run one online npm-registry latest-version check comparing the installed version, bypassing the idle cache gate, before spawning any child process.
+- **REQ-135**: MUST derive the `--upgrade` summary CLI list from persisted enabled settings when the child `install` output is absent or unparseable.- **REQ-144**: In the default npm channel, `--upgrade` MUST first run one online npm-registry latest-version check comparing the installed version, bypassing the idle cache gate, before spawning any child process.
 - **REQ-145**: When the pre-upgrade check reports no newer version, `--upgrade` MUST print on stdout that the installed version is the latest available including the version number, terminate with exit code 0, and spawn no child process.
 - **REQ-146**: `--upgrade` MUST proceed with the REQ-125 package update, the REQ-126 post-upgrade install, and the REQ-132 summary exactly when the pre-upgrade check reports a newer available version.
 - **REQ-147**: When the pre-upgrade check cannot determine a newer version (installed version unknown or probe failure), `--upgrade` MUST proceed with the package update.
+- **REQ-170**: `--upgrade` MUST accept a `--develop` option and its equivalent alias `--dev`, selecting the GitHub `develop` branch as the package install source.
+- **REQ-171**: With `--develop` or `--dev` selected, `--upgrade` MUST run `npm install -g github:Ogekuri/mcp-google-api#develop` with inherited stdio, propagating its exit code.
+- **REQ-172**: The develop-channel `--upgrade` MUST skip the REQ-144 registry comparison and the REQ-145 already-latest skip path, proceeding directly with the package update.
+- **REQ-173**: The develop-channel `--upgrade` summary MUST report `unknown` as the updated version because the npm registry carries no develop builds.
 - **REQ-148**: The `auto-update <value>` command MUST accept `enable`, `disable`, `1`, and `0` case-insensitively, resolving to the boolean automatic-update enablement.
 - **REQ-149**: `auto-update` MUST persist the resolved boolean into the DES-018 settings `autoUpdate` field with an atomic write before printing any result.
 - **REQ-150**: `auto-update` MUST print on stdout a human-readable confirmation naming the resulting automatic-update state and exit 0.

@@ -11,7 +11,7 @@ import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
 import { readFileSync, writeFileSync, existsSync, realpathSync } from "fs";
 import { createInterface } from "readline";
-import { checkVersionIdle, parseManagementCommand, runManagementCommand } from "./utils/upgradeManager.js";
+import { checkVersionIdle, parseManagementCommand, parseUpgradeChannel, runManagementCommand } from "./utils/upgradeManager.js";
 import {
   NODE_ENGINE_FLOOR,
   describeRuntimeConfig,
@@ -1161,10 +1161,13 @@ if (isRunDirectly || isMainModule) {
   // Top-level management commands (--ver/--version/--upgrade/--uninstall) are
   // dispatched before yargs because they are flags, not subcommands. The
   // forced idle-bypassing version check and the child-process upgrade flows
-  // run exclusively here (REQ-120, REQ-125, REQ-126, REQ-127).
+  // run exclusively here (REQ-120, REQ-125, REQ-126, REQ-127). The --upgrade
+  // command additionally accepts the --develop option or its equivalent
+  // --dev alias selecting the GitHub develop-branch install source (REQ-170).
   const managementCommand = parseManagementCommand(hideBin(process.argv));
   if (managementCommand !== undefined) {
-    void runManagementCommand(managementCommand, { currentVersion: packageVersion })
+    const upgradeChannel = parseUpgradeChannel(hideBin(process.argv));
+    void runManagementCommand(managementCommand, { currentVersion: packageVersion, channel: upgradeChannel })
       .then((code) => {
         process.exitCode = code;
       })

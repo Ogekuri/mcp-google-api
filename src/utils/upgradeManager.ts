@@ -7,8 +7,11 @@
  * deadline is still in the future (REQ-121); `--ver`/`--version` probe npm and
  * GitHub bypassing the idle gate and print the three-line
  * installed/npmjs/GitHub latest-version report (REQ-120, REQ-161, REQ-162,
- * REQ-163, REQ-164); `--upgrade` first probes the registry and proceeds only when an upgrade is
- * necessary or necessity is undeterminable (REQ-144, REQ-145, REQ-146,
+ * REQ-163, REQ-164); `--upgrade` accepts the `--develop` option and its
+ * equivalent `--dev` alias selecting the GitHub `develop` branch as the
+ * install source (REQ-170); in the default npm channel it first probes the
+ * registry and proceeds only when an upgrade is necessary or necessity is
+ * undeterminable (REQ-144, REQ-145, REQ-146,
  * REQ-147), reinstalls the latest package via npm, re-runs the upgraded
  * package's `install` child command with captured stdout so packaged skills
  * and MCP registrations refresh from the upgraded package (REQ-125, REQ-126),
@@ -73,6 +76,23 @@ export const PACKAGE_UPGRADE_COMMAND: readonly string[] = [
   "install",
   "-g",
   `${DEFAULT_PACKAGE_NAME}@latest`,
+];
+
+/**
+ * @brief Package-manager command executed by `--upgrade --develop`/`--dev` (REQ-171).
+ * @details Installs the GitHub `develop` branch build of the distribution
+ * repository: the npm registry never carries develop-channel builds because
+ * develop-reachable tags release on GitHub only (PKG-043), so the develop
+ * channel MUST resolve from GitHub. npm fetches and builds the referenced
+ * commit; child exit-code and spawn-failure semantics are identical to
+ * `PACKAGE_UPGRADE_COMMAND` (REQ-125, REQ-128).
+ * @satisfies REQ-170, REQ-171
+ */
+export const PACKAGE_DEVELOP_UPGRADE_COMMAND: readonly string[] = [
+  "npm",
+  "install",
+  "-g",
+  "github:Ogekuri/mcp-google-api#develop",
 ];
 
 /** Package-manager command executed by `--uninstall` (REQ-127). */
@@ -380,6 +400,16 @@ export async function checkVersionIdle(deps: IdleCheckDeps = {}): Promise<IdleCh
 export type ManagementCommandName = "--ver" | "--version" | "--upgrade" | "--uninstall";
 
 /**
+ * @brief Install source selected for the `--upgrade` command.
+ * @details `npm` (default) resolves `mcp-google-api@latest` from the npm
+ * registry (REQ-125); `develop` resolves the GitHub `develop` branch build
+ * via `github:Ogekuri/mcp-google-api#develop` (REQ-171) because develop
+ * builds never publish to npm (PKG-043).
+ * @satisfies REQ-170
+ */
+export type UpgradeChannel = "npm" | "develop";
+
+/**
  * @brief Injectable child-process surface for package-manager commands.
  * @details `spawn` defaults to `node:child_process` `spawnSync`; `logger`
  * defaults to the stderr `Logger`. Injection keeps the management commands
@@ -397,13 +427,16 @@ export interface PackageManagerDeps {
  * @details `currentVersion` backs the `--ver`/`--version` output, the forced
  * online check, and the starting version of the `--upgrade` summary; `home`
  * scopes the enabled-CLI settings read performed by the post-upgrade skill
- * installation.
+ * installation; `channel` selects the `--upgrade` install source (`npm`
+ * default; `develop` = GitHub develop branch, REQ-170).
  */
 export interface ManagementCommandOptions {
   /** Running package version printed by `--ver`/`--version`. */
   currentVersion: string;
   /** Home-directory override for the enabled-CLI settings read. */
   home?: string;
+  /** `--upgrade` install channel; `develop` selects the GitHub develop branch (REQ-170). Default: `npm`. */
+  channel?: UpgradeChannel;
 }
 
 /**
@@ -421,27 +454,50 @@ export interface ManagementCommandDeps extends PackageManagerDeps {
 }
 
 /**
- * @brief Detects an exact single-token management command in a raw argv array.
- * @details Returns the canonical name only when the post-bin argv is exactly
- * one of `--ver`, `--version`, `--upgrade`, `--uninstall`; any other shape
- * (including combined flags or subcommands) yields undefined so normal yargs
- * dispatch stays untouched.
+ * @brief Detects an exact management-command argv shape in a raw argv array.
+ * @details Single-token shape: exactly one of `--ver`, `--version`,
+ * `--upgrade`, `--uninstall`. Two-token shape: `--upgrade` paired with the
+ * `--develop` option or its equivalent `--dev` alias, in either order
+ * (REQ-170). Any other shape (including combined flags or subcommands)
+ * yields undefined so normal yargs dispatch stays untouched.
  * @param args {readonly string[]} Raw argv after the Node binary/script tokens.
  * @return {ManagementCommandName | undefined} Canonical command name, or undefined.
- * @satisfies PRJ-003, REQ-120, REQ-125, REQ-127
+ * @satisfies PRJ-003, REQ-120, REQ-125, REQ-127, REQ-170
  * @note Complexity: O(1). Pure.
  */
 export function parseManagementCommand(
   args: readonly string[]
 ): ManagementCommandName | undefined {
-  if (args.length !== 1) {
+  if (args.length === 1) {
+    const arg = args[0];
+    if (arg === "--ver" || arg === "--version" || arg === "--upgrade" || arg === "--uninstall") {
+      return arg;
+    }
     return undefined;
   }
-  const arg = args[0];
-  if (arg === "--ver" || arg === "--version" || arg === "--upgrade" || arg === "--uninstall") {
-    return arg;
+  if (args.length === 2) {
+    const hasUpgrade = args.includes("--upgrade");
+    const hasDevelop = args.includes("--develop") || args.includes("--dev");
+    if (hasUpgrade && hasDevelop) {
+      return "--upgrade";
+    }
   }
   return undefined;
+}
+
+/**
+ * @brief Resolves the `--upgrade` install channel from a raw argv array.
+ * @details Returns `"develop"` when the argv contains the `--develop` option
+ * or its equivalent `--dev` alias (both orderings relative to `--upgrade`
+ * accepted by `parseManagementCommand`); returns `"npm"` (default channel)
+ * otherwise. Pure; no side effects.
+ * @param args {readonly string[]} Raw argv after the Node binary/script tokens.
+ * @return {UpgradeChannel} `"develop"` or `"npm"`.
+ * @satisfies REQ-170
+ * @note Complexity: O(n) in argv length. Pure.
+ */
+export function parseUpgradeChannel(args: readonly string[]): UpgradeChannel {
+  return args.includes("--develop") || args.includes("--dev") ? "develop" : "npm";
 }
 
 /**
@@ -729,8 +785,14 @@ function isUpgradeNecessary(status: LatestVersionProbe["status"]): boolean {
 }
 
 /**
- * @brief Handles `--upgrade`: check upgrade necessity, reinstall the latest package, then refresh skills with a stdout summary.
- * @details Resolution order: one forced logging-free `probeLatestVersion`
+ * @brief Handles `--upgrade`: channel selection, package reinstall, then refresh skills with a stdout summary.
+ * @details Develop channel (`options.channel === "develop"`, selected by the
+ * `--develop` option or its equivalent `--dev` alias, REQ-170): skips the
+ * registry comparison and the already-latest skip path entirely (REQ-172),
+ * runs `PACKAGE_DEVELOP_UPGRADE_COMMAND` (REQ-171), then the post-upgrade
+ * install and summary with `unknown` as the updated version because the npm
+ * registry carries no develop builds (REQ-173). Default npm channel
+ * resolution order: one forced logging-free `probeLatestVersion`
  * registry probe bypassing the idle cache gate (REQ-144) -> `current` status
  * writes the already-latest stdout line including the installed version and
  * returns 0 without spawning any child process (REQ-145) -> any other
@@ -743,10 +805,10 @@ function isUpgradeNecessary(status: LatestVersionProbe["status"]): boolean {
  * human-readable stdout summary with starting version, updated version,
  * install outcome, and per-CLI entries (REQ-132, REQ-133), and returns the
  * post-upgrade install exit code.
- * @param options {ManagementCommandOptions} Options carrying `currentVersion` and `home`.
+ * @param options {ManagementCommandOptions} Options carrying `currentVersion`, `home`, and `channel`.
  * @param deps {ManagementCommandDeps} Optional spawner/idle-check/stdout overrides.
  * @return {Promise<number>} 0 when the installed version is already the latest available; otherwise the upgrade exit code when non-zero, else the post-upgrade install exit code.
- * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-144, REQ-145, REQ-146, REQ-147
+ * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-144, REQ-145, REQ-146, REQ-147, REQ-170, REQ-171, REQ-172, REQ-173
  * @see probeLatestVersion
  * @see isUpgradeNecessary
  * @see runPackageManagerCommand
@@ -758,6 +820,16 @@ export async function runUpgradeCommand(
   options: ManagementCommandOptions,
   deps: ManagementCommandDeps = {}
 ): Promise<number> {
+  if ((options.channel ?? "npm") === "develop") {
+    const upgraded = runPackageManagerCommand(PACKAGE_DEVELOP_UPGRADE_COMMAND, deps);
+    if (upgraded !== 0) {
+      return upgraded;
+    }
+    const outcome = runPostUpgradeSkillInstall(options, deps);
+    const stdout = deps.stdout ?? process.stdout;
+    stdout.write(renderUpgradeSummary(options.currentVersion, "unknown", outcome));
+    return outcome.exitCode;
+  }
   const precheck = await probeLatestVersion({
     ...deps.idleCheck,
     currentVersion: options.currentVersion,
@@ -799,12 +871,13 @@ export function runUninstallCommand(deps: ManagementCommandDeps = {}): number {
  * @brief Dispatches one management command to its handler.
  * @details Single dispatch surface for the CLI entry intercept:
  * `--ver`/`--version` -> `runVersionCommand` (async); `--upgrade` ->
- * `runUpgradeCommand`; `--uninstall` -> `runUninstallCommand`.
+ * `runUpgradeCommand` (honoring the forwarded develop-channel option);
+ * `--uninstall` -> `runUninstallCommand`.
  * @param command {ManagementCommandName} Canonical management command name.
- * @param options {ManagementCommandOptions} Options carrying version and home.
+ * @param options {ManagementCommandOptions} Options carrying version, home, and upgrade channel.
  * @param deps {ManagementCommandDeps} Optional dependency overrides.
  * @return {Promise<number>} Handler exit code suitable for `process.exitCode`.
- * @satisfies PRJ-003, REQ-120, REQ-125, REQ-126, REQ-127, REQ-132, REQ-133, REQ-134, REQ-135
+ * @satisfies PRJ-003, REQ-120, REQ-125, REQ-126, REQ-127, REQ-132, REQ-133, REQ-134, REQ-135, REQ-170
  * @see runVersionCommand
  * @see runUpgradeCommand
  * @see runUninstallCommand
