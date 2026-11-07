@@ -9,9 +9,10 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "mcp-google-api": "dist/cli.js"
+    "mcp-google-api": "bin/mcp-google-api.mjs"
   },
   "files": [
+    "bin",
     "dist",
     "src/resources/skills",
     "README.md",

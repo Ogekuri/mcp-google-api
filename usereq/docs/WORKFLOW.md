@@ -87,7 +87,7 @@
     - `isUnsetApiKey(value)` / `loadConfiguredApiKey()`: placeholder-aware unset classification and configuration-file key read [`src/utils/cliSettings.ts`]
     - `filterTools(serverConfigs[0].tools)`: allowlist [`src/config.ts`]
     - `new BaseMcpServer(name, tools)` → `createMcpServer()` (as TRACE-B) [`src/core/BaseMcpServer.ts`]
-    - `startStdio()`: creates `StdioServerTransport` and connects it; runs directly from the built `dist` artifact (`bin` entry `dist/cli.js`; artifact-missing remediation lives in the launcher scripts, not `src/`)
+    - `startStdio()`: creates `StdioServerTransport` and connects it; runs directly from the built `dist` artifact (`bin` entry `bin/mcp-google-api.mjs` forwarding every argument to `dist/cli.js` with no implicit builds, PRJ-020, and JSON build-remediation guidance when the artifact is missing, PRJ-021; artifact-missing remediation lives in the launcher scripts and the installed-bin launcher, not `src/`)
       - `connect(transport)`: SDK connect + stdout guard (drops non-`{` stdout writes to protect JSON-RPC framing) [`src/core/BaseMcpServer.ts`]
     - external: `StdioServerTransport`; SDK reads stdin JSON-RPC frames and invokes registered ACTION closures (TRACE-F)
 

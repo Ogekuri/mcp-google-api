@@ -23,6 +23,7 @@ Project file/folder structure (evidence: repository tree):
 ```
 mcp-google-api/
 ├── .github/workflows/           # GitHub Actions: release-npm.yml (npm tag releases)
+├── bin/                         # mcp-google-api.mjs installed-bin launcher
 ├── docs/                        # Usage docs (CONFIGURATION.md, TOOLS.md)
 ├── scripts/                     # mcp-google-api.sh launcher
 ├── tools/                       # check-publish-version.mjs publish guard
@@ -84,6 +85,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PRJ-017**: MUST scope the server to Google APIs at large, with Google Maps as the currently implemented API family (PRJ-001).
 - **PRJ-018**: MUST ship `scripts/mcp-google-api.sh`, named after the installed `mcp-google-api` distribution bin, launching the local repository copy.
 - **PRJ-019**: `scripts/mcp-google-api.sh` MUST forward every argument to the local `dist/cli.js` entry without implicit install or build steps.
+- **PRJ-020**: The installed `mcp-google-api` bin MUST execute the packaged `dist/cli.js` Node entry, forwarding every argument unchanged with no implicit install or build steps.
+- **PRJ-021**: When the packaged `dist/cli.js` artifact is missing, the installed `mcp-google-api` bin MUST print JSON build-remediation guidance on stderr and exit non-zero.
 
 ### 2.2 Project Constraints
 - **CTN-001**: MUST declare all tools read-only, non-destructive, idempotent, and open-world via MCP tool annotations (evidence: `MAPS_TOOL_ANNOTATIONS`, `src/config.ts`).
@@ -94,6 +97,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **CTN-006**: MUST build and run as ECMAScript Modules only (`"type": "module"`, tsup ESM output).
 - **CTN-008**: MUST NOT use any database or file-based persistence; all state is in-memory per process, except user-authorized local configuration files and the automatic-update idle cache under `~/.cache/mcp-google-api/`.
 - **CTN-009**: MUST keep `tools/` version-controlled via `!tools/` and `!tools/**/*` exceptions appended at the tail of the `.gitignore` included-paths section.
+- **CTN-010**: MUST keep `bin/` version-controlled via `!bin/` and `!bin/**/*` exceptions appended at the tail of the `.gitignore` included-paths section.
 
 ### 2.3 Packaging and Publication
 - **PKG-001**: MUST keep `README.md` free of placeholder markers and of badges that do not match the Node.js runtime declared in `package.json` `engines`.

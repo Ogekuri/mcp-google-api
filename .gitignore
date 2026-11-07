@@ -50,6 +50,8 @@
 !eslint.config.js
 !tools/
 !tools/**/*
+!bin/
+!bin/**/*
 
 ##########################################
 # Exlucde specific files and directories #

@@ -51,7 +51,7 @@ const PACK_ALLOWED_INVARIANTS: ReadonlySet<string> = new Set([
 ]);
 
 /** Pack allowlist: directory prefixes whose contents are runtime-shippable. */
-const PACK_ALLOWED_PREFIXES: readonly string[] = ["dist/", "docs/", "src/resources/"];
+const PACK_ALLOWED_PREFIXES: readonly string[] = ["bin/", "dist/", "docs/", "src/resources/"]; // "bin/" ships the installed-bin launcher (PRJ-020, PRJ-021)
 
 /** Minimal shape of one `npm pack --json` entry. */
 interface PackEntry {
