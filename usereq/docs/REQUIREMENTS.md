@@ -24,7 +24,8 @@ Project file/folder structure (evidence: repository tree):
 mcp-google-api/
 ├── .github/workflows/           # GitHub Actions: release-npm.yml (npm tag releases)
 ├── docs/                        # Usage docs (CONFIGURATION.md, TOOLS.md)
-├── scripts/                     # mcp-google-api.sh launcher + check-publish-version.mjs publish guard
+├── scripts/                     # mcp-google-api.sh launcher
+├── tools/                       # check-publish-version.mjs publish guard
 ├── src/
 │   ├── cli.ts                   # yargs entry: doctor, exec, batch-geocode, server start
 │   ├── config.ts                # serverConfigs registry, tool annotations, filterTools()
@@ -92,6 +93,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **CTN-005**: MUST run on Node.js `>= 24`, declared in `package.json` `engines` and enforced identically by the `doctor` local check.
 - **CTN-006**: MUST build and run as ECMAScript Modules only (`"type": "module"`, tsup ESM output).
 - **CTN-008**: MUST NOT use any database or file-based persistence; all state is in-memory per process, except user-authorized local configuration files and the automatic-update idle cache under `~/.cache/mcp-google-api/`.
+- **CTN-009**: MUST keep `tools/` version-controlled via `!tools/` and `!tools/**/*` exceptions appended at the tail of the `.gitignore` included-paths section.
 
 ### 2.3 Packaging and Publication
 - **PKG-001**: MUST keep `README.md` free of placeholder markers and of badges that do not match the Node.js runtime declared in `package.json` `engines`.
@@ -147,7 +149,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-054**: README.md MUST document the stdio transport as the MCP-client launch mode: `mcp-google-api start --stdio`, JSON-RPC over stdin/stdout, stdout reserved for protocol frames.
 - **PKG-055**: README.md MUST document the Streamable HTTP transport serving MCP at `http://<host>:<port>/mcp` with `--host`/`--port` overrides and per-request API-key headers.
 - **PKG-056**: README.md MUST state per-transport applicability: stdio for locally registered MCP clients, Streamable HTTP for remote or multi-client access with per-session isolation.
-- **PKG-057**: The PKG-005 version guard MUST be implemented as `scripts/check-publish-version.mjs`, wired as the first `prepublishOnly` stage via the `check:publish-version` script.
+- **PKG-057**: The PKG-005 version guard MUST be implemented as `tools/check-publish-version.mjs`, wired as the first `prepublishOnly` stage via the `check:publish-version` script.
 
 ## 3. Requirements
 

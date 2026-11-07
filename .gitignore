@@ -48,6 +48,8 @@
 !tsconfig.json
 !tsup.config.ts
 !eslint.config.js
+!tools/
+!tools/**/*
 
 ##########################################
 # Exlucde specific files and directories #

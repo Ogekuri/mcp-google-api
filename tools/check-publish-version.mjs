@@ -14,7 +14,7 @@
  * @note stdout is never used: all diagnostics go to stderr as `[check-publish-version]` lines.
  * @warning This guard protects repository-controlled publish invocations only; an external
  *          script that bypasses `npm publish` in the package directory is out of its reach.
- * @see package.json `scripts.prepublishOnly`, `scripts/check-publish-version.mjs`
+ * @see package.json `scripts.prepublishOnly`, `tools/check-publish-version.mjs`
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
