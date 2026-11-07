@@ -509,10 +509,16 @@ export function parseUpgradeChannel(args: readonly string[]): UpgradeChannel {
  * @brief Runs one package-manager command as a child process with inherited stdio.
  * @details Spawns `command[0]` with the remaining tokens, inheriting stdio so
  * npm/npx output streams through unchanged; on Windows the spawn runs through
- * a shell so `npm.cmd` resolves. A spawn failure (missing executable or
- * thrown spawn error) prints the error plus the exact manual command hint on
- * stderr and returns exit code 1; otherwise the child exit code propagates
- * (null status maps to 1).
+ * a shell so `npm.cmd` resolves. The child runs with an explicit neutral
+ * working directory (the user home), never the caller's cwd: management
+ * installs are routinely invoked from inside the source checkout of the same
+ * package being replaced, and reconciling a git-ref global install against
+ * that same-name local project context corrupts npm reify (observed as
+ * TAR_ENTRY_ERROR ENOENT floods plus lifecycle `spawn sh ENOENT` in a cwd
+ * deleted mid-reify). A spawn failure (missing executable or thrown spawn
+ * error) prints the error plus the exact manual command hint on stderr and
+ * returns exit code 1; otherwise the child exit code propagates (null status
+ * maps to 1).
  * @param command {readonly string[]} Executable plus arguments.
  * @param deps {PackageManagerDeps} Optional spawner/logger overrides.
  * @return {number} Child exit code, or 1 when spawning failed.
@@ -531,6 +537,7 @@ export function runPackageManagerCommand(
   };
   try {
     const result = spawnImpl(command[0], [...command.slice(1)], {
+      cwd: homedir(),
       stdio: "inherit",
       shell: process.platform === "win32",
     });

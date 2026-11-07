@@ -16,7 +16,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
@@ -24,6 +24,7 @@ import {
   PACKAGE_UPGRADE_COMMAND,
   PACKAGE_UNINSTALL_COMMAND,
   parseManagementCommand,
+  runPackageManagerCommand,
   runUpgradeCommand,
   runUninstallCommand,
   type ManagementCommandDeps,
@@ -38,7 +39,7 @@ interface RecordedSpawn {
   /** Spawned arguments (remaining elements of the command tuple). */
   args: readonly string[];
   /** Spawn options; `stdio` distinguishes inherited vs captured streams. */
-  options: { stdio?: unknown; shell?: boolean };
+  options: { stdio?: unknown; shell?: boolean; cwd?: unknown };
 }
 
 /**
@@ -265,6 +266,33 @@ test("runUninstallCommand_spawns_npm_uninstall_and_propagates_exit_code", async 
   assert.equal(calls[0].command, PACKAGE_UNINSTALL_COMMAND[0]);
   assert.deepEqual([...calls[0].args], [...PACKAGE_UNINSTALL_COMMAND.slice(1)]);
   assert.equal(exitCode, 5);
+});
+
+// ---------------------------------------------------------------------------
+// Level 1 — runPackageManagerCommand (neutral cwd defect reproducer)
+// ---------------------------------------------------------------------------
+
+test("runPackageManagerCommand_spawns_child_with_neutral_home_cwd", () => {
+  const { spawnStub, calls } = createSpawnStub([{ status: 0 }]);
+  const { logger } = createLoggerStub();
+
+  // Act: run the package-manager child with only injected dependencies.
+  const exitCode = runPackageManagerCommand(["npm", "install", "-g", "spec"], {
+    spawn: spawnStub,
+    logger,
+  });
+
+  // Assert: REQ-125/REQ-171 — the child MUST run with an explicit neutral
+  // working directory (the user home), never inheriting the caller's cwd:
+  // executing the git-ref global install from inside the source checkout of
+  // the SAME package corrupts npm reify (TAR_ENTRY_ERROR ENOENT flood plus
+  // lifecycle "spawn sh ENOENT" against a cwd deleted mid-reify).
+  assert.equal(exitCode, 0);
+  assert.equal(calls.length, 1);
+  const cwd = calls[0].options.cwd as string | undefined;
+  assert.equal(typeof cwd, "string");
+  assert.notEqual(cwd, process.cwd());
+  assert.equal(cwd, homedir());
 });
 
 // ---------------------------------------------------------------------------

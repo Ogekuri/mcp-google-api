@@ -2204,7 +2204,7 @@ Complexity O(n) in tool names plus O(n*a) API union work.
 
 ---
 
-# upgradeManager.ts | TypeScript | 915L | 36 symbols | 7 imports | 77 comments
+# upgradeManager.ts | TypeScript | 922L | 36 symbols | 7 imports | 77 comments
 > Path: `src/utils/upgradeManager.ts`
 
 ## Imports
@@ -2383,22 +2383,28 @@ otherwise. Pure; no side effects.
 - @note Complexity: O(n) in argv length. Pure.
 - @satisfies REQ-170
 
-### fn `export function runPackageManagerCommand(` (L521-523)
+### fn `export function runPackageManagerCommand(` (L527-529)
 - @brief Runs one package-manager command as a child process with inherited stdio.
 - @details Spawns `command[0]` with the remaining tokens, inheriting stdio so
 npm/npx output streams through unchanged; on Windows the spawn runs through
-a shell so `npm.cmd` resolves. A spawn failure (missing executable or
-thrown spawn error) prints the error plus the exact manual command hint on
-stderr and returns exit code 1; otherwise the child exit code propagates
-(null status maps to 1).
+a shell so `npm.cmd` resolves. The child runs with an explicit neutral
+working directory (the user home), never the caller's cwd: management
+installs are routinely invoked from inside the source checkout of the same
+package being replaced, and reconciling a git-ref global install against
+that same-name local project context corrupts npm reify (observed as
+TAR_ENTRY_ERROR ENOENT floods plus lifecycle `spawn sh ENOENT` in a cwd
+deleted mid-reify). A spawn failure (missing executable or thrown spawn
+error) prints the error plus the exact manual command hint on stderr and
+returns exit code 1; otherwise the child exit code propagates (null status
+maps to 1).
 - @param command {readonly string[]} Executable plus arguments.
 - @param deps {PackageManagerDeps} Optional spawner/logger overrides.
 - @return {number} Child exit code, or 1 when spawning failed.
 - @satisfies REQ-125, REQ-127, REQ-128
 
-### fn `const reportSpawnFailure = (message: string): number =>` (L527-531)
+### fn `const reportSpawnFailure = (message: string): number =>` (L533-537)
 
-### fn `function parsePostUpgradeCliOutcomes(` (L561-591)
+### fn `function parsePostUpgradeCliOutcomes(` (L568-598)
 - @brief Parses the child `install` activity report into per-CLI outcomes.
 - @details Accepts the human-readable report emitted by the `install` command
 on stdout (REQ-166): lines of the form ` <cli>: <activity>` under the
@@ -2412,7 +2418,7 @@ unparseable output so callers fall back to the persisted enabled-CLI list
 - @note Complexity: O(n + m) with n report lines and m error strings.
 - @satisfies REQ-133, REQ-135, REQ-166
 
-### fn `export function runPostUpgradeSkillInstall(` (L613-615)
+### fn `export function runPostUpgradeSkillInstall(` (L620-622)
 - @brief Refreshes installed skills through the upgraded package after `--upgrade`.
 - @details When at least one CLI is enabled in the persisted settings, spawns
 `mcp-google-api install` — the globally installed bin of the just-upgraded
@@ -2432,9 +2438,9 @@ zero enabled CLIs the hook is a successful no-op with an empty CLI list.
 - @see parsePostUpgradeCliOutcomes
 - @satisfies REQ-126, REQ-128, REQ-133, REQ-135
 
-### fn `const reportSpawnFailure = (message: string): PostUpgradeInstallOutcome =>` (L623-627)
+### fn `const reportSpawnFailure = (message: string): PostUpgradeInstallOutcome =>` (L630-634)
 
-### fn `export function renderUpgradeSummary(` (L665-694)
+### fn `export function renderUpgradeSummary(` (L672-701)
 - @brief Renders the human-readable `--upgrade` summary block.
 - @details First line states the version transition `starting -> updated`;
 the second line states the post-upgrade install outcome (success, failure
@@ -2447,7 +2453,7 @@ reported server/skill counts when known. Pure; deterministic text.
 - @return {string} Multi-line summary terminated by one trailing newline.
 - @satisfies REQ-132, REQ-133, REQ-134
 
-### fn `function resolveProbeLatestVersion(probe: LatestVersionProbe): string` (L707-715)
+### fn `function resolveProbeLatestVersion(probe: LatestVersionProbe): string` (L714-722)
 - @brief Maps one registry probe outcome to its latest-version text.
 - @details `newer` -> `latestVersion`; `current` -> `currentVersion`;
 every other outcome (`disabled`, `unknown-version`, `error`) -> `unknown`
@@ -2458,7 +2464,7 @@ every other outcome (`disabled`, `unknown-version`, `error`) -> `unknown`
 - @see probeLatestVersion
 - @satisfies REQ-164
 
-### fn `async function resolveUpdatedVersion(` (L732-741)
+### fn `async function resolveUpdatedVersion(` (L739-748)
 - @brief Resolves the updated package version reported by the `--upgrade` summary.
 - @details Runs one logging-free `probeLatestVersion` registry probe after the
 upgrade child succeeds, forwarding the injected idle-check dependencies, and
@@ -2473,7 +2479,7 @@ version, and every other outcome to `unknown` (REQ-134). Never throws.
 - @see resolveProbeLatestVersion
 - @satisfies REQ-134
 
-### fn `export async function runVersionCommand(` (L760-762)
+### fn `export async function runVersionCommand(` (L767-769)
 - @brief Handles `--ver`/`--version`: dual online probe plus three-line version report.
 - @details Runs the npm-registry probe (`probeLatestVersion`) and the GitHub
 releases probe (`probeLatestGitHubVersion`) concurrently, both bypassing
@@ -2490,7 +2496,7 @@ undeterminable version prints as `unknown` (REQ-164).
 - @see resolveProbeLatestVersion
 - @satisfies REQ-120, REQ-161, REQ-162, REQ-163, REQ-164
 
-### fn `function isUpgradeNecessary(status: LatestVersionProbe["status"]): boolean` (L788-790)
+### fn `function isUpgradeNecessary(status: LatestVersionProbe["status"]): boolean` (L795-797)
 - @brief Decides whether the `--upgrade` flow must proceed after the pre-upgrade check.
 - @details Decision table over `LatestVersionProbe.status`: `newer` -> true
 (REQ-146); `current` -> false (REQ-145: the installed version is already
@@ -2502,7 +2508,7 @@ the latest available); `disabled`, `unknown-version`, `error` -> true
 - @see probeLatestVersion
 - @satisfies REQ-144, REQ-145, REQ-146, REQ-147
 
-### fn `export async function runUpgradeCommand(` (L830-832)
+### fn `export async function runUpgradeCommand(` (L837-839)
 - @brief Handles `--upgrade`: channel selection, package reinstall, then refresh skills with a stdout summary.
 - @details Develop channel (`options.channel === "develop"`, selected by the
 `--develop` option or its equivalent `--dev` alias, REQ-170): skips the
@@ -2540,7 +2546,7 @@ post-upgrade install exit code.
 - @see renderUpgradeSummary
 - @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-144, REQ-145, REQ-146, REQ-147, REQ-170, REQ-171, REQ-172, REQ-173, REQ-177, REQ-178
 
-### fn `export function runUninstallCommand(deps: ManagementCommandDeps = {}): number` (L882-884)
+### fn `export function runUninstallCommand(deps: ManagementCommandDeps = {}): number` (L889-891)
 - @brief Handles `--uninstall`: remove the globally installed package.
 - @details Runs `npm uninstall -g mcp-google-api` with inherited stdio and
 returns the child exit code (spawn failures map to 1 with the manual
@@ -2551,7 +2557,7 @@ responsibility of the existing `uninstall` subcommand.
 - @see runPackageManagerCommand
 - @satisfies REQ-127
 
-### fn `export async function runManagementCommand(` (L901-904)
+### fn `export async function runManagementCommand(` (L908-911)
 - @brief Dispatches one management command to its handler.
 - @details Single dispatch surface for the CLI entry intercept:
 `--ver`/`--version` -> `runVersionCommand` (async); `--upgrade` ->
@@ -2592,17 +2598,17 @@ responsibility of the existing `uninstall` subcommand.
 |`ManagementCommandDeps`|iface||452-459|export interface ManagementCommandDeps extends PackageMan...|
 |`parseManagementCommand`|fn||473-491|export function parseManagementCommand(|
 |`parseUpgradeChannel`|fn||504-506|export function parseUpgradeChannel(args: readonly string...|
-|`runPackageManagerCommand`|fn||521-523|export function runPackageManagerCommand(|
-|`reportSpawnFailure`|fn||527-531|const reportSpawnFailure = (message: string): number =>|
-|`parsePostUpgradeCliOutcomes`|fn||561-591|function parsePostUpgradeCliOutcomes(|
-|`runPostUpgradeSkillInstall`|fn||613-615|export function runPostUpgradeSkillInstall(|
-|`reportSpawnFailure`|fn||623-627|const reportSpawnFailure = (message: string): PostUpgrade...|
-|`renderUpgradeSummary`|fn||665-694|export function renderUpgradeSummary(|
-|`resolveProbeLatestVersion`|fn||707-715|function resolveProbeLatestVersion(probe: LatestVersionPr...|
-|`resolveUpdatedVersion`|fn||732-741|async function resolveUpdatedVersion(|
-|`runVersionCommand`|fn||760-762|export async function runVersionCommand(|
-|`isUpgradeNecessary`|fn||788-790|function isUpgradeNecessary(status: LatestVersionProbe["s...|
-|`runUpgradeCommand`|fn||830-832|export async function runUpgradeCommand(|
-|`runUninstallCommand`|fn||882-884|export function runUninstallCommand(deps: ManagementComma...|
-|`runManagementCommand`|fn||901-904|export async function runManagementCommand(|
+|`runPackageManagerCommand`|fn||527-529|export function runPackageManagerCommand(|
+|`reportSpawnFailure`|fn||533-537|const reportSpawnFailure = (message: string): number =>|
+|`parsePostUpgradeCliOutcomes`|fn||568-598|function parsePostUpgradeCliOutcomes(|
+|`runPostUpgradeSkillInstall`|fn||620-622|export function runPostUpgradeSkillInstall(|
+|`reportSpawnFailure`|fn||630-634|const reportSpawnFailure = (message: string): PostUpgrade...|
+|`renderUpgradeSummary`|fn||672-701|export function renderUpgradeSummary(|
+|`resolveProbeLatestVersion`|fn||714-722|function resolveProbeLatestVersion(probe: LatestVersionPr...|
+|`resolveUpdatedVersion`|fn||739-748|async function resolveUpdatedVersion(|
+|`runVersionCommand`|fn||767-769|export async function runVersionCommand(|
+|`isUpgradeNecessary`|fn||795-797|function isUpgradeNecessary(status: LatestVersionProbe["s...|
+|`runUpgradeCommand`|fn||837-839|export async function runUpgradeCommand(|
+|`runUninstallCommand`|fn||889-891|export function runUninstallCommand(deps: ManagementComma...|
+|`runManagementCommand`|fn||908-911|export async function runManagementCommand(|
 
