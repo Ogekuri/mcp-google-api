@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.22.2](https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.22.2) - 2026-11-07
+## [0.22.3](https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.22.3) - 2026-11-07
 ### ⛰️  Features
 - add copilot CLI agent support (DES-017, REQ-110/112/113/117) [useReq] *(cli-targets)*
   - Requirements: extend DES-017, REQ-110, REQ-112, REQ-113, REQ-117 with the copilot target
@@ -9,6 +9,21 @@
   - Verification: eslint/tsc clean, npm test 132/132 pass, enable/show/install runtime smoke on isolated HOME
 
 ### 🐛  Bug Fixes
+- spawn package-manager child with neutral home cwd [useReq] *(upgrade)*
+  - Defect: --upgrade (npm and --dev|--develop channels) and --uninstall
+  - spawned npm from the caller's working directory. When invoked from the
+  - source checkout of the same package (scripts/mcp-google-api.sh cd's to
+  - the repo root), npm reconciled the git-ref global install against that
+  - same-name local project and corrupted reify: TAR_ENTRY_ERROR ENOENT
+  - floods on hono/@modelcontextprotocol/sdk/@grpc/grpc-js plus a fatal
+  - lifecycle 'spawn sh ENOENT' (protobufjs) against a cwd deleted
+  - mid-reify.
+  - Fix: runPackageManagerCommand spawns the child with cwd = os.homedir()
+  - (explicit neutral directory, env/prefix unchanged); stdio inheritance,
+  - exit propagation, and the REQ-128 manual-command hint are unchanged.
+  - Reproducer test (HDT Level 1) added to tests/upgradeManager.unit.test.ts:
+  - asserts the child cwd is the user home and never the caller cwd; suite
+  - went 11 pass / 1 fail before the fix to 136/136 after.
 - report skipped server-start dispatch with build remediation [useReq] *(cli)*
   - Root cause of the persistent pi 'MCP connection closed' after the 0.21.0 rename:
   - the REQ-114 launcher 'npx -y mcp-google-api start --stdio' resolves a same-name
@@ -24,6 +39,19 @@
   - WORKFLOW.md TRACE-A/EDGE-06 and regenerate REFERENCES.md.
 
 ### 🚜  Changes
+- add develop-channel coverage for --upgrade --dev|--develop [useReq] *(test)*
+  - TST-023: new test requirement mapping REQ-170/171/172/173/177/178 to
+  - tests/upgradeManager.unit.test.ts.
+  - HDT Level 0: buildDevelopUpgradeCommand builds the raw tag install
+  - command npm install -g github:Ogekuri/mcp-google-api#<tag>.
+  - HDT Level 1: the develop channel probes only the GitHub releases
+  - endpoint bypassing the idle cache (REQ-177), spawns the tagged install
+  - with the raw tag_name (REQ-171), always proceeds even when the probed
+  - tag equals the installed version (REQ-172), reports the probed version
+  - in the summary (REQ-173), and fails fast on probe error without
+  - spawning any child process (REQ-178).
+  - No src/ changes: verification confirmed the implementation already
+  - satisfied the request; 135/135 tests, typecheck and eslint clean.
 - move publish guard to tools/ with gitignore exception [useReq] *(tools)*
   - Move scripts/check-publish-version.mjs to tools/ (PKG-057 updated):
   - the ../package.json resolution keeps working at the same directory
@@ -474,7 +502,7 @@
 - \[0.20.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.20.0
 - \[0.21.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.21.0
 - \[0.22.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.22.0
-- \[0.22.2\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.22.2
+- \[0.22.3\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.22.3
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.2.0..v0.3.0
@@ -496,4 +524,4 @@
 [0.20.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.19.0..v0.20.0
 [0.21.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.20.0..v0.21.0
 [0.22.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.21.0..v0.22.0
-[0.22.2]: https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.22.2
+[0.22.3]: https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.22.3
