@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.22.3](https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.22.3) - 2026-11-07
+## [0.22.4](https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.22.4) - 2026-11-07
 ### ⛰️  Features
 - add copilot CLI agent support (DES-017, REQ-110/112/113/117) [useReq] *(cli-targets)*
   - Requirements: extend DES-017, REQ-110, REQ-112, REQ-113, REQ-117 with the copilot target
@@ -39,6 +39,27 @@
   - WORKFLOW.md TRACE-A/EDGE-06 and regenerate REFERENCES.md.
 
 ### 🚜  Changes
+- resolve npmjs latest via packument manifest [useReq] *(upgradeManager)*
+  - --ver/--version now probe the npm packument manifest with the
+  - abbreviated Accept header and print dist-tags.latest (REQ-179, REQ-180).
+  - --upgrade reports the pre-upgrade npmjs latest as the summary updated
+  - version and skips the post-upgrade probe when resolved (REQ-181).
+  - REQUIREMENTS/WORKFLOW/REFERENCES updated; typecheck and 136 unit
+  - tests pass.
+- ship mcp-google-api launcher bin with remediation [useReq] *(bin)*
+  - PRJ-020: the installed mcp-google-api bin executes the packaged
+  - dist/cli.js Node entry forwarding every argument unchanged with no
+  - implicit install/build steps (analogous to scripts/mcp-google-api.sh).
+  - PRJ-021: new launcher bin/mcp-google-api.mjs (realpath-safe package-root
+  - resolution) prints JSON build-remediation guidance on stderr and exits
+  - non-zero when dist/cli.js is missing - impossible to deliver from the
+  - built artifact itself.
+  - package.json: bin repointed to bin/mcp-google-api.mjs; files allowlist
+  - ships bin/ (verified in npm pack --dry-run); .gitignore gains !bin/
+  - exceptions (CTN-010).
+  - PKG-038 publication fixture updated for the bin/ prefix; verified live:
+  - launcher forwards (--help, exit 0) and remediates (exit 1, JSON stderr);
+  - 136/136 tests, typecheck and eslint clean.
 - add develop-channel coverage for --upgrade --dev|--develop [useReq] *(test)*
   - TST-023: new test requirement mapping REQ-170/171/172/173/177/178 to
   - tests/upgradeManager.unit.test.ts.
@@ -502,7 +523,7 @@
 - \[0.20.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.20.0
 - \[0.21.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.21.0
 - \[0.22.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.22.0
-- \[0.22.3\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.22.3
+- \[0.22.4\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.22.4
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.2.0..v0.3.0
@@ -524,4 +545,4 @@
 [0.20.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.19.0..v0.20.0
 [0.21.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.20.0..v0.21.0
 [0.22.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.21.0..v0.22.0
-[0.22.3]: https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.22.3
+[0.22.4]: https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.22.4
