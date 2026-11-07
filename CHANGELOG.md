@@ -1,6 +1,13 @@
 # Changelog
 
-## [0.22.1](https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.22.1) - 2026-11-06
+## [0.22.2](https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.22.2) - 2026-11-07
+### ⛰️  Features
+- add copilot CLI agent support (DES-017, REQ-110/112/113/117) [useReq] *(cli-targets)*
+  - Requirements: extend DES-017, REQ-110, REQ-112, REQ-113, REQ-117 with the copilot target
+  - Source: add COPILOT_TARGET adapter (~/.copilot/mcp.json JSON mcpServers + ~/.copilot/skills) to CLI_TARGETS registry in src/utils/cliTargets.ts
+  - Docs: README supported-agents list/table and WORKFLOW/REFERENCES runtime model updated
+  - Verification: eslint/tsc clean, npm test 132/132 pass, enable/show/install runtime smoke on isolated HOME
+
 ### 🐛  Bug Fixes
 - report skipped server-start dispatch with build remediation [useReq] *(cli)*
   - Root cause of the persistent pi 'MCP connection closed' after the 0.21.0 rename:
@@ -15,6 +22,64 @@
   - full suite 132/132 green; typecheck, static checks, and build clean.
   - Document the stale-artifact remediation in docs/CONFIGURATION.md; update
   - WORKFLOW.md TRACE-A/EDGE-06 and regenerate REFERENCES.md.
+
+### 🚜  Changes
+- move publish guard to tools/ with gitignore exception [useReq] *(tools)*
+  - Move scripts/check-publish-version.mjs to tools/ (PKG-057 updated):
+  - the ../package.json resolution keeps working at the same directory
+  - depth; guard verified executable from the new path (exit 0).
+  - Wire package.json check:publish-version to the new path; the
+  - prepublishOnly chain (PKG-005, PKG-017) is unchanged.
+  - .gitignore: append !tools/ and !tools/**/* at the tail of the
+  - negated-inclusion included-paths section (CTN-009); git check-ignore
+  - confirms the guard is version-controlled.
+  - requirements: scripts/ tree entry reduced to the mcp-google-api.sh
+  - launcher; tools/ entry added for the publish guard.
+- BREAKING CHANGE: remove redundant shell helpers, document HTTP vs stdio [useReq] *(scripts)*
+  - Delete scripts/build.sh, start-http.sh, start-mcp.sh, test.sh: thin
+  - wrappers over npm run build/start/test/test:e2e; PKG-019 keeps the
+  - single npm run verify pipeline and REQ-094 forbids implicit builds.
+  - scripts/ now holds only mcp-google-api.sh (PRJ-018, PRJ-019) and the
+  - retained check-publish-version.mjs publish guard: required prepublishOnly
+  - stage, not an end-user accessory (PKG-057, PKG-005, PKG-017).
+  - README: new 'stdio vs Streamable HTTP' comparison section (PKG-054,
+  - PKG-055, PKG-056).
+  - Remove the obsolete start-mcp.sh remediation test whose subject was
+  - deleted; no src/ changes, WORKFLOW.md unaffected.
+- --dev|--develop installs the latest tagged GitHub release [useReq] *(upgrade)*
+  - REQ-170..173: --upgrade --develop|--dev now selects the latest tagged
+  - GitHub release regardless of the branch carrying the tag; REQ-177 adds
+  - the forced releases-API probe bypassing the idle cache gate; REQ-178
+  - fails fast with a stderr diagnostic and no child spawn on probe failure.
+  - upgradeManager: GITHUB_UPGRADE_REPOSITORY + buildDevelopUpgradeCommand(tag)
+  - replace PACKAGE_DEVELOP_UPGRADE_COMMAND; develop branch probes GitHub first,
+  - installs github:Ogekuri/mcp-google-api#<tag>, and reports the probed version.
+  - autoUpdate: GitHubLatestVersionProbe ok outcome now carries the raw tag_name.
+  - cli: help text and dispatch comments document the new channel semantics.
+- BREAKING CHANGE: remove legacy exec aliases, placeholder key, entry-gate fallback [useReq] *(cli)*
+  - BREAKING: exec accepts only canonical maps_ tool names (REQ-073); short/snake_case/batch-geocode-tool aliases removed from EXEC_TOOLS, execTool switch, help examples, and README.
+  - BREAKING: legacy INSTALL_API_KEY_PLACEHOLDER config value no longer loads as unset (DES-023, REQ-142); empty values still do.
+  - BREAKING: superseded isRunDirectly basename entry-gate removed; isEntryMainModule() alone decides dispatch.
+  - DOCTOR_PROBES use canonical tool names; tests canonicalized per user-requested legacy removal.
+  - Verified: typecheck, static-check clean, npm test 132/132; exec geocode now rejected as unknown tool.
+- make --help user-facing and document --develop/--dev [useReq] *(cli)*
+  - REQ-174: help descriptions limited to user-facing usage; removed internal details (persisted configuration, settings file, dispatch order, dist/cli.js path).
+  - REQ-175: --upgrade epilog documents the --develop | --dev GitHub develop-branch option.
+  - REQ-176: --ver described accurately as installed, npmjs-latest, and GitHub-latest versions.
+  - Verified facts kept: exec alias list (batch-geocode-tool) and search-nearby example params match the schema.
+  - Verified: static-check clean, npm test 132/132 (help contract REQ-129/130/131 intact).
+- add --develop/--dev GitHub develop-branch upgrade channel [useReq] *(upgrade-manager)*
+  - REQ-170..173: --upgrade accepts --develop with equivalent --dev alias selecting the GitHub develop branch.
+  - REQ-125/REQ-144 scoped to the default npm channel; develop channel skips the registry gate and already-latest path.
+  - upgradeManager: UpgradeChannel, PACKAGE_DEVELOP_UPGRADE_COMMAND (npm install -g github:Ogekuri/mcp-google-api#develop), parseUpgradeChannel; parseManagementCommand accepts the --upgrade + --develop/--dev pair.
+  - Develop-channel summary reports unknown as the updated version; default npm path unchanged.
+  - WORKFLOW.md TRACE-A/L and EDGE-07/09 updated; REFERENCES.md regenerated.
+  - Verified: typecheck, static-check clean, npm test 132/132.
+- encode README header block structure and centered quick index [useReq] *(readme)*
+  - Add requirements PKG-046..PKG-053: [!CAUTION] pre-header, exact title format, centered badge/description/quick-index/status blocks, fixed H1 section order, quick-start step order.
+  - Rebuild README header: centered description block (strong summary + br + detail), HTML quick-index anchors now including Requirements, single status+notice centered block.
+  - No source-code change; WORKFLOW.md runtime model unaffected; REFERENCES.md regenerated unchanged.
+  - Verified: static-check clean; npm test 132/132 pass.
 
 ## [0.22.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.21.0..v0.22.0) - 2026-11-06
 ### 🐛  Bug Fixes
@@ -409,7 +474,7 @@
 - \[0.20.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.20.0
 - \[0.21.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.21.0
 - \[0.22.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.22.0
-- \[0.22.1\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.22.1
+- \[0.22.2\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.22.2
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.2.0..v0.3.0
@@ -431,4 +496,4 @@
 [0.20.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.19.0..v0.20.0
 [0.21.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.20.0..v0.21.0
 [0.22.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.21.0..v0.22.0
-[0.22.1]: https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.22.1
+[0.22.2]: https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.22.2
