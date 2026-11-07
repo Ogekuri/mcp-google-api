@@ -14,12 +14,15 @@
  * (PKG-037); packed paths restricted to allowlisted runtime prefixes plus npm-invariant
  * metadata files while excluding tests, local configuration, and secret files (PKG-038);
  * no `private: true` publication blocker (PKG-039); registry-valid package name shared by
- * both manifests (PKG-040). Deterministic by construction: every input is a tracked,
- * immutable-at-test-time repository file or a local child-process listing whose only
+ * both manifests (PKG-040); the npm `prepare` lifecycle hook declared so git-source
+ * installs (develop channel `npm install -g github:...#<tag>`, REQ-171) build `dist/`
+ * into the packed tarball, keeping the installed bin executable per PRJ-020/PRJ-021
+ * without chained dependency installs (PKG-019). Deterministic by construction: every input is a
+ * tracked, immutable-at-test-time repository file or a local child-process listing whose only
  * variability (built `dist/**` presence) stays inside the allowlisted `dist/` prefix.
  * @note HDT level 0 (atomic): no internal call-graph dependencies; external npm child
  * invocation is isolated (offline `--dry-run`, bounded by an explicit timeout).
- * @satisfies PKG-033, PKG-034, PKG-035, PKG-036, PKG-037, PKG-038, PKG-039, PKG-040, TST-021
+ * @satisfies PKG-033, PKG-034, PKG-035, PKG-036, PKG-037, PKG-038, PKG-039, PKG-040, PRJ-020, PRJ-021, REQ-171, TST-021
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -68,6 +71,7 @@ interface PackageManifest {
   main?: unknown;
   exports?: Record<string, unknown>;
   files?: unknown;
+  scripts?: Record<string, unknown>;
 }
 
 /** Minimal shape of npm lockfile v3 identity fields. */
@@ -115,17 +119,17 @@ function readReadme(): string {
 
 /**
  * @brief Computes the offline `npm pack --dry-run` tarball file listing.
- * @details Spawns `npm pack --dry-run --json` in the repository root and parses the JSON
- * array printed on stdout. The invocation is fully offline (dry run writes no tarball,
- * contacts no registry, and runs no lifecycle scripts because none of `prepack`,
- * `prepare`, or `postpack` is defined). Built-artifact variability (present vs absent
- * `dist/**`) is allowed by the caller's allowlist policy. Complexity: O(n) in packed
- * paths plus one bounded child-process round-trip.
+ * @details Spawns `npm pack --dry-run --json --ignore-scripts` in the repository root and
+ * parses the JSON array printed on stdout. The invocation is fully offline (dry run writes
+ * no tarball and contacts no registry) and `--ignore-scripts` skips the `prepare` lifecycle
+ * build so stdout stays pure JSON regardless of lifecycle script output. Built-artifact
+ * variability (present vs absent `dist/**`) is allowed by the caller's allowlist policy.
+ * Complexity: O(n) in packed paths plus one bounded child-process round-trip.
  * @return {string[]} Packed tarball paths in npm listing order.
  * @throws {Error} When npm exits non-zero or stdout is not a JSON array.
  */
 function packDryRunPaths(): string[] {
-  const stdout = execFileSync("npm", ["pack", "--dry-run", "--json"], {
+  const stdout = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
     cwd: PROJECT_ROOT,
     encoding: "utf8",
     timeout: 120000,
@@ -243,6 +247,33 @@ test("test_package_name_is_registry_valid", () => {
   assert.equal(name.length <= NPM_MAX_NAME_LENGTH, true);
   assert.equal(NPM_NAME_PATTERN.test(name), true, `package name "${name}" violates npm naming policy`);
   assert.equal(lockfile.name, name);
+});
+
+test("test_prepare_lifecycle_script_builds_dist_for_git_source_packs", () => {
+  // PRJ-020/PRJ-021/REQ-171: develop-channel installs pack the fetched git tree via
+  // `npm install -g github:Ogekuri/mcp-google-api#<tag>`; npm builds the package only
+  // through the `prepare` lifecycle hook during git-dep preparation. Without it the
+  // packed tarball ships no `dist/` subtree (evidence: v0.22.4 pack listing) and the
+  // installed bin fails with the PRJ-021 remediation error.
+  // Arrange
+  const manifest = loadPackageManifest();
+  const scripts: Record<string, unknown> =
+    manifest.scripts && typeof manifest.scripts === "object" ? (manifest.scripts as Record<string, unknown>) : {};
+  // Act
+  const raw = scripts.prepare;
+  const prepare = typeof raw === "string" ? raw.trim() : "";
+  // Assert
+  const expected_output = "npm run build";
+  assert.equal(
+    prepare,
+    expected_output,
+    "package.json must define scripts.prepare building dist/ so git-source installs pack a runnable artifact (PRJ-020, REQ-171)",
+  );
+  assert.equal(
+    /\bnpm\s+(ci|install)\b/.test(prepare),
+    false,
+    "prepare must not chain dependency installs (PKG-019 helper-script discipline)",
+  );
 });
 
 test("test_packed_tarball_contents_follow_allowlist_policy", () => {

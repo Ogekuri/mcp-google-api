@@ -28,7 +28,8 @@
     "test:e2e": "tsx tests/smoke.test.ts",
     "check:publish-version": "node tools/check-publish-version.mjs",
     "verify": "npm run typecheck && npm test && npm run build",
-    "prepublishOnly": "npm run check:publish-version && npm run build"
+    "prepublishOnly": "npm run check:publish-version && npm run build",
+    "prepare": "npm run build"
   },
   "engines": {
     "node": ">=24"
