@@ -160,6 +160,17 @@ mcp-google-api run                              # alias of start
 - stdio mode refuses to start without a configured key and exits 1 with a stderr error inviting `mcp-google-api api-key <key>`; HTTP mode starts anyway and logs a warning (per-request header keys remain usable).
 - The automatic update check runs at startup (default on): a newer npm version is reported on stderr only with an upgrade command; it never blocks startup.
 
+### stdio vs Streamable HTTP
+
+| | stdio | Streamable HTTP |
+|---|---|---|
+| Launch | `mcp-google-api start --stdio` (what `install` registers in MCP-client configs) | `mcp-google-api start` or `run`, with optional `--host`/`--port` |
+| Channel | JSON-RPC 2.0 frames over stdin/stdout; stdout carries only protocol traffic, diagnostics go to stderr | HTTP POST/GET/DELETE on `http://<host>:<port>/mcp`; GET upgrades to SSE for server-to-client notifications |
+| API key | resolved once at startup from the persisted `apiKey` setting; startup fails without one | per-request `X-Google-Maps-API-Key` or `Authorization: Bearer` header, then the session key, then the configured setting; startup only warns without one |
+| Typical use | locally registered MCP clients (pi, OpenClaw, Codex, Antigravity, Claude) launched by `install` | remote or multi-client access to one shared server, each client isolated by its `mcp-session-id` |
+
+Use **stdio** when a local MCP client launches the server from its own configuration; use **Streamable HTTP** when several clients, local or remote, share one server instance. Both transports expose the same 18 tools and the same per-session/per-request key isolation semantics.
+
 ## Per-request API keys
 
 On the HTTP transport each request may supply its own key with top priority: the `X-Google-Maps-API-Key` header, or an `Authorization: Bearer <key>` header. Each session (`mcp-session-id`) keeps its session key; the configured `apiKey` setting is the fallback. This lets concurrent clients use isolated credentials against one server.

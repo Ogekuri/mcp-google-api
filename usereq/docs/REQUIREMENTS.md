@@ -24,7 +24,7 @@ Project file/folder structure (evidence: repository tree):
 mcp-google-api/
 ├── .github/workflows/           # GitHub Actions: release-npm.yml (npm tag releases)
 ├── docs/                        # Usage docs (CONFIGURATION.md, TOOLS.md)
-├── scripts/                     # Shell helpers: build.sh, mcp-google-api.sh, start-http.sh, start-mcp.sh, test.sh
+├── scripts/                     # mcp-google-api.sh launcher + check-publish-version.mjs publish guard
 ├── src/
 │   ├── cli.ts                   # yargs entry: doctor, exec, batch-geocode, server start
 │   ├── config.ts                # serverConfigs registry, tool annotations, filterTools()
@@ -144,6 +144,10 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-051**: MUST place the README.md status line and IMPORTANT NOTICE line in one final header `<p align="center">` block separated by `<br>`.
 - **PKG-052**: After its title, README.md MUST contain exactly these level-1 sections in order: Feature Highlights, Quick Start, Requirements, User's Guide, Documentation, License, Acknowledgments.
 - **PKG-053**: MUST present README.md Quick Start steps in the order installation, configuration, execution, deferring optional configuration details to the User's Guide.
+- **PKG-054**: README.md MUST document the stdio transport as the MCP-client launch mode: `mcp-google-api start --stdio`, JSON-RPC over stdin/stdout, stdout reserved for protocol frames.
+- **PKG-055**: README.md MUST document the Streamable HTTP transport serving MCP at `http://<host>:<port>/mcp` with `--host`/`--port` overrides and per-request API-key headers.
+- **PKG-056**: README.md MUST state per-transport applicability: stdio for locally registered MCP clients, Streamable HTTP for remote or multi-client access with per-session isolation.
+- **PKG-057**: The PKG-005 version guard MUST be implemented as `scripts/check-publish-version.mjs`, wired as the first `prepublishOnly` stage via the `check:publish-version` script.
 
 ## 3. Requirements
 

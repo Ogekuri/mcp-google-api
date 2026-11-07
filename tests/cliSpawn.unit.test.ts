@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, copyFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { createServer } from "node:net";
 import { createRequire } from "node:module";
@@ -201,35 +199,3 @@ test("HTTP server starts from the --port flag with the MCP Google API server ban
     }
   }
 });
-
-test(
-  "start-mcp.sh fails with build remediation when the dist artifact is missing",
-  { skip: process.platform === "win32" ? "bash launcher not guaranteed on win32" : false },
-  async () => {
-    const dir = mkdtempSync(join(tmpdir(), "mgm-spawn-"));
-    const scriptCopy = join(dir, "start-mcp.sh");
-    copyFileSync(join(PROJECT_ROOT, "scripts", "start-mcp.sh"), scriptCopy);
-    try {
-      const result = await new Promise<SpawnResult>((resolveSpawn) => {
-        const child = spawn("bash", [scriptCopy], { cwd: dir, stdio: ["ignore", "pipe", "pipe"] });
-        let stdout = "";
-        let stderr = "";
-        child.stdout.on("data", (chunk: Buffer) => {
-          stdout += chunk.toString("utf-8");
-        });
-        child.stderr.on("data", (chunk: Buffer) => {
-          stderr += chunk.toString("utf-8");
-        });
-        child.once("close", (code) => resolveSpawn({ code, stdout, stderr }));
-        child.once("error", () => resolveSpawn({ code: null, stdout, stderr }));
-      });
-
-      assert.notEqual(result.code, 0);
-      const combined = result.stdout + result.stderr;
-      assert.equal(combined.includes("dist/cli.js missing"), true);
-      assert.equal(combined.includes("npm run build"), true);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  }
-);
