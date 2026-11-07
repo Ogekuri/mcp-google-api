@@ -4,8 +4,9 @@
  * @details Adapted from the reference `skills` Python CLI semantics: the
  * automatic registry check is made non-invasive through a persistent idle
  * cache that suppresses registry requests while the previously computed idle
- * deadline is still in the future (REQ-121); `--ver`/`--version` probe npm and
- * GitHub bypassing the idle gate and print the three-line
+ * deadline is still in the future (REQ-121); `--ver`/`--version` probe npm
+ * (packument manifest, latest resolved from `dist-tags.latest`, REQ-179,
+ * REQ-180) and GitHub bypassing the idle gate and print the three-line
  * installed/npmjs/GitHub latest-version report (REQ-120, REQ-161, REQ-162,
  * REQ-163, REQ-164); `--upgrade` accepts the `--develop` option and its
  * equivalent `--dev` alias selecting the latest tagged GitHub release as the
@@ -29,6 +30,7 @@ import { Logger } from "../index.js";
 import {
   DEFAULT_PACKAGE_NAME,
   probeLatestGitHubVersion,
+  probeLatestManifestVersion,
   probeLatestVersion,
   type AutoUpdateCheckerDeps,
   type AutoUpdateLogger,
@@ -728,6 +730,8 @@ function resolveProbeLatestVersion(probe: LatestVersionProbe): string {
  * delegates the outcome-to-version mapping to `resolveProbeLatestVersion`:
  * `newer` maps to the registry latest version, `current` to the running
  * version, and every other outcome to `unknown` (REQ-134). Never throws.
+ * Invoked by `runUpgradeCommand` only when the pre-upgrade probe did not
+ * resolve an npmjs latest version (REQ-181).
  * @param options {ManagementCommandOptions} Options carrying `currentVersion`.
  * @param deps {ManagementCommandDeps} Optional idle-check dependency overrides.
  * @return {Promise<string>} Updated version string; `unknown` when undeterminable.
@@ -749,18 +753,19 @@ async function resolveUpdatedVersion(
 
 /**
  * @brief Handles `--ver`/`--version`: dual online probe plus three-line version report.
- * @details Runs the npm-registry probe (`probeLatestVersion`) and the GitHub
- * releases probe (`probeLatestGitHubVersion`) concurrently, both bypassing
- * the idle cache gate (REQ-161: no cache read, no cache write, no persisted
- * `autoUpdate` gating), then writes exactly three stdout lines — the
- * installed version, `npmjs latest: <version>` (REQ-162), and
- * `GitHub latest: <version>` (REQ-163) — and returns 0 (REQ-120). Any
+ * @details Runs the npm packument-manifest probe (`probeLatestManifestVersion`,
+ * abbreviated-manifest Accept header, latest resolved from `dist-tags.latest`,
+ * REQ-179, REQ-180) and the GitHub releases probe (`probeLatestGitHubVersion`)
+ * concurrently, both bypassing the idle cache gate (REQ-161: no cache read, no
+ * cache write, no persisted `autoUpdate` gating), then writes exactly three
+ * stdout lines — the installed version, `npmjs latest: <version>` (REQ-162),
+ * and `GitHub latest: <version>` (REQ-163) — and returns 0 (REQ-120). Any
  * undeterminable version prints as `unknown` (REQ-164).
  * @param options {ManagementCommandOptions} Options carrying `currentVersion`.
  * @param deps {ManagementCommandDeps} Optional idle-check/GitHub-check/stdout overrides.
  * @return {Promise<number>} Exit code 0.
- * @satisfies REQ-120, REQ-161, REQ-162, REQ-163, REQ-164
- * @see probeLatestVersion
+ * @satisfies REQ-120, REQ-161, REQ-162, REQ-163, REQ-164, REQ-179, REQ-180
+ * @see probeLatestManifestVersion
  * @see probeLatestGitHubVersion
  * @see resolveProbeLatestVersion
  */
@@ -769,7 +774,7 @@ export async function runVersionCommand(
   deps: ManagementCommandDeps = {}
 ): Promise<number> {
   const [npmProbe, githubProbe] = await Promise.all([
-    probeLatestVersion({ ...deps.idleCheck, currentVersion: options.currentVersion }),
+    probeLatestManifestVersion({ ...deps.idleCheck, currentVersion: options.currentVersion }),
     probeLatestGitHubVersion(deps.githubCheck),
   ]);
   const installedVersion = options.currentVersion || "unknown";
@@ -816,7 +821,9 @@ function isUpgradeNecessary(status: LatestVersionProbe["status"]): boolean {
  * `disabled`/`unknown-version`/`error` per REQ-147). The update path runs
  * `npm install -g mcp-google-api@latest` with inherited stdio and propagates
  * a non-zero exit code unchanged without printing any summary; on success
- * resolves the updated version via one registry probe (REQ-134), runs the
+ * resolves the updated version from the pre-upgrade probe's npmjs latest when
+ * that probe reported a newer version, avoiding a second registry round-trip
+ * (REQ-181), else via one post-upgrade registry probe (REQ-134), runs the
  * captured-stdout post-upgrade install (REQ-126), prints the
  * human-readable stdout summary with starting version, updated version,
  * install outcome, and per-CLI entries (REQ-132, REQ-133), and returns the
@@ -824,7 +831,7 @@ function isUpgradeNecessary(status: LatestVersionProbe["status"]): boolean {
  * @param options {ManagementCommandOptions} Options carrying `currentVersion`, `home`, and `channel`.
  * @param deps {ManagementCommandDeps} Optional spawner/idle-check/stdout overrides.
  * @return {Promise<number>} 0 when the installed version is already the latest available; otherwise the upgrade exit code when non-zero, else the post-upgrade install exit code.
- * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-144, REQ-145, REQ-146, REQ-147, REQ-170, REQ-171, REQ-172, REQ-173, REQ-177, REQ-178
+ * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-144, REQ-145, REQ-146, REQ-147, REQ-170, REQ-171, REQ-172, REQ-173, REQ-177, REQ-178, REQ-181
  * @see probeLatestVersion
  * @see probeLatestGitHubVersion
  * @see isUpgradeNecessary
@@ -864,11 +871,14 @@ export async function runUpgradeCommand(
     );
     return 0;
   }
+  // REQ-181: reuse the pre-upgrade npmjs latest when resolved (`newer`); the
+  // post-upgrade probe only backs the undeterminable precheck outcomes (REQ-134).
+  const knownLatest = precheck.status === "newer" ? precheck.latestVersion : undefined;
   const upgraded = runPackageManagerCommand(PACKAGE_UPGRADE_COMMAND, deps);
   if (upgraded !== 0) {
     return upgraded;
   }
-  const updatedVersion = await resolveUpdatedVersion(options, deps);
+  const updatedVersion = knownLatest ?? (await resolveUpdatedVersion(options, deps));
   const outcome = runPostUpgradeSkillInstall(options, deps);
   const stdout = deps.stdout ?? process.stdout;
   stdout.write(renderUpgradeSummary(options.currentVersion, updatedVersion, outcome));

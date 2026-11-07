@@ -333,6 +333,9 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-173**: The develop-channel `--upgrade` summary MUST report the probed latest GitHub release version (REQ-177) as the updated version.
 - **REQ-177**: The develop-channel `--upgrade` MUST run one forced probe of `https://api.github.com/repos/Ogekuri/mcp-google-api/releases/latest` bypassing the idle cache gate before spawning any child process.
 - **REQ-178**: When the develop-channel GitHub probe fails, `--upgrade` MUST print a stderr diagnostic carrying the probe message, spawn no child process, and exit non-zero.
+- **REQ-179**: The `--ver`/`--version` npm probe MUST fetch the npm registry packument manifest listing all published package versions using the abbreviated-manifest Accept header.
+- **REQ-180**: The `--ver`/`--version` npm probe MUST resolve the npmjs latest version from the packument `dist-tags.latest` field.
+- **REQ-181**: In the default npm channel, `--upgrade` MUST report the npmjs latest version resolved by its pre-upgrade registry probe as the summary updated version when that probe reports a newer version.
 - **REQ-148**: The `auto-update <value>` command MUST accept `enable`, `disable`, `1`, and `0` case-insensitively, resolving to the boolean automatic-update enablement.
 - **REQ-149**: `auto-update` MUST persist the resolved boolean into the DES-018 settings `autoUpdate` field with an atomic write before printing any result.
 - **REQ-150**: `auto-update` MUST print on stdout a human-readable confirmation naming the resulting automatic-update state and exit 0.

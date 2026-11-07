@@ -29,6 +29,15 @@ export const DEFAULT_REGISTRY_BASE_URL = "https://registry.npmjs.org";
 export const DEFAULT_UPDATE_CHECK_TIMEOUT_MS = 2000;
 
 /**
+ * @brief Accept header selecting the abbreviated npm packument manifest.
+ * @details Best-practice registry content negotiation (REQ-179): the
+ * abbreviated packument (`application/vnd.npm.install-v1+json`) carries the
+ * `dist-tags` document listing every published version at a fraction of the
+ * full packument payload size.
+ */
+export const DEFAULT_PACKUMENT_ACCEPT_HEADER = "application/vnd.npm.install-v1+json";
+
+/**
  * @brief Minimal logger contract consumed by the update check.
  * @details Structural subset of `Logger` (`src/index.ts`); injectable so tests
  * capture diagnostics without touching stderr.
@@ -141,6 +150,74 @@ export async function probeLatestVersion(
       return { status: "current", currentVersion };
     }
     return { status: "newer", currentVersion, latestVersion: payload.version };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { status: "error", message };
+  }
+}
+
+/**
+ * @brief Probes the npm registry packument manifest for the latest published package version.
+ * @details Logging-free resolution order mirroring `probeLatestVersion`:
+ * disable-injection short-circuit (only when an explicit `deps.env` disable
+ * map is supplied; production call sites pass none, REQ-083) ->
+ * running-version guard (missing `currentVersion` -> `unknown-version`, zero
+ * network calls) -> single `GET {registry}/{package}` fetching the packument
+ * manifest listing every published version, negotiated with the
+ * abbreviated-manifest Accept header (`DEFAULT_PACKUMENT_ACCEPT_HEADER`) and
+ * bounded by `timeoutMs` -> `response.ok` and `payload["dist-tags"].latest`
+ * validation -> `isNewerVersion` gate. The npmjs latest version is resolved
+ * exclusively from the manifest `dist-tags.latest` field (REQ-179, REQ-180).
+ * Every failure is returned as `{ status: "error", message }`; never throws.
+ * @param deps {AutoUpdateCheckerDeps} Optional dependency overrides; production defaults when omitted.
+ * @return {Promise<LatestVersionProbe>} Discriminated probe outcome; `message` carries the final diagnostic text without logging.
+ * @satisfies REQ-179, REQ-180, REQ-161
+ * @note Complexity: O(k) in version segments plus one HTTP round-trip bounded by `timeoutMs`.
+ * @see probeLatestVersion
+ * @see isNewerVersion
+ */
+export async function probeLatestManifestVersion(
+  deps: AutoUpdateCheckerDeps = {}
+): Promise<LatestVersionProbe> {
+  const env = deps.env;
+  if (env !== undefined && isAutoUpdateDisabled(env)) {
+    return { status: "disabled" };
+  }
+  const currentVersion = deps.currentVersion;
+  if (!currentVersion) {
+    return { status: "unknown-version" };
+  }
+  const packageName = deps.packageName ?? DEFAULT_PACKAGE_NAME;
+  const registryBaseUrl = deps.registryBaseUrl ?? DEFAULT_REGISTRY_BASE_URL;
+  const timeoutMs = deps.timeoutMs ?? DEFAULT_UPDATE_CHECK_TIMEOUT_MS;
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  try {
+    const response = await fetchImpl(`${registryBaseUrl}/${packageName}`, {
+      headers: { accept: DEFAULT_PACKUMENT_ACCEPT_HEADER },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) {
+      return {
+        status: "error",
+        message: `registry manifest responded with HTTP ${response.status}.`,
+      };
+    }
+    const payload = (await response.json()) as { "dist-tags"?: unknown };
+    const distTags = payload?.["dist-tags"];
+    const latest =
+      distTags !== null && typeof distTags === "object"
+        ? (distTags as Record<string, unknown>).latest
+        : undefined;
+    if (typeof latest !== "string" || latest.trim() === "") {
+      return {
+        status: "error",
+        message: "registry manifest has no dist-tags.latest field.",
+      };
+    }
+    if (!isNewerVersion(latest, currentVersion)) {
+      return { status: "current", currentVersion };
+    }
+    return { status: "newer", currentVersion, latestVersion: latest };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     return { status: "error", message };
