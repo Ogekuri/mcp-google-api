@@ -15,15 +15,45 @@
 #  * exit code 0 only when every stage passes (PKG-060). Never installs dependencies
 #  * and never publishes (PKG-060); the prerequisite toolchain (node_modules) must
 #  * already be present. Mirrors the PKG-019 `npm run verify` pipeline plus the
-#  * release version guard.
+#  * release version guard. Artifact hygiene: an EXIT trap removes every artifact
+#  * directory the stages created during the run, such as the tsup `dist/` tree
+#  * (PKG-061), while directories that pre-existed before the run are preserved
+#  * (PKG-062), so the repository is left as found on both success and failure.
 #  * @return Exit code 0 when all stages pass; 1 at the first failed stage.
+#  * @post On any exit, artifact directories created during the run are removed;
+#  *       pre-existing artifact directories are left untouched.
 #  * @pre Repository root contains `package.json`; the npm toolchain is on PATH.
 #  * @note Runnable from any cwd: the repository root is resolved from the script
 #  *       location, mirroring `scripts/mcp-google-api.sh`.
-#  * @satisfies PKG-058, PKG-059, PKG-060, PKG-019
+#  * @satisfies PKG-058, PKG-059, PKG-060, PKG-061, PKG-062, PKG-019
 #  */
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# Pre-run artifact snapshot (PKG-061, PKG-062): 1 when the build artifact tree
+# existed before this run, 0 when this run creates it.
+ARTIFACT_PREEXISTED=0
+if [ -d dist ]; then
+  ARTIFACT_PREEXISTED=1
+fi
+
+# /**
+#  * @brief Removes build artifacts this run created, leaving the repository as found.
+#  * @details Registered as an EXIT trap so both the success path (`exit 0`) and the
+#  * fail-fast path (`exit 1` from `run_stage`) restore the repository state (PKG-061,
+#  * PKG-062). Removes the artifact directory tree produced by the stages only when it
+#  * did not exist before the run; pre-existing artifact directories are preserved
+#  * untouched. Complexity O(tree size) on the removal path, O(1) otherwise.
+#  * @side_effect Deletes `dist/` when this run created it; prints a cleanup note on stdout.
+#  * @satisfies PKG-061, PKG-062
+#  */
+cleanup_artifacts() {
+  if [ "$ARTIFACT_PREEXISTED" -eq 0 ] && [ -d dist ]; then
+    rm -rf dist
+    printf '[pre-release-check] removed build artifacts (dist/) created by this run.\n'
+  fi
+}
+trap cleanup_artifacts EXIT
 
 # /**
 #  * @brief Executes one release-gating stage and aborts the pipeline on first failure.

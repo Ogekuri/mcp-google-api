@@ -14,17 +14,20 @@
  * resolved from its own location; and no dependency install or package publication
  * command appears anywhere (PKG-060). The sandbox run injects a failing first stage
  * into a temp-dir copy and asserts exit code 1 with zero passing stages, proving
- * fail-fast behavior at runtime (TST-024). Deterministic: every static input is a
+ * fail-fast behavior at runtime (TST-024); further sandbox runs prove artifact
+ * hygiene: a `dist` directory created during the run is removed even on the
+ * fail-fast path (PKG-061) while a pre-existing `dist` directory is preserved
+ * untouched (PKG-062). Deterministic: every static input is a
  * tracked, immutable-at-test-time repository file; the sandbox run is offline, bounded
  * by an explicit timeout, and writes only under the OS temp directory.
  * @note HDT level 0 (atomic) for the static contract tests; the sandbox fail-fast test
  * isolates its only external interaction (one `bash` child on a temp-dir script copy).
- * @satisfies PKG-058, PKG-059, PKG-060, PKG-019, TST-024
+ * @satisfies PKG-058, PKG-059, PKG-060, PKG-061, PKG-062, PKG-019, TST-024
  */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -46,6 +49,12 @@ const FORBIDDEN_COMMANDS: readonly string[] = ["npm install", "npm ci", "npm pub
 /** Stage label injected as the first (failing) stage in the sandbox run. */
 const SANDBOX_INJECTED_STAGE_LINE = "run_stage 'injected failure' false";
 
+/** Stage line creating the build artifact directory inside the sandbox (PKG-061). */
+const SANDBOX_ARTIFACT_STAGE_LINE = "run_stage 'create artifact' mkdir -p dist";
+
+/** Basename the sandbox copy keeps so the script resolves the sandbox as repository root. */
+const SANDBOX_SCRIPT_BASENAME = "pre-release-check.sh";
+
 /**
  * @brief Loads the tracked pre-release check script.
  * @details Synchronous read of the repository-root script; parse-free raw text.
@@ -56,6 +65,28 @@ const SANDBOX_INJECTED_STAGE_LINE = "run_stage 'injected failure' false";
  */
 function loadPreReleaseCheckScript(): string {
   return readFileSync(join(PROJECT_ROOT, SCRIPT_RELATIVE_PATH), "utf8");
+}
+
+/**
+ * @brief Writes one sandbox copy of the pre-release check script with injected stage lines.
+ * @details Creates a unique temp directory, copies the tracked script content under
+ * `<sandbox>/scripts/` so the copy resolves the sandbox as its repository root, and
+ * injects the given stage lines immediately before the first release-gating stage.
+ * Complexity O(file size); the caller MUST remove the returned directory.
+ * @param injectedLines {readonly string[]} Stage lines inserted before the first release-gating stage.
+ * @return {{ dir: string; scriptPath: string }} Sandbox directory and script path.
+ */
+function writeSandboxScript(injectedLines: readonly string[]): { dir: string; scriptPath: string } {
+  const dir = mkdtempSync(join(tmpdir(), "pre-release-check-"));
+  const scriptPath = join(dir, "scripts", SANDBOX_SCRIPT_BASENAME);
+  const firstStageLine = REQUIRED_STAGE_LINES[0];
+  const injectedScript = loadPreReleaseCheckScript().replace(
+    firstStageLine,
+    `${injectedLines.join("\n")}\n${firstStageLine}`,
+  );
+  mkdirSync(dirname(scriptPath), { recursive: true });
+  writeFileSync(scriptPath, injectedScript, "utf8");
+  return { dir, scriptPath };
 }
 
 test("test_pre_release_check_declares_release_gating_stages_in_order", () => {
@@ -116,21 +147,13 @@ test("test_pre_release_check_sandbox_run_fails_fast_on_injected_failing_stage", 
   // PKG-059/PKG-060 (TST-024 runtime evidence): an injected first-stage failure stops the
   // pipeline with exit 1 before any later stage can pass.
   // Arrange
-  const sandboxDir = mkdtempSync(join(tmpdir(), "pre-release-check-"));
-  const sandboxScriptPath = join(sandboxDir, "pre-release-check.sh");
-  const script = loadPreReleaseCheckScript();
-  const firstStageLine = REQUIRED_STAGE_LINES[0];
-  const injectedScript = script.replace(
-    firstStageLine,
-    `${SANDBOX_INJECTED_STAGE_LINE}\n${firstStageLine}`,
-  );
-  writeFileSync(sandboxScriptPath, injectedScript, "utf8");
+  const sandbox = writeSandboxScript([SANDBOX_INJECTED_STAGE_LINE]);
   try {
     // Act
-    const run = spawnSync("bash", [sandboxScriptPath], {
+    const run = spawnSync("bash", [sandbox.scriptPath], {
       encoding: "utf8",
       timeout: 30000,
-      cwd: sandboxDir,
+      cwd: sandbox.dir,
       stdio: ["ignore", "pipe", "pipe"],
     });
     // Assert
@@ -147,6 +170,70 @@ test("test_pre_release_check_sandbox_run_fails_fast_on_injected_failing_stage", 
       "the failing stage must report FAILED on stderr (PKG-059)",
     );
   } finally {
-    rmSync(sandboxDir, { recursive: true, force: true });
+    rmSync(sandbox.dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * @brief Sandbox proof that an artifact directory created by the run is removed on failure.
+ * @details Injects an artifact-creating stage followed by a failing stage into a temp-dir
+ * script copy and asserts fail-fast exit 1 with the sandbox `dist` directory removed by
+ * the EXIT trap (PKG-061). Deterministic: offline child run, bounded timeout, temp-dir
+ * only; no repository file is touched.
+ * @satisfies PKG-061, PKG-059, TST-024
+ */
+test("test_pre_release_check_sandbox_removes_artifact_created_by_run", () => {
+  // PKG-061: a dist directory the run creates is removed even on the fail-fast path.
+  // Arrange
+  const sandbox = writeSandboxScript([SANDBOX_ARTIFACT_STAGE_LINE, SANDBOX_INJECTED_STAGE_LINE]);
+  const artifactDir = join(sandbox.dir, "dist");
+  try {
+    // Act
+    const run = spawnSync("bash", [sandbox.scriptPath], {
+      encoding: "utf8",
+      timeout: 30000,
+      cwd: sandbox.dir,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    // Assert
+    const expected_output = { status: 1, artifactRemoved: false };
+    assert.equal(run.status, expected_output.status);
+    assert.equal(existsSync(artifactDir), expected_output.artifactRemoved);
+  } finally {
+    rmSync(sandbox.dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * @brief Sandbox proof that a pre-existing artifact directory is preserved untouched.
+ * @details Seeds a `dist` directory with a sentinel file before running a temp-dir script
+ * copy with an injected failing stage, then asserts fail-fast exit 1 with the sentinel
+ * byte-identical, proving the pre-run snapshot keeps pre-existing artifacts (PKG-062).
+ * Deterministic: offline child run, bounded timeout, temp-dir only; no repository file
+ * is touched.
+ * @satisfies PKG-062, PKG-059, TST-024
+ */
+test("test_pre_release_check_sandbox_preserves_preexisting_artifact", () => {
+  // PKG-062: a dist directory present before the run is preserved untouched.
+  // Arrange
+  const sandbox = writeSandboxScript([SANDBOX_INJECTED_STAGE_LINE]);
+  const artifactDir = join(sandbox.dir, "dist");
+  mkdirSync(artifactDir, { recursive: true });
+  const sentinelPath = join(artifactDir, "pre-existing.marker");
+  writeFileSync(sentinelPath, "pre-existing", "utf8");
+  try {
+    // Act
+    const run = spawnSync("bash", [sandbox.scriptPath], {
+      encoding: "utf8",
+      timeout: 30000,
+      cwd: sandbox.dir,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    // Assert
+    const expected_output = { status: 1, sentinelPreserved: "pre-existing" };
+    assert.equal(run.status, expected_output.status);
+    assert.equal(readFileSync(sentinelPath, "utf8"), expected_output.sentinelPreserved);
+  } finally {
+    rmSync(sandbox.dir, { recursive: true, force: true });
   }
 });
