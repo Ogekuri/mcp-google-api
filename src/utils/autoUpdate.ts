@@ -351,9 +351,10 @@ export interface GitHubProbeDeps {
 /**
  * @brief Discriminated outcome of one GitHub latest-release probe without side effects.
  * @details Logging-free core result consumed by the `--ver`/`--version`
- * command (`runVersionCommand`, `src/utils/upgradeManager.ts`), which maps
- * `error` to the `unknown` placeholder (REQ-164), and by the develop-channel
- * `--upgrade` flow, which installs the raw `tag` ref (REQ-171, REQ-177).
+ * command (`runVersionCommand`, `src/utils/upgradeManager.ts`), which renders
+ * `error` as `unknown (<message>)` on the `GitHub latest:` stdout line
+ * (REQ-164, REQ-181), and by the develop-channel `--upgrade` flow, which
+ * installs the raw `tag` ref (REQ-171, REQ-177).
  */
 export type GitHubLatestVersionProbe =
   | { status: "ok"; version: string; tag: string }
@@ -372,6 +373,30 @@ function stripReleaseTagPrefix(tag: string): string {
 }
 
 /**
+ * @brief Extracts the human-readable failure cause from a failed GitHub API response body.
+ * @details Reads the unconsumed response body as JSON and returns its
+ * `message` field when it is a non-empty string (GitHub error payloads carry
+ * the actual failure cause, e.g. HTTP 404 rate-limit exhaustion, in
+ * `message`). Returns undefined for any non-JSON body, malformed payload,
+ * missing or empty `message`, or body-read failure; never throws.
+ * @param response {Response} Failed HTTP response whose body has not been consumed.
+ * @return {Promise<string | undefined>} Trimmed `message` text, or undefined when unavailable.
+ * @note Complexity: O(n) in body size. Tolerates partial `Response` injection
+ * stubs lacking a `json` method (the failed-body read is caught).
+ * @see probeLatestGitHubVersion
+ * @satisfies REQ-181
+ */
+async function readGitHubErrorDetail(response: Response): Promise<string | undefined> {
+  try {
+    const payload = (await response.json()) as { message?: unknown } | null;
+    const detail = typeof payload?.message === "string" ? payload.message.trim() : "";
+    return detail.length > 0 ? detail : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * @brief Probes the GitHub releases API for the latest published release version.
  * @details Logging-free resolution order: single `GET {releasesUrl}` with the
  * `timeoutMs` deadline and the GitHub-mandatory `user-agent` header ->
@@ -379,10 +404,13 @@ function stripReleaseTagPrefix(tag: string): string {
  * prefix strip. Never consults the idle cache and never gates on the
  * persisted settings `autoUpdate` field: callers own the manual-command
  * context (REQ-161, REQ-177). Every failure (non-OK status, malformed payload,
- * network error) is returned as `{ status: "error", message }`; never throws.
+ * network error) is returned as `{ status: "error", message }`; the non-OK
+ * status message embeds the API error `message` body field when parseable so
+ * the rendered `unknown (<reason>)` reflects the actual failure (REQ-181);
+ * never throws.
  * @param deps {GitHubProbeDeps} Optional dependency overrides; production defaults when omitted.
  * @return {Promise<GitHubLatestVersionProbe>} `ok` with the stripped version text plus the raw `tag_name`, or `error` with the diagnostic message.
- * @satisfies REQ-161, REQ-163, REQ-171, REQ-177
+ * @satisfies REQ-161, REQ-163, REQ-171, REQ-177, REQ-181
  * @note Complexity: O(n) in tag length plus one HTTP round-trip bounded by `timeoutMs`.
  * @see probeLatestVersion
  */
@@ -401,9 +429,11 @@ export async function probeLatestGitHubVersion(
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) {
+      const detail = await readGitHubErrorDetail(response);
+      const cause = detail ? `: ${detail.replace(/\.+$/, "")}` : "";
       return {
         status: "error",
-        message: `GitHub releases API responded with HTTP ${response.status}.`,
+        message: `GitHub releases API responded with HTTP ${response.status}${cause}.`,
       };
     }
     const payload = (await response.json()) as { tag_name?: unknown };

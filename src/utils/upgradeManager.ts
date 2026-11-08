@@ -870,11 +870,13 @@ async function resolveUpdatedVersion(
  * cache write, no persisted `autoUpdate` gating), then writes exactly three
  * stdout lines — the installed version, `npmjs latest: <version>` (REQ-162),
  * and `GitHub latest: <version>` (REQ-163) — and returns 0 (REQ-120). Any
- * undeterminable version prints as `unknown` (REQ-164).
+ * undeterminable version prints as `unknown` (REQ-164); a failed GitHub
+ * probe renders the third line as `GitHub latest: unknown (<reason>)` with
+ * `<reason>` carrying the probe diagnostic message (REQ-181).
  * @param options {ManagementCommandOptions} Options carrying `currentVersion`.
  * @param deps {ManagementCommandDeps} Optional idle-check/GitHub-check/stdout overrides.
  * @return {Promise<number>} Exit code 0.
- * @satisfies REQ-120, REQ-161, REQ-162, REQ-163, REQ-164, REQ-179, REQ-180
+ * @satisfies REQ-120, REQ-161, REQ-162, REQ-163, REQ-164, REQ-179, REQ-180, REQ-181
  * @see probeLatestManifestVersion
  * @see probeLatestGitHubVersion
  * @see resolveProbeLatestVersion
@@ -889,7 +891,8 @@ export async function runVersionCommand(
   ]);
   const installedVersion = options.currentVersion || "unknown";
   const npmLatest = resolveProbeLatestVersion(npmProbe);
-  const githubLatest = githubProbe.status === "ok" ? githubProbe.version : "unknown";
+  const githubLatest =
+    githubProbe.status === "ok" ? githubProbe.version : `unknown (${githubProbe.message})`;
   const stdout = deps.stdout ?? process.stdout;
   stdout.write(`${installedVersion}\nnpmjs latest: ${npmLatest}\nGitHub latest: ${githubLatest}\n`);
   return 0;

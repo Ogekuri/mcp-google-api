@@ -317,7 +317,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-161**: `--ver` and `--version` MUST probe the npm registry and the GitHub releases API online, bypassing the idle cache gate, before printing the REQ-120 lines.
 - **REQ-162**: `--ver` and `--version` MUST print the second stdout line exactly `npmjs latest: <version>` where `<version>` is the latest `mcp-google-api` version published on the npm registry.
 - **REQ-163**: `--ver` and `--version` MUST print the third stdout line exactly `GitHub latest: <version>` where `<version>` is the latest GitHub release of `Ogekuri/mcp-google-api` with any leading `v` stripped.
-- **REQ-164**: `--ver` and `--version` MUST print `unknown` in place of any REQ-120 version that cannot be determined: failed, disabled, or malformed probe result, or undetermined installed version.
+- **REQ-164**: `--ver` and `--version` MUST print `unknown` in place of any REQ-120 version that cannot be determined: failed, disabled, or malformed probe result, or undetermined installed version, rendering failed-probe diagnostics per REQ-181.
 - **REQ-121**: MUST gate the automatic update check with an idle cache file at `~/.cache/mcp-google-api/check_version_idle-time.json`, skipping the registry request while its `idle_time_epoch` is in the future.
 - **REQ-122**: MUST persist cache fields `last_success_epoch`, `last_success_human`, `idle_time_epoch`, and `idle_time_human` (ISO-8601 UTC) after each executed check, tolerating missing or malformed cache content.
 - **REQ-123**: MUST set the idle window to 3600 seconds when a newer version is found and 86400 seconds otherwise.
@@ -339,6 +339,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-178**: When the develop-channel GitHub probe fails, `--upgrade` MUST print a stderr diagnostic carrying the probe message, spawn no child process, and exit non-zero.
 - **REQ-179**: The `--ver`/`--version` npm probe MUST fetch the npm registry packument manifest listing all published package versions using the abbreviated-manifest Accept header.
 - **REQ-180**: The `--ver`/`--version` npm probe MUST resolve the npmjs latest version from the packument `dist-tags.latest` field.
+- **REQ-181**: When the GitHub releases probe fails, `--ver` and `--version` MUST print the third stdout line as `GitHub latest: unknown (<reason>)` where `<reason>` is the probe diagnostic message.
 - **REQ-182**: When a `--upgrade` package-update child exits non-zero with an ENOENT diagnostic in its captured stderr, `--upgrade` MUST run one tolerated `npm uninstall -g mcp-google-api` child and retry the package update once.
 - **REQ-183**: `--upgrade` MUST propagate the final non-zero exit code of the recovery retry and spawn no further recovery children after it.
 - **REQ-148**: The `auto-update <value>` command MUST accept `enable`, `disable`, `1`, and `0` case-insensitively, resolving to the boolean automatic-update enablement.

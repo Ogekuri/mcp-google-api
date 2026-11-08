@@ -1164,7 +1164,7 @@ DES-006).
 
 ---
 
-# autoUpdate.ts | TypeScript | 425L | 14 symbols | 1 imports | 34 comments
+# autoUpdate.ts | TypeScript | 455L | 15 symbols | 1 imports | 35 comments
 > Path: `src/utils/autoUpdate.ts`
 
 ## Imports
@@ -1285,13 +1285,14 @@ defaults (global `fetch`, `DEFAULT_GITHUB_RELEASES_API_URL`,
 `DEFAULT_UPDATE_CHECK_TIMEOUT_MS`). Injection keeps unit tests
 deterministic and network-free.
 
-- type `export type GitHubLatestVersionProbe =` (L358)
+- type `export type GitHubLatestVersionProbe =` (L359)
 - @brief Discriminated outcome of one GitHub latest-release probe without side effects.
 - @details Logging-free core result consumed by the `--ver`/`--version`
-command (`runVersionCommand`, `src/utils/upgradeManager.ts`), which maps
-`error` to the `unknown` placeholder (REQ-164), and by the develop-channel
-`--upgrade` flow, which installs the raw `tag` ref (REQ-171, REQ-177).
-### fn `function stripReleaseTagPrefix(tag: string): string` (L370-372)
+command (`runVersionCommand`, `src/utils/upgradeManager.ts`), which renders
+`error` as `unknown (<message>)` on the `GitHub latest:` stdout line
+(REQ-164, REQ-181), and by the develop-channel `--upgrade` flow, which
+installs the raw `tag` ref (REQ-171, REQ-177).
+### fn `function stripReleaseTagPrefix(tag: string): string` (L371-373)
 - @brief Strips the release-tag prefix from a GitHub release tag.
 - @details Trims surrounding whitespace, removes one leading `v`/`V`, and
 returns the remaining text.
@@ -1299,7 +1300,21 @@ returns the remaining text.
 - @return {string} Version text without the leading `v`; possibly empty.
 - @note Complexity: O(n) in tag length. Pure; no side effects.
 
-### fn `export async function probeLatestGitHubVersion(` (L389-390)
+### fn `async function readGitHubErrorDetail(response: Response): Promise<string | undefined>` (L389-397)
+- @brief Extracts the human-readable failure cause from a failed GitHub API response body.
+- @details Reads the unconsumed response body as JSON and returns its
+`message` field when it is a non-empty string (GitHub error payloads carry
+the actual failure cause, e.g. HTTP 404 rate-limit exhaustion, in
+`message`). Returns undefined for any non-JSON body, malformed payload,
+missing or empty `message`, or body-read failure; never throws.
+- @param response {Response} Failed HTTP response whose body has not been consumed.
+- @return {Promise<string | undefined>} Trimmed `message` text, or undefined when unavailable.
+- @note Complexity: O(n) in body size. Tolerates partial `Response` injection
+stubs lacking a `json` method (the failed-body read is caught).
+- @see probeLatestGitHubVersion
+- @satisfies REQ-181
+
+### fn `export async function probeLatestGitHubVersion(` (L417-418)
 - @brief Probes the GitHub releases API for the latest published release version.
 - @details Logging-free resolution order: single `GET {releasesUrl}` with the
 `timeoutMs` deadline and the GitHub-mandatory `user-agent` header ->
@@ -1307,12 +1322,15 @@ returns the remaining text.
 prefix strip. Never consults the idle cache and never gates on the
 persisted settings `autoUpdate` field: callers own the manual-command
 context (REQ-161, REQ-177). Every failure (non-OK status, malformed payload,
-network error) is returned as `{ status: "error", message }`; never throws.
+network error) is returned as `{ status: "error", message }`; the non-OK
+status message embeds the API error `message` body field when parseable so
+the rendered `unknown (<reason>)` reflects the actual failure (REQ-181);
+never throws.
 - @param deps {GitHubProbeDeps} Optional dependency overrides; production defaults when omitted.
 - @return {Promise<GitHubLatestVersionProbe>} `ok` with the stripped version text plus the raw `tag_name`, or `error` with the diagnostic message.
 - @note Complexity: O(n) in tag length plus one HTTP round-trip bounded by `timeoutMs`.
 - @see probeLatestVersion
-- @satisfies REQ-161, REQ-163, REQ-171, REQ-177
+- @satisfies REQ-161, REQ-163, REQ-171, REQ-177, REQ-181
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
@@ -1328,9 +1346,10 @@ network error) is returned as `{ status: "error", message }`; never throws.
 |`toSegments`|fn||260-272|const toSegments = (version: string): number[] =>|
 |`checkForUpdates`|fn||301-302|export async function checkForUpdates(|
 |`GitHubProbeDeps`|iface||342-349|export interface GitHubProbeDeps|
-|`GitHubLatestVersionProbe`|type||358||
-|`stripReleaseTagPrefix`|fn||370-372|function stripReleaseTagPrefix(tag: string): string|
-|`probeLatestGitHubVersion`|fn||389-390|export async function probeLatestGitHubVersion(|
+|`GitHubLatestVersionProbe`|type||359||
+|`stripReleaseTagPrefix`|fn||371-373|function stripReleaseTagPrefix(tag: string): string|
+|`readGitHubErrorDetail`|fn||389-397|async function readGitHubErrorDetail(response: Response):...|
+|`probeLatestGitHubVersion`|fn||417-418|export async function probeLatestGitHubVersion(|
 
 
 ---
@@ -2225,7 +2244,7 @@ Complexity O(n) in tool names plus O(n*a) API union work.
 
 ---
 
-# upgradeManager.ts | TypeScript | 1008L | 39 symbols | 7 imports | 81 comments
+# upgradeManager.ts | TypeScript | 1011L | 39 symbols | 7 imports | 81 comments
 > Path: `src/utils/upgradeManager.ts`
 
 ## Imports
@@ -2551,7 +2570,7 @@ Invoked by `runUpgradeCommand` after the package-update child succeeds.
 - @see resolveProbeLatestVersion
 - @satisfies REQ-134
 
-### fn `export async function runVersionCommand(` (L882-884)
+### fn `export async function runVersionCommand(` (L884-886)
 - @brief Handles `--ver`/`--version`: dual online probe plus three-line version report.
 - @details Runs the npm packument-manifest probe (`probeLatestManifestVersion`,
 abbreviated-manifest Accept header, latest resolved from `dist-tags.latest`,
@@ -2560,16 +2579,18 @@ concurrently, both bypassing the idle cache gate (REQ-161: no cache read, no
 cache write, no persisted `autoUpdate` gating), then writes exactly three
 stdout lines — the installed version, `npmjs latest: <version>` (REQ-162),
 and `GitHub latest: <version>` (REQ-163) — and returns 0 (REQ-120). Any
-undeterminable version prints as `unknown` (REQ-164).
+undeterminable version prints as `unknown` (REQ-164); a failed GitHub
+probe renders the third line as `GitHub latest: unknown (<reason>)` with
+`<reason>` carrying the probe diagnostic message (REQ-181).
 - @param options {ManagementCommandOptions} Options carrying `currentVersion`.
 - @param deps {ManagementCommandDeps} Optional idle-check/GitHub-check/stdout overrides.
 - @return {Promise<number>} Exit code 0.
 - @see probeLatestManifestVersion
 - @see probeLatestGitHubVersion
 - @see resolveProbeLatestVersion
-- @satisfies REQ-120, REQ-161, REQ-162, REQ-163, REQ-164, REQ-179, REQ-180
+- @satisfies REQ-120, REQ-161, REQ-162, REQ-163, REQ-164, REQ-179, REQ-180, REQ-181
 
-### fn `export async function runUpgradeCommand(` (L933-935)
+### fn `export async function runUpgradeCommand(` (L936-938)
 - @brief Handles `--upgrade`: channel selection, package reinstall, then refresh skills with a stdout summary.
 - @details Develop channel (`options.channel === "develop"`, selected by the
 `--develop` option or its equivalent `--dev` alias, REQ-170): skips the
@@ -2604,7 +2625,7 @@ post-upgrade install exit code.
 - @see renderUpgradeSummary
 - @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-146, REQ-170, REQ-171, REQ-172, REQ-173, REQ-177, REQ-178, REQ-182, REQ-183
 
-### fn `export function runUninstallCommand(deps: ManagementCommandDeps = {}): number` (L975-977)
+### fn `export function runUninstallCommand(deps: ManagementCommandDeps = {}): number` (L978-980)
 - @brief Handles `--uninstall`: remove the globally installed package.
 - @details Runs `npm uninstall -g mcp-google-api` with inherited stdio and
 returns the child exit code (spawn failures map to 1 with the manual
@@ -2615,7 +2636,7 @@ responsibility of the existing `uninstall` subcommand.
 - @see runPackageManagerCommand
 - @satisfies REQ-127
 
-### fn `export async function runManagementCommand(` (L994-997)
+### fn `export async function runManagementCommand(` (L997-1000)
 - @brief Dispatches one management command to its handler.
 - @details Single dispatch surface for the CLI entry intercept:
 `--ver`/`--version` -> `runVersionCommand` (async); `--upgrade` ->
@@ -2668,8 +2689,8 @@ responsibility of the existing `uninstall` subcommand.
 |`renderUpgradeSummary`|fn||785-814|export function renderUpgradeSummary(|
 |`resolveProbeLatestVersion`|fn||827-835|function resolveProbeLatestVersion(probe: LatestVersionPr...|
 |`resolveUpdatedVersion`|fn||853-862|async function resolveUpdatedVersion(|
-|`runVersionCommand`|fn||882-884|export async function runVersionCommand(|
-|`runUpgradeCommand`|fn||933-935|export async function runUpgradeCommand(|
-|`runUninstallCommand`|fn||975-977|export function runUninstallCommand(deps: ManagementComma...|
-|`runManagementCommand`|fn||994-997|export async function runManagementCommand(|
+|`runVersionCommand`|fn||884-886|export async function runVersionCommand(|
+|`runUpgradeCommand`|fn||936-938|export async function runUpgradeCommand(|
+|`runUninstallCommand`|fn||978-980|export function runUninstallCommand(deps: ManagementComma...|
+|`runManagementCommand`|fn||997-1000|export async function runManagementCommand(|
 
