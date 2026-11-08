@@ -11,7 +11,8 @@
  * `.` entry targeting `./dist/index.js`, the `./package.json` subpath entry, and `main`
  * consistent with the `.` target (PKG-035); `CHANGELOG.md` shipped through the `files`
  * allowlist (PKG-036); package-lock.json root `name`/`version` identity with package.json
- * (PKG-037); packed paths restricted to allowlisted runtime prefixes plus npm-invariant
+ * (PKG-037) plus root `bin` launcher-map identity with package.json (PRJ-020 regression
+ * guard); packed paths restricted to allowlisted runtime prefixes plus npm-invariant
  * metadata files while excluding tests, local configuration, and secret files (PKG-038);
  * no `private: true` publication blocker (PKG-039); registry-valid package name shared by
  * both manifests (PKG-040); the npm `prepare` lifecycle hook declared so git-source
@@ -69,6 +70,7 @@ interface PackageManifest {
   license?: unknown;
   private?: unknown;
   main?: unknown;
+  bin?: unknown;
   exports?: Record<string, unknown>;
   files?: unknown;
   scripts?: Record<string, unknown>;
@@ -78,7 +80,7 @@ interface PackageManifest {
 interface LockfileIdentity {
   name?: unknown;
   version?: unknown;
-  packages?: Record<string, { name?: unknown; version?: unknown }>;
+  packages?: Record<string, { name?: unknown; version?: unknown; bin?: unknown }>;
 }
 
 /**
@@ -222,6 +224,30 @@ test("test_lockfile_root_identity_matches_package_json", () => {
   assert.equal(lockfile.version, expected_output.version);
   assert.equal(rootEntry.name, expected_output.name);
   assert.equal(rootEntry.version, expected_output.version);
+});
+
+/**
+ * @brief Regression guard: the lockfile root `bin` launcher map is identical to package.json.
+ * @details The bin-launcher change to the shipped `bin/mcp-google-api.mjs` launcher
+ * (PRJ-020, PRJ-021 remediation guidance) left the tracked package-lock.json root entry
+ * recording the superseded `dist/cli.js` path; every standard bootstrap (`npm install`)
+ * then rewrote the tracked lockfile, dirtying a fresh clone right after setup. Level 0
+ * (atomic): reads the two tracked manifests only; no network, clock, randomness, or
+ * environment dependence.
+ * @satisfies PKG-037, PRJ-020
+ */
+test("test_lockfile_root_bin_identity_matches_package_json", () => {
+  // PKG-037/PRJ-020: the lockfile root entry records the same bin launcher map as package.json.
+  // Arrange
+  const manifest = loadPackageManifest();
+  const lockfile = loadLockfile();
+  const expectedBinMap = manifest.bin;
+  // Act
+  const rootEntry = lockfile.packages?.[""] ?? {};
+  // Assert
+  const expected_output = expectedBinMap;
+  assert.equal(typeof expectedBinMap, "object", "package.json must declare a bin map (PRJ-020)");
+  assert.deepEqual(rootEntry.bin, expected_output);
 });
 
 test("test_package_json_is_publishable_not_private", () => {
