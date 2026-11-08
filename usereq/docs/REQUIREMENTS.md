@@ -25,7 +25,7 @@ mcp-google-api/
 ├── .github/workflows/           # GitHub Actions: release-npm.yml (npm tag releases)
 ├── bin/                         # mcp-google-api.mjs installed-bin launcher
 ├── docs/                        # Usage docs (CONFIGURATION.md, TOOLS.md)
-├── scripts/                     # mcp-google-api.sh launcher
+├── scripts/                     # mcp-google-api.sh launcher + pre-release-check.sh release gate
 ├── tools/                       # check-publish-version.mjs publish guard
 ├── src/
 │   ├── cli.ts                   # yargs entry: doctor, exec, batch-geocode, server start
@@ -154,6 +154,9 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-055**: README.md MUST document the Streamable HTTP transport serving MCP at `http://<host>:<port>/mcp` with `--host`/`--port` overrides and per-request API-key headers.
 - **PKG-056**: README.md MUST state per-transport applicability: stdio for locally registered MCP clients, Streamable HTTP for remote or multi-client access with per-session isolation.
 - **PKG-057**: The PKG-005 version guard MUST be implemented as `tools/check-publish-version.mjs`, wired as the first `prepublishOnly` stage via the `check:publish-version` script.
+- **PKG-058**: MUST ship `scripts/pre-release-check.sh` running the release-gating stages: `check:publish-version` guard, typecheck, unit tests, and the production build.
+- **PKG-059**: `scripts/pre-release-check.sh` MUST execute the release-gating stages in order: publish-version guard, typecheck, unit tests, build, aborting at the first failed stage.
+- **PKG-060**: `scripts/pre-release-check.sh` MUST exit 0 only when every stage passes, exit non-zero otherwise, and MUST NOT run dependency installs or package publication.
 
 ## 3. Requirements
 
@@ -417,3 +420,4 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-020**: MUST verify PKG-008/PKG-009/PKG-010/PKG-026/PKG-027/PKG-028/PKG-029/PKG-030/PKG-031/PKG-032/PKG-042/PKG-043 by running `npm test` (`tests/ciContract.unit.test.ts`): `.github/workflows/ci.yml` is absent, the single release job resolves master and develop reachability before any install/build/pack/publish step, fails on neither-branch tags, gates `npm publish` on master reachability while develop-only tags build, pack, and release without publishing, and publish authenticates via OIDC Trusted Publishing with `id-token: write`, no `NPM_TOKEN`/`NODE_AUTH_TOKEN`, and npm >= 11.5.1 on the pinned Node runtime.
 - **TST-021**: MUST verify PKG-033/PKG-034/PKG-035/PKG-036/PKG-037/PKG-038/PKG-039/PKG-040 by running `npm test` (`tests/npmPublishContract.unit.test.ts`): metadata, lockfile identity, and `npm pack --dry-run` tarball-list assertions pass.
 - **TST-023**: MUST verify REQ-170/REQ-171/REQ-172/REQ-173/REQ-177/REQ-178 by running `npm test` (`tests/upgradeManager.unit.test.ts`): injected fetch and spawn stubs assert the develop channel probes only the GitHub releases endpoint, always installs the raw `tag_name` ref even when equal to the installed version, fails fast on probe error without spawning, and reports the probed version in the summary.
+- **TST-024**: MUST verify PKG-058/PKG-059/PKG-060 by running `npm test` (`tests/preReleaseCheck.unit.test.ts`): static contract asserts the script declares the four release-gating stages in order, wires fail-fast exit on the first failed stage, runs from the repository root, and contains no install/publish commands; pass when all assertions hold and a fail-fast sandbox run exits 1 at the injected failing stage.
