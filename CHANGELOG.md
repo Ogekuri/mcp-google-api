@@ -1,5 +1,65 @@
 # Changelog
 
+## [0.24.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.23.0..v0.24.0) - 2026-11-08
+### ⛰️  Features
+- add pre-release-check.sh release gate [useReq] *(scripts)*
+  - Ship scripts/pre-release-check.sh running the release-gating stages
+  - in mandatory order: publish-version guard, typecheck, unit tests,
+  - production build, aborting at the first failed stage (PKG-058/059).
+  - The script exits 0 only when every stage passes, runs from any cwd
+  - by resolving the repository root, and never installs dependencies
+  - or publishes (PKG-060).
+  - Add tests/preReleaseCheck.unit.test.ts (TST-024): static contract on
+  - stage order, fail-fast wiring, repository-root cd, and no install/
+  - publish commands, plus a sandbox run proving fail-fast exit 1 on an
+  - injected failing stage.
+  - Runtime verification: full run green (guard 0.23.0 publishable,
+  - typecheck clean, 143/143 unit tests, build success, exit 0); real
+  - fail-fast observed on a missing-toolchain run (typecheck FAILED ->
+  - exit 1, later stages skipped).
+
+### 🐛  Bug Fixes
+- sync package-lock bin path with package.json launcher [useReq] *(packaging)*
+  - The committed package-lock.json root bin entry still recorded the
+  - superseded dist/cli.js launcher, so every standard bootstrap
+  - (npm install) rewrote the tracked lockfile and left a fresh clone dirty.
+  - Regenerate the lockfile bin entry to bin/mcp-google-api.mjs, matching
+  - the package.json launcher contract (PRJ-020).
+  - Add a level-0 regression guard test asserting lockfile/package.json
+  - bin-map identity to tests/npmPublishContract.unit.test.ts, closing
+  - the TST-021 coverage gap that let the drift go undetected.
+  - Evidence: reproducer red on the stale lockfile, green after the fix;
+  - full suite 138/138 pass, typecheck clean, static analysis clean.
+
+### 🚜  Changes
+- gate pipeline on pre-release test checks [useReq] *(release)*
+  - Add a Pre-release check step to .github/workflows/release-npm.yml
+  - running scripts/pre-release-check.sh after npm ci and before every
+  - build, pack, publish, and release-creation step, so versions whose
+  - tests fail produce no release artifact and are never published
+  - (PKG-063).
+  - The gate executes the PKG-058 stages (publish-version guard,
+  - typecheck, unit tests, build) in fail-fast order (PKG-059) and never
+  - installs dependencies or publishes (PKG-060).
+  - Update the workflow header and pack-step comments; the release
+  - pipeline defines no direct test commands - all test stages live in
+  - the gate script.
+  - SRS: add PKG-063 and extend TST-020 with the gate contract.
+  - Tests: ciContract asserts gate presence, placement, and absence of
+  - direct test commands; suite 6/6, full suite 145/145.
+- clean run-created artifacts in pre-release-check [useReq] *(scripts)*
+  - scripts/pre-release-check.sh now snapshots the repository state before
+  - the stages and removes on exit every artifact directory the run created
+  - (e.g. the tsup dist/ tree), on both success and fail-fast paths, so the
+  - repository is left as found (PKG-061).
+  - Pre-existing artifact directories are preserved untouched (PKG-062).
+  - SRS: add PKG-061/PKG-062 and extend TST-024 with the cleanup contract.
+  - Tests: shared sandbox helper plus two behavioral proofs - run-created
+  - dist removed on the fail-fast path, pre-existing dist sentinel intact.
+  - Verification: suite 7/7; full run 145/145 tests with dist removed after
+  - the run; pre-existing dist preserved in a second scenario; static
+  - analysis clean; git status clean after every run.
+
 ## [0.23.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.23.0) - 2026-11-07
 ### ⛰️  Features
 - add copilot CLI agent support (DES-017, REQ-110/112/113/117) [useReq] *(cli-targets)*
@@ -556,6 +616,7 @@
 - \[0.21.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.21.0
 - \[0.22.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.22.0
 - \[0.23.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.23.0
+- \[0.24.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.24.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.2.0..v0.3.0
@@ -578,3 +639,4 @@
 [0.21.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.20.0..v0.21.0
 [0.22.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.21.0..v0.22.0
 [0.23.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.23.0
+[0.24.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.23.0..v0.24.0
