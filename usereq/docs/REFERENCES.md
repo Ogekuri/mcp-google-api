@@ -1615,7 +1615,7 @@ or replacement fails; the temporary file is best-effort removed.
 
 ---
 
-# cliShow.ts | TypeScript | 191L | 7 symbols | 5 imports | 10 comments
+# cliShow.ts | TypeScript | 193L | 7 symbols | 5 imports | 10 comments
 > Path: `src/utils/cliShow.ts`
 - @brief Render the CLI Configuration and Installation Status report tables.
 - @details Builds the human-readable `show` output: a CLI Configuration
@@ -1662,15 +1662,17 @@ padded to the row height (REQ-185, REQ-186).
 
 ### fn `const renderRow = (cells: string[]): string[] =>` (L90-99)
 
-### fn `function buildCliRows(home?: string): string[][]` (L116-128)
+### fn `function buildCliRows(home?: string): string[][]` (L118-130)
 - @brief Build the CLI Configuration table rows.
-- @details One row per supported CLI in registry order: enabled yes/no,
-home-relative MCP configuration path, and home-relative skills directory.
+- @details One row per supported CLI in alphabetical registry order
+(antigravity, claude, codex, copilot, openclaw, opencode, pi; REQ-117):
+enabled yes/no, home-relative MCP configuration path, and home-relative
+skills directory.
 - @param home {string | undefined} Home-directory override.
 - @return {string[][]} `(CLI, Enabled, MCP Config Path, Skills Config Path)` rows.
 - @satisfies REQ-117
 
-### fn `function buildInstallRows(home: string | undefined, resourcesRoot: string): string[][]` (L141-168)
+### fn `function buildInstallRows(home: string | undefined, resourcesRoot: string): string[][]` (L143-170)
 - @brief Build the Installation Status table rows.
 - @details Emits rows only for enabled CLIs: one `Server` row for the
 managed `mcp-google-api` entry plus one `Skill` row per manifest skill,
@@ -1681,7 +1683,7 @@ the plain and the debug-overlay-extended installed `SKILL.md` (REQ-158).
 - @return {string[][]} `(Type, Name, CLI, Enabled, Installed)` rows.
 - @satisfies REQ-118, REQ-158
 
-### fn `export function buildCliShowReport(options: { home?: string; resourcesRoot: string }): string` (L181-189)
+### fn `export function buildCliShowReport(options: { home?: string; resourcesRoot: string }): string` (L183-191)
 - @brief Build the complete `show` report text.
 - @details Renders the CLI Configuration table (always, REQ-119) and the
 Installation Status table (empty when no CLI is enabled), in this order,
@@ -1699,21 +1701,24 @@ handler reports a JSON error.
 |`renderAsciiTable`|fn||83-106|export function renderAsciiTable(headers: string[], rows:...|
 |`borderLine`|fn||88-99|const borderLine = (left: string, middle: string, right: ...|
 |`renderRow`|fn||90-99|const renderRow = (cells: string[]): string[] =>|
-|`buildCliRows`|fn||116-128|function buildCliRows(home?: string): string[][]|
-|`buildInstallRows`|fn||141-168|function buildInstallRows(home: string | undefined, resou...|
-|`buildCliShowReport`|fn||181-189|export function buildCliShowReport(options: { home?: stri...|
+|`buildCliRows`|fn||118-130|function buildCliRows(home?: string): string[][]|
+|`buildInstallRows`|fn||143-170|function buildInstallRows(home: string | undefined, resou...|
+|`buildCliShowReport`|fn||183-191|export function buildCliShowReport(options: { home?: stri...|
 
 
 ---
 
-# cliTargets.ts | TypeScript | 590L | 28 symbols | 2 imports | 36 comments
+# cliTargets.ts | TypeScript | 634L | 28 symbols | 2 imports | 38 comments
 > Path: `src/utils/cliTargets.ts`
 - @brief Provide per-CLI MCP-configuration and skills-destination adapters.
-- @details Defines one adapter for each supported CLI agent (`pi`,
-`openclaw`, `codex`, `antigravity`, `claude`, `copilot`) resolving the MCP
-configuration file and the skills destination directory from an injectable
-home root. MCP registration applies read-modify-write: JSON targets merge
-the `mcpServers["mcp-google-api"]` entry preserving every unrelated key;
+- @details Defines one adapter for each supported CLI agent
+(`antigravity`, `claude`, `codex`, `copilot`, `openclaw`, `opencode`,
+`pi`) resolving the MCP configuration file and the skills destination
+directory from an injectable home root. Registry iteration order is
+alphabetical, driving every printed CLI list (REQ-110, REQ-117). MCP
+registration applies read-modify-write: JSON targets merge the managed
+entry inside the target's MCP map (`mcpServers`, or `mcp` for opencode,
+REQ-112) preserving every unrelated key;
 the TOML target (codex) appends or removes the `[mcp_servers.<name>]`
 table without touching other tables. Skill synchronization copies packaged
 skill content with overwrite and prunes stale files inside managed
@@ -1731,40 +1736,42 @@ import { join, relative, resolve } from "node:path";
 
 ## Definitions
 
-- type `export type CliTargetId = "pi" | "openclaw" | "codex" | "antigravity" | "claude" | "copilot";` (L37)
+- type `export type CliTargetId =` (L41)
 - @brief Canonical identifiers of the supported CLI agents.
-- @details Registry order: pi, openclaw, codex, antigravity, claude, copilot.
-### iface `export interface McpServerRegistration` (L43-47)
+- @details Registry order is alphabetical: antigravity, claude, codex,
+copilot, openclaw, opencode, pi (REQ-110, REQ-117).
+### iface `export interface McpServerRegistration` (L54-58)
 - @brief MCP-server registration entry written into CLI configurations.
 - @details stdio launcher shape consumed by every supported CLI agent.
 
-- type `export type CliConfigFormat = "json" | "toml";` (L54)
+- type `export type CliConfigFormat = "json" | "toml";` (L66)
 - @brief Configuration format of one CLI's MCP configuration file.
-- @details `json` targets expose a `mcpServers` object map; `toml` targets
+- @details `json` targets expose an MCP object map keyed per CLI
+(`mcpServers` by default; `mcp` for opencode, REQ-112); `toml` targets
 expose `mcp_servers` tables (codex `config.toml`).
-### iface `export interface CliTarget` (L61-66)
+### iface `export interface CliTarget` (L73-84)
 - @brief Adapter describing one supported CLI installation target.
 - @details Pure path/format descriptor; all operations are module functions
 parameterized by the adapter so each CLI stays data-driven.
 
-### fn `function homeRoot(home?: string): string` (L69-71)
+### fn `function homeRoot(home?: string): string` (L87-89)
 - @brief Resolve the effective home root. */
 
-### fn `export function resolveCliTarget(name: string): CliTarget | undefined` (L145-147)
+### fn `export function resolveCliTarget(name: string): CliTarget | undefined` (L178-180)
 - @brief Resolve a CLI adapter by user-supplied name.
 - @details Trims surrounding whitespace and lowercases before the registry
-lookup, matching `pi`, `openclaw`, `codex`, `antigravity`, `claude`,
-`copilot` case-insensitively.
+lookup, matching `antigravity`, `claude`, `codex`, `copilot`, `openclaw`,
+`opencode`, `pi` case-insensitively (REQ-110).
 - @param name {string} CLI name from the command line.
 - @return {CliTarget | undefined} Matching adapter; undefined when unsupported.
 - @satisfies REQ-110
 
-### fn `export function supportedCliNames(): string` (L154-156)
+### fn `export function supportedCliNames(): string` (L187-189)
 - @brief Comma-separated list of supported CLI names for diagnostics.
-- @return {string} Ordered `pi, openclaw, codex, antigravity, claude, copilot`.
+- @return {string} Alphabetically ordered `antigravity, claude, codex, copilot, openclaw, opencode, pi` (REQ-110).
 - @satisfies REQ-110
 
-### fn `function readJsonConfig(configPath: string): Record<string, unknown>` (L166-173)
+### fn `function readJsonConfig(configPath: string): Record<string, unknown>` (L199-206)
 - @brief Read and parse a JSON MCP configuration file.
 - @details Missing files yield `{}`; malformed JSON throws so the caller can
 fail that CLI without ever overwriting the user's file.
@@ -1772,7 +1779,7 @@ fail that CLI without ever overwriting the user's file.
 - @return {Record<string, unknown>} Parsed JSON object.
 - @throws {Error} When the file exists but is not valid JSON.
 
-### fn `function writeJsonConfig(configPath: string, value: Record<string, unknown>): void` (L185-190)
+### fn `function writeJsonConfig(configPath: string, value: Record<string, unknown>): void` (L218-223)
 - @brief Serialize and atomically write a JSON object to a file.
 - @details Two-space indentation, trailing newline, sibling `.tmp` write
 followed by rename; parent directories are created on demand.
@@ -1782,47 +1789,52 @@ followed by rename; parent directories are created on demand.
 - @throws {Error} When serialization, writing, or renaming fails.
 - @satisfies DES-019
 
-### fn `export function writeJsonMcpServerEntry(` (L204-217)
-- @brief Register an MCP-server entry in a JSON `mcpServers` configuration.
+### fn `export function writeJsonMcpServerEntry(` (L239-253)
+- @brief Register an MCP-server entry in a JSON MCP-map configuration.
 - @details Read-modify-write: parses the file (missing files start as `{}`),
-upserts `mcpServers.<serverName>` leaving every unrelated key untouched,
-and replaces the file atomically.
+upserts `<mapKey>.<serverName>` (default `mcpServers`; `mcp` for opencode,
+REQ-112) leaving every unrelated key untouched, and replaces the file
+atomically.
 - @param configPath {string} JSON configuration file path.
-- @param serverName {string} Server key inside `mcpServers`.
+- @param serverName {string} Server key inside the MCP map.
 - @param entry {McpServerRegistration} Registration entry to upsert.
+- @param mapKey {string} JSON root key holding the MCP map; defaults to `mcpServers`.
 - @return {void}
 - @throws {Error} When the existing file is malformed or the write fails.
 - @satisfies DES-019, REQ-112
 
-### fn `export function removeJsonMcpServerEntry(configPath: string, serverName: string): boolean` (L230-244)
-- @brief Remove an MCP-server entry from a JSON `mcpServers` configuration.
-- @details Deletes `mcpServers.<serverName>` when present and rewrites the
-file atomically; an empty `mcpServers` object is kept to minimize
-disruption. Missing files are a successful no-op.
+### fn `export function removeJsonMcpServerEntry(` (L268-286)
+- @brief Remove an MCP-server entry from a JSON MCP-map configuration.
+- @details Deletes `<mapKey>.<serverName>` (default `mcpServers`; `mcp` for
+opencode, REQ-112) when present and rewrites the file atomically; an
+empty map object is kept to minimize disruption. Missing files are a
+successful no-op.
 - @param configPath {string} JSON configuration file path.
-- @param serverName {string} Server key inside `mcpServers`.
+- @param serverName {string} Server key inside the MCP map.
+- @param mapKey {string} JSON root key holding the MCP map; defaults to `mcpServers`.
 - @return {boolean} True when an entry was removed; false when absent.
 - @throws {Error} When the existing file is malformed or the write fails.
 - @satisfies DES-019, REQ-115
 
-### fn `export function readJsonMcpServerEntry(` (L252-266)
-- @brief Read one MCP-server entry from a JSON configuration.
+### fn `export function readJsonMcpServerEntry(` (L295-310)
+- @brief Read one MCP-server entry from a JSON MCP-map configuration.
 - @param configPath {string} JSON configuration file path.
-- @param serverName {string} Server key inside `mcpServers`.
+- @param serverName {string} Server key inside the MCP map.
+- @param mapKey {string} JSON root key holding the MCP map; defaults to `mcpServers`.
 - @return {McpServerRegistration | undefined} Entry when registered; undefined otherwise.
 
-### fn `function tomlString(value: string): string` (L274-276)
+### fn `function tomlString(value: string): string` (L318-320)
 - @brief Escape a value as a TOML basic string.
 - @details Escapes backslash and double-quote characters.
 - @param value {string} Raw string value.
 - @return {string} Quoted TOML basic string.
 
-### fn `function tomlSectionHeader(serverName: string): string` (L283-285)
+### fn `function tomlSectionHeader(serverName: string): string` (L327-329)
 - @brief Header line of one managed server's TOML table.
 - @param serverName {string} Server key inside `mcp_servers`.
 - @return {string} Exact `[mcp_servers.<serverName>]` header line.
 
-### fn `function removeTomlSection(content: string, serverName: string): string` (L296-321)
+### fn `function removeTomlSection(content: string, serverName: string): string` (L340-365)
 - @brief Remove one managed server's TOML table from raw content.
 - @details Deletes the `[mcp_servers.<name>]` header line plus its body up to
 the next top-level `[` table header or EOF, collapsing the resulting
@@ -1831,18 +1843,18 @@ duplicate blank separators. Other tables are preserved byte-for-byte.
 - @param serverName {string} Server key inside `mcp_servers`.
 - @return {string} Content with the managed table removed.
 
-### fn `function hasTomlSection(content: string, serverName: string): boolean` (L329-331)
+### fn `function hasTomlSection(content: string, serverName: string): boolean` (L373-375)
 - @brief Detect one managed server's TOML table in raw content.
 - @param content {string} Raw TOML document content.
 - @param serverName {string} Server key inside `mcp_servers`.
 - @return {boolean} True when the `[mcp_servers.<name>]` header line exists.
 
-### fn `function registrationToTomlLines(entry: McpServerRegistration): string[]` (L338-348)
+### fn `function registrationToTomlLines(entry: McpServerRegistration): string[]` (L382-392)
 - @brief Serialize a registration entry as TOML table lines.
 - @param entry {McpServerRegistration} Registration entry.
 - @return {string[]} `command`, optional `args`, and optional `env` lines.
 
-### fn `export function writeTomlMcpServerSection(` (L362-375)
+### fn `export function writeTomlMcpServerSection(` (L406-419)
 - @brief Register an MCP-server table in a TOML configuration file.
 - @details Reads the file (missing files start empty), removes any existing
 managed table, then appends the fresh `[mcp_servers.<name>]` table. Other
@@ -1854,7 +1866,7 @@ tables are preserved; the write is atomic via sibling `.tmp` + rename.
 - @throws {Error} When reading or writing fails.
 - @satisfies DES-019, REQ-112
 
-### fn `export function removeTomlMcpServerSection(configPath: string, serverName: string): boolean` (L387-396)
+### fn `export function removeTomlMcpServerSection(configPath: string, serverName: string): boolean` (L431-440)
 - @brief Remove an MCP-server table from a TOML configuration file.
 - @details Missing files and absent tables are successful no-ops; otherwise
 the managed table is removed and the file is rewritten atomically.
@@ -1864,20 +1876,20 @@ the managed table is removed and the file is rewritten atomically.
 - @throws {Error} When reading or writing fails.
 - @satisfies DES-019, REQ-115
 
-### fn `export function hasTomlMcpServerSection(configPath: string, serverName: string): boolean` (L404-407)
+### fn `export function hasTomlMcpServerSection(configPath: string, serverName: string): boolean` (L448-451)
 - @brief Detect one managed server's TOML table in a configuration file.
 - @param configPath {string} TOML configuration file path.
 - @param serverName {string} Server key inside `mcp_servers`.
 - @return {boolean} True when the managed table header exists.
 
-### fn `function listFilesRecursive(root: string): string[]` (L414-429)
+### fn `function listFilesRecursive(root: string): string[]` (L458-473)
 - @brief Recursively list relative file paths under a directory.
 - @param root {string} Directory to scan.
 - @return {string[]} POSIX-style relative file paths; empty when the directory is absent.
 
-### fn `const walk = (dir: string): void =>` (L417-426)
+### fn `const walk = (dir: string): void =>` (L461-470)
 
-### iface `export interface SkillContentLayout` (L448-451)
+### iface `export interface SkillContentLayout` (L492-495)
 - @brief Skill content layout consumed by install synchronization and status comparison.
 - @details `debugPath` names the packaged debug overlay file relative to the
 skill directory and is excluded from the synchronized tree in every mode
@@ -1887,7 +1899,7 @@ repeated runs never duplicate the overlay (REQ-157). Status comparison
 accepts both the plain and the overlay-extended document (REQ-158).
 - @satisfies REQ-155, REQ-156, REQ-157, REQ-158
 
-### fn `export function syncSkillTree(source: string, destination: string, layout: SkillContentLayout = {}): void` (L470-491)
+### fn `export function syncSkillTree(source: string, destination: string, layout: SkillContentLayout = {}): void` (L514-535)
 - @brief Synchronize one packaged skill directory into a destination.
 - @details Creates the destination, recursively copies every packaged content
 file with overwrite while excluding any declared debug overlay, then deletes
@@ -1904,7 +1916,7 @@ content is appended to the installed `SKILL.md` after the fresh copy.
 - @pre `source` MUST exist.
 - @post `destination` mirrors exactly the packaged content tree plus the optional debug overlay.
 
-### fn `export function removeSkillDir(skillDir: string): void` (L502-504)
+### fn `export function removeSkillDir(skillDir: string): void` (L546-548)
 - @brief Remove one managed skill directory from a skills destination.
 - @details Missing directories are successful no-ops; nothing outside the
 named directory is touched and no directory is created.
@@ -1913,7 +1925,7 @@ named directory is touched and no directory is created.
 - @throws {Error} When recursive deletion fails.
 - @satisfies DES-020, REQ-115
 
-### fn `export function compareSkillTree(` (L521-524)
+### fn `export function compareSkillTree(` (L565-568)
 - @brief Compare one packaged skill directory with its installed copy.
 - @details Every packaged content file must exist in the destination with
 identical bytes; the declared debug overlay is ignored as a standalone file
@@ -1928,14 +1940,14 @@ packaged content).
 package or destination is absent, `STALE` on byte mismatch.
 - @satisfies REQ-118, REQ-158
 
-### fn `export function isServerRegistered(target: CliTarget, serverName: string, home?: string): boolean` (L551-557)
+### fn `export function isServerRegistered(target: CliTarget, serverName: string, home?: string): boolean` (L595-601)
 - @brief Detect whether a CLI has the managed server entry registered.
 - @param target {CliTarget} CLI adapter.
 - @param serverName {string} Managed server key.
 - @param home {string | undefined} Home-directory override.
 - @return {boolean} True when the entry/table is present and parseable.
 
-### fn `export function applyServerRegistration(` (L570-590)
+### fn `export function applyServerRegistration(` (L614-634)
 - @brief Write or remove the managed server entry for one CLI target.
 - @param target {CliTarget} CLI adapter.
 - @param serverName {string} Managed server key.
@@ -1949,34 +1961,34 @@ undefined removes the entry.
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`CliTargetId`|type||37||
-|`McpServerRegistration`|iface||43-47|export interface McpServerRegistration|
-|`CliConfigFormat`|type||54||
-|`CliTarget`|iface||61-66|export interface CliTarget|
-|`homeRoot`|fn||69-71|function homeRoot(home?: string): string|
-|`resolveCliTarget`|fn||145-147|export function resolveCliTarget(name: string): CliTarget...|
-|`supportedCliNames`|fn||154-156|export function supportedCliNames(): string|
-|`readJsonConfig`|fn||166-173|function readJsonConfig(configPath: string): Record<strin...|
-|`writeJsonConfig`|fn||185-190|function writeJsonConfig(configPath: string, value: Recor...|
-|`writeJsonMcpServerEntry`|fn||204-217|export function writeJsonMcpServerEntry(|
-|`removeJsonMcpServerEntry`|fn||230-244|export function removeJsonMcpServerEntry(configPath: stri...|
-|`readJsonMcpServerEntry`|fn||252-266|export function readJsonMcpServerEntry(|
-|`tomlString`|fn||274-276|function tomlString(value: string): string|
-|`tomlSectionHeader`|fn||283-285|function tomlSectionHeader(serverName: string): string|
-|`removeTomlSection`|fn||296-321|function removeTomlSection(content: string, serverName: s...|
-|`hasTomlSection`|fn||329-331|function hasTomlSection(content: string, serverName: stri...|
-|`registrationToTomlLines`|fn||338-348|function registrationToTomlLines(entry: McpServerRegistra...|
-|`writeTomlMcpServerSection`|fn||362-375|export function writeTomlMcpServerSection(|
-|`removeTomlMcpServerSection`|fn||387-396|export function removeTomlMcpServerSection(configPath: st...|
-|`hasTomlMcpServerSection`|fn||404-407|export function hasTomlMcpServerSection(configPath: strin...|
-|`listFilesRecursive`|fn||414-429|function listFilesRecursive(root: string): string[]|
-|`walk`|fn||417-426|const walk = (dir: string): void =>|
-|`SkillContentLayout`|iface||448-451|export interface SkillContentLayout|
-|`syncSkillTree`|fn||470-491|export function syncSkillTree(source: string, destination...|
-|`removeSkillDir`|fn||502-504|export function removeSkillDir(skillDir: string): void|
-|`compareSkillTree`|fn||521-524|export function compareSkillTree(|
-|`isServerRegistered`|fn||551-557|export function isServerRegistered(target: CliTarget, ser...|
-|`applyServerRegistration`|fn||570-590|export function applyServerRegistration(|
+|`CliTargetId`|type||41||
+|`McpServerRegistration`|iface||54-58|export interface McpServerRegistration|
+|`CliConfigFormat`|type||66||
+|`CliTarget`|iface||73-84|export interface CliTarget|
+|`homeRoot`|fn||87-89|function homeRoot(home?: string): string|
+|`resolveCliTarget`|fn||178-180|export function resolveCliTarget(name: string): CliTarget...|
+|`supportedCliNames`|fn||187-189|export function supportedCliNames(): string|
+|`readJsonConfig`|fn||199-206|function readJsonConfig(configPath: string): Record<strin...|
+|`writeJsonConfig`|fn||218-223|function writeJsonConfig(configPath: string, value: Recor...|
+|`writeJsonMcpServerEntry`|fn||239-253|export function writeJsonMcpServerEntry(|
+|`removeJsonMcpServerEntry`|fn||268-286|export function removeJsonMcpServerEntry(|
+|`readJsonMcpServerEntry`|fn||295-310|export function readJsonMcpServerEntry(|
+|`tomlString`|fn||318-320|function tomlString(value: string): string|
+|`tomlSectionHeader`|fn||327-329|function tomlSectionHeader(serverName: string): string|
+|`removeTomlSection`|fn||340-365|function removeTomlSection(content: string, serverName: s...|
+|`hasTomlSection`|fn||373-375|function hasTomlSection(content: string, serverName: stri...|
+|`registrationToTomlLines`|fn||382-392|function registrationToTomlLines(entry: McpServerRegistra...|
+|`writeTomlMcpServerSection`|fn||406-419|export function writeTomlMcpServerSection(|
+|`removeTomlMcpServerSection`|fn||431-440|export function removeTomlMcpServerSection(configPath: st...|
+|`hasTomlMcpServerSection`|fn||448-451|export function hasTomlMcpServerSection(configPath: strin...|
+|`listFilesRecursive`|fn||458-473|function listFilesRecursive(root: string): string[]|
+|`walk`|fn||461-470|const walk = (dir: string): void =>|
+|`SkillContentLayout`|iface||492-495|export interface SkillContentLayout|
+|`syncSkillTree`|fn||514-535|export function syncSkillTree(source: string, destination...|
+|`removeSkillDir`|fn||546-548|export function removeSkillDir(skillDir: string): void|
+|`compareSkillTree`|fn||565-568|export function compareSkillTree(|
+|`isServerRegistered`|fn||595-601|export function isServerRegistered(target: CliTarget, ser...|
+|`applyServerRegistration`|fn||614-634|export function applyServerRegistration(|
 
 
 ---

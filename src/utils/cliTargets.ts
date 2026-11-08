@@ -1,11 +1,14 @@
 /**
  * @file cliTargets.ts
  * @brief Provide per-CLI MCP-configuration and skills-destination adapters.
- * @details Defines one adapter for each supported CLI agent (`pi`,
- * `openclaw`, `codex`, `antigravity`, `claude`, `copilot`) resolving the MCP
- * configuration file and the skills destination directory from an injectable
- * home root. MCP registration applies read-modify-write: JSON targets merge
- * the `mcpServers["mcp-google-api"]` entry preserving every unrelated key;
+ * @details Defines one adapter for each supported CLI agent
+ * (`antigravity`, `claude`, `codex`, `copilot`, `openclaw`, `opencode`,
+ * `pi`) resolving the MCP configuration file and the skills destination
+ * directory from an injectable home root. Registry iteration order is
+ * alphabetical, driving every printed CLI list (REQ-110, REQ-117). MCP
+ * registration applies read-modify-write: JSON targets merge the managed
+ * entry inside the target's MCP map (`mcpServers`, or `mcp` for opencode,
+ * REQ-112) preserving every unrelated key;
  * the TOML target (codex) appends or removes the `[mcp_servers.<name>]`
  * table without touching other tables. Skill synchronization copies packaged
  * skill content with overwrite and prunes stale files inside managed
@@ -32,9 +35,17 @@ import { join, relative, resolve } from "node:path";
 
 /**
  * @brief Canonical identifiers of the supported CLI agents.
- * @details Registry order: pi, openclaw, codex, antigravity, claude, copilot.
+ * @details Registry order is alphabetical: antigravity, claude, codex,
+ * copilot, openclaw, opencode, pi (REQ-110, REQ-117).
  */
-export type CliTargetId = "pi" | "openclaw" | "codex" | "antigravity" | "claude" | "copilot";
+export type CliTargetId =
+  | "antigravity"
+  | "claude"
+  | "codex"
+  | "copilot"
+  | "openclaw"
+  | "opencode"
+  | "pi";
 
 /**
  * @brief MCP-server registration entry written into CLI configurations.
@@ -48,7 +59,8 @@ export interface McpServerRegistration {
 
 /**
  * @brief Configuration format of one CLI's MCP configuration file.
- * @details `json` targets expose a `mcpServers` object map; `toml` targets
+ * @details `json` targets expose an MCP object map keyed per CLI
+ * (`mcpServers` by default; `mcp` for opencode, REQ-112); `toml` targets
  * expose `mcp_servers` tables (codex `config.toml`).
  */
 export type CliConfigFormat = "json" | "toml";
@@ -63,6 +75,12 @@ export interface CliTarget {
   configFormat: CliConfigFormat;
   mcpConfigPath(home?: string): string;
   skillsDir(home?: string): string;
+  /**
+   * @brief JSON root key holding the MCP-server map of a `json` target.
+   * @details Defaults to `mcpServers`; opencode uses `mcp` (REQ-112).
+   * Ignored by `toml` targets.
+   */
+  jsonMcpMapKey?: string;
 }
 
 /** @brief Resolve the effective home root. */
@@ -119,25 +137,40 @@ const COPILOT_TARGET: CliTarget = {
 };
 
 /**
+ * @brief opencode adapter: `~/.config/opencode/opencode.json` + skills.
+ * @details MCP registration targets the JSON `mcp` map (REQ-112); skills
+ * synchronize into `~/.config/opencode/skills` (REQ-113).
+ */
+const OPENCODE_TARGET: CliTarget = {
+  id: "opencode",
+  configFormat: "json",
+  jsonMcpMapKey: "mcp",
+  mcpConfigPath: (home) => join(homeRoot(home), ".config", "opencode", "opencode.json"),
+  skillsDir: (home) => join(homeRoot(home), ".config", "opencode", "skills"),
+};
+
+/**
  * @brief Registry of supported CLI adapters keyed by canonical name.
- * @details Insertion order defines the `show` CLI Configuration table order
- * and the supported-name listing in diagnostics.
+ * @details Insertion order is alphabetical and defines the `show` CLI
+ * Configuration table order (REQ-117) and the supported-name listing in
+ * diagnostics (REQ-110).
  * @satisfies REQ-110, REQ-117
  */
 export const CLI_TARGETS: Record<CliTargetId, CliTarget> = {
-  pi: PI_TARGET,
-  openclaw: OPENCLAW_TARGET,
-  codex: CODEX_TARGET,
   antigravity: ANTIGRAVITY_TARGET,
   claude: CLAUDE_TARGET,
+  codex: CODEX_TARGET,
   copilot: COPILOT_TARGET,
+  openclaw: OPENCLAW_TARGET,
+  opencode: OPENCODE_TARGET,
+  pi: PI_TARGET,
 };
 
 /**
  * @brief Resolve a CLI adapter by user-supplied name.
  * @details Trims surrounding whitespace and lowercases before the registry
- * lookup, matching `pi`, `openclaw`, `codex`, `antigravity`, `claude`,
- * `copilot` case-insensitively.
+ * lookup, matching `antigravity`, `claude`, `codex`, `copilot`, `openclaw`,
+ * `opencode`, `pi` case-insensitively (REQ-110).
  * @param name {string} CLI name from the command line.
  * @return {CliTarget | undefined} Matching adapter; undefined when unsupported.
  * @satisfies REQ-110
@@ -148,7 +181,7 @@ export function resolveCliTarget(name: string): CliTarget | undefined {
 
 /**
  * @brief Comma-separated list of supported CLI names for diagnostics.
- * @return {string} Ordered `pi, openclaw, codex, antigravity, claude, copilot`.
+ * @return {string} Alphabetically ordered `antigravity, claude, codex, copilot, openclaw, opencode, pi` (REQ-110).
  * @satisfies REQ-110
  */
 export function supportedCliNames(): string {
@@ -190,13 +223,15 @@ function writeJsonConfig(configPath: string, value: Record<string, unknown>): vo
 }
 
 /**
- * @brief Register an MCP-server entry in a JSON `mcpServers` configuration.
+ * @brief Register an MCP-server entry in a JSON MCP-map configuration.
  * @details Read-modify-write: parses the file (missing files start as `{}`),
- * upserts `mcpServers.<serverName>` leaving every unrelated key untouched,
- * and replaces the file atomically.
+ * upserts `<mapKey>.<serverName>` (default `mcpServers`; `mcp` for opencode,
+ * REQ-112) leaving every unrelated key untouched, and replaces the file
+ * atomically.
  * @param configPath {string} JSON configuration file path.
- * @param serverName {string} Server key inside `mcpServers`.
+ * @param serverName {string} Server key inside the MCP map.
  * @param entry {McpServerRegistration} Registration entry to upsert.
+ * @param mapKey {string} JSON root key holding the MCP map; defaults to `mcpServers`.
  * @return {void}
  * @throws {Error} When the existing file is malformed or the write fails.
  * @satisfies DES-019, REQ-112
@@ -204,58 +239,67 @@ function writeJsonConfig(configPath: string, value: Record<string, unknown>): vo
 export function writeJsonMcpServerEntry(
   configPath: string,
   serverName: string,
-  entry: McpServerRegistration
+  entry: McpServerRegistration,
+  mapKey = "mcpServers"
 ): void {
   const config = readJsonConfig(configPath);
-  const mcpServers = (config.mcpServers ?? {}) as Record<string, unknown>;
+  const mcpServers = (config[mapKey] ?? {}) as Record<string, unknown>;
   if (mcpServers === null || typeof mcpServers !== "object" || Array.isArray(mcpServers)) {
-    throw new Error(`mcpServers is not an object: ${configPath}`);
+    throw new Error(`${mapKey} is not an object: ${configPath}`);
   }
   mcpServers[serverName] = entry;
-  config.mcpServers = mcpServers;
+  config[mapKey] = mcpServers;
   writeJsonConfig(configPath, config);
 }
 
 /**
- * @brief Remove an MCP-server entry from a JSON `mcpServers` configuration.
- * @details Deletes `mcpServers.<serverName>` when present and rewrites the
- * file atomically; an empty `mcpServers` object is kept to minimize
- * disruption. Missing files are a successful no-op.
+ * @brief Remove an MCP-server entry from a JSON MCP-map configuration.
+ * @details Deletes `<mapKey>.<serverName>` (default `mcpServers`; `mcp` for
+ * opencode, REQ-112) when present and rewrites the file atomically; an
+ * empty map object is kept to minimize disruption. Missing files are a
+ * successful no-op.
  * @param configPath {string} JSON configuration file path.
- * @param serverName {string} Server key inside `mcpServers`.
+ * @param serverName {string} Server key inside the MCP map.
+ * @param mapKey {string} JSON root key holding the MCP map; defaults to `mcpServers`.
  * @return {boolean} True when an entry was removed; false when absent.
  * @throws {Error} When the existing file is malformed or the write fails.
  * @satisfies DES-019, REQ-115
  */
-export function removeJsonMcpServerEntry(configPath: string, serverName: string): boolean {
+export function removeJsonMcpServerEntry(
+  configPath: string,
+  serverName: string,
+  mapKey = "mcpServers"
+): boolean {
   if (!existsSync(configPath)) return false;
   const config = readJsonConfig(configPath);
-  const mcpServers = config.mcpServers;
+  const mcpServers = config[mapKey];
   if (mcpServers === undefined) return false;
   if (mcpServers === null || typeof mcpServers !== "object" || Array.isArray(mcpServers)) {
-    throw new Error(`mcpServers is not an object: ${configPath}`);
+    throw new Error(`${mapKey} is not an object: ${configPath}`);
   }
   const map = mcpServers as Record<string, unknown>;
   if (!(serverName in map)) return false;
   delete map[serverName];
-  config.mcpServers = map;
+  config[mapKey] = map;
   writeJsonConfig(configPath, config);
   return true;
 }
 
 /**
- * @brief Read one MCP-server entry from a JSON configuration.
+ * @brief Read one MCP-server entry from a JSON MCP-map configuration.
  * @param configPath {string} JSON configuration file path.
- * @param serverName {string} Server key inside `mcpServers`.
+ * @param serverName {string} Server key inside the MCP map.
+ * @param mapKey {string} JSON root key holding the MCP map; defaults to `mcpServers`.
  * @return {McpServerRegistration | undefined} Entry when registered; undefined otherwise.
  */
 export function readJsonMcpServerEntry(
   configPath: string,
-  serverName: string
+  serverName: string,
+  mapKey = "mcpServers"
 ): McpServerRegistration | undefined {
   try {
     const config = readJsonConfig(configPath);
-    const mcpServers = config.mcpServers;
+    const mcpServers = config[mapKey];
     if (mcpServers === null || typeof mcpServers !== "object" || Array.isArray(mcpServers)) {
       return undefined;
     }
@@ -553,7 +597,7 @@ export function isServerRegistered(target: CliTarget, serverName: string, home?:
   if (target.configFormat === "toml") {
     return hasTomlMcpServerSection(configPath, serverName);
   }
-  return readJsonMcpServerEntry(configPath, serverName) !== undefined;
+  return readJsonMcpServerEntry(configPath, serverName, target.jsonMcpMapKey) !== undefined;
 }
 
 /**
@@ -583,8 +627,8 @@ export function applyServerRegistration(
     return;
   }
   if (entry === undefined) {
-    removeJsonMcpServerEntry(configPath, serverName);
+    removeJsonMcpServerEntry(configPath, serverName, target.jsonMcpMapKey);
   } else {
-    writeJsonMcpServerEntry(configPath, serverName, entry);
+    writeJsonMcpServerEntry(configPath, serverName, entry, target.jsonMcpMapKey);
   }
 }

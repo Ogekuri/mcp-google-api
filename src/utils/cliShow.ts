@@ -107,8 +107,10 @@ export function renderAsciiTable(headers: string[], rows: string[][], maxWidth =
 
 /**
  * @brief Build the CLI Configuration table rows.
- * @details One row per supported CLI in registry order: enabled yes/no,
- * home-relative MCP configuration path, and home-relative skills directory.
+ * @details One row per supported CLI in alphabetical registry order
+ * (antigravity, claude, codex, copilot, openclaw, opencode, pi; REQ-117):
+ * enabled yes/no, home-relative MCP configuration path, and home-relative
+ * skills directory.
  * @param home {string | undefined} Home-directory override.
  * @return {string[][]} `(CLI, Enabled, MCP Config Path, Skills Config Path)` rows.
  * @satisfies REQ-117
