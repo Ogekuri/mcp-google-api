@@ -5,8 +5,9 @@
  * table covering every supported CLI (enabled state, MCP configuration
  * path, skills destination path) and an Installation Status table listing
  * the managed MCP server and every manifest skill per enabled CLI with
- * OK / MISSING / STALE detection.
- * @satisfies REQ-117, REQ-118, REQ-119
+ * OK / MISSING / STALE detection. Both tables render as box-drawing grids
+ * (REQ-185, REQ-186).
+ * @satisfies REQ-117, REQ-118, REQ-119, REQ-185, REQ-186
  */
 
 import { join } from "node:path";
@@ -67,36 +68,40 @@ function wrapCell(text: string, width: number): string[] {
 }
 
 /**
- * @brief Render an ASCII grid table with aligned and wrapped cells.
- * @details Column widths are the longest cell capped by `maxWidth`; every
- * row is emitted between `+---+` borders and multi-line cells are padded to
- * the row height.
+ * @brief Render a box-drawing grid table with aligned and wrapped cells.
+ * @details Column widths are the longest cell capped by `maxWidth`; the
+ * header row is framed by the `┌─┬┐` top border and the `├─┼┤` separator,
+ * data rows are emitted as `│`-delimited lines without inter-row borders,
+ * the table closes with the `└─┴┘` bottom border, and multi-line cells are
+ * padded to the row height (REQ-185, REQ-186).
  * @param headers {string[]} Column header labels.
  * @param rows {string[][]} Row cell values.
  * @param maxWidth {number} Maximum column width in characters.
  * @return {string} Rendered table text without trailing newline.
+ * @satisfies REQ-185, REQ-186
  */
 export function renderAsciiTable(headers: string[], rows: string[][], maxWidth = MAX_CELL_WIDTH): string {
   const widths = headers.map((header, index) => {
     const lengths = [header.length, ...rows.map((row) => (row[index] ?? "").length)];
     return Math.max(1, Math.min(Math.max(...lengths), Math.max(1, maxWidth)));
   });
-  const border = "+" + widths.map((width) => "-".repeat(width + 2)).join("+") + "+";
+  const borderLine = (left: string, middle: string, right: string): string =>
+    left + widths.map((width) => "─".repeat(width + 2)).join(middle) + right;
   const renderRow = (cells: string[]): string[] => {
     const wrapped = cells.map((cell, index) => wrapCell(cell ?? "", widths[index]));
     const height = Math.max(...wrapped.map((part) => part.length));
     const lines: string[] = [];
     for (let line = 0; line < height; line += 1) {
       const parts = wrapped.map((part, index) => (part[line] ?? "").padEnd(widths[index]));
-      lines.push("| " + parts.join(" | ") + " |");
+      lines.push("│ " + parts.join(" │ ") + " │");
     }
     return lines;
   };
-  const output = [border, ...renderRow(headers), border];
+  const output = [borderLine("┌", "┬", "┐"), ...renderRow(headers), borderLine("├", "┼", "┤")];
   for (const row of rows) {
     output.push(...renderRow(row));
-    output.push(border);
   }
+  output.push(borderLine("└", "┴", "┘"));
   return output.join("\n");
 }
 

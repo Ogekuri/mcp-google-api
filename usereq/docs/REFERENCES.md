@@ -1615,15 +1615,16 @@ or replacement fails; the temporary file is best-effort removed.
 
 ---
 
-# cliShow.ts | TypeScript | 186L | 6 symbols | 5 imports | 10 comments
+# cliShow.ts | TypeScript | 191L | 7 symbols | 5 imports | 10 comments
 > Path: `src/utils/cliShow.ts`
 - @brief Render the CLI Configuration and Installation Status report tables.
 - @details Builds the human-readable `show` output: a CLI Configuration
 table covering every supported CLI (enabled state, MCP configuration
 path, skills destination path) and an Installation Status table listing
 the managed MCP server and every manifest skill per enabled CLI with
-OK / MISSING / STALE detection.
-- @satisfies REQ-117, REQ-118, REQ-119
+OK / MISSING / STALE detection. Both tables render as box-drawing grids
+(REQ-185, REQ-186).
+- @satisfies REQ-117, REQ-118, REQ-119, REQ-185, REQ-186
 
 ## Imports
 ```
@@ -1636,7 +1637,7 @@ import { loadSkillsManifest } from "./cliInstaller.js";
 
 ## Definitions
 
-### fn `function wrapCell(text: string, width: number): string[]` (L42-67)
+### fn `function wrapCell(text: string, width: number): string[]` (L43-68)
 - @brief Wrap one cell value into fixed-width lines on word boundaries.
 - @details Collapses whitespace, splits overlong tokens into `width`-sized
 chunks, and greedily packs words without exceeding `width`.
@@ -1644,19 +1645,24 @@ chunks, and greedily packs words without exceeding `width`.
 - @param width {number} Maximum line width in characters; MUST be positive.
 - @return {string[]} Rendered lines; `[""]` for an empty value.
 
-### fn `export function renderAsciiTable(headers: string[], rows: string[][], maxWidth = MAX_CELL_WIDTH): string` (L79-101)
-- @brief Render an ASCII grid table with aligned and wrapped cells.
-- @details Column widths are the longest cell capped by `maxWidth`; every
-row is emitted between `+---+` borders and multi-line cells are padded to
-the row height.
+### fn `export function renderAsciiTable(headers: string[], rows: string[][], maxWidth = MAX_CELL_WIDTH): string` (L83-106)
+- @brief Render a box-drawing grid table with aligned and wrapped cells.
+- @details Column widths are the longest cell capped by `maxWidth`; the
+header row is framed by the `┌─┬┐` top border and the `├─┼┤` separator,
+data rows are emitted as `│`-delimited lines without inter-row borders,
+the table closes with the `└─┴┘` bottom border, and multi-line cells are
+padded to the row height (REQ-185, REQ-186).
 - @param headers {string[]} Column header labels.
 - @param rows {string[][]} Row cell values.
 - @param maxWidth {number} Maximum column width in characters.
 - @return {string} Rendered table text without trailing newline.
+- @satisfies REQ-185, REQ-186
 
-### fn `const renderRow = (cells: string[]): string[] =>` (L85-94)
+### fn `const borderLine = (left: string, middle: string, right: string): string =>` (L88-99)
 
-### fn `function buildCliRows(home?: string): string[][]` (L111-123)
+### fn `const renderRow = (cells: string[]): string[] =>` (L90-99)
+
+### fn `function buildCliRows(home?: string): string[][]` (L116-128)
 - @brief Build the CLI Configuration table rows.
 - @details One row per supported CLI in registry order: enabled yes/no,
 home-relative MCP configuration path, and home-relative skills directory.
@@ -1664,7 +1670,7 @@ home-relative MCP configuration path, and home-relative skills directory.
 - @return {string[][]} `(CLI, Enabled, MCP Config Path, Skills Config Path)` rows.
 - @satisfies REQ-117
 
-### fn `function buildInstallRows(home: string | undefined, resourcesRoot: string): string[][]` (L136-163)
+### fn `function buildInstallRows(home: string | undefined, resourcesRoot: string): string[][]` (L141-168)
 - @brief Build the Installation Status table rows.
 - @details Emits rows only for enabled CLIs: one `Server` row for the
 managed `mcp-google-api` entry plus one `Skill` row per manifest skill,
@@ -1675,7 +1681,7 @@ the plain and the debug-overlay-extended installed `SKILL.md` (REQ-158).
 - @return {string[][]} `(Type, Name, CLI, Enabled, Installed)` rows.
 - @satisfies REQ-118, REQ-158
 
-### fn `export function buildCliShowReport(options: { home?: string; resourcesRoot: string }): string` (L176-184)
+### fn `export function buildCliShowReport(options: { home?: string; resourcesRoot: string }): string` (L181-189)
 - @brief Build the complete `show` report text.
 - @details Renders the CLI Configuration table (always, REQ-119) and the
 Installation Status table (empty when no CLI is enabled), in this order,
@@ -1689,12 +1695,13 @@ handler reports a JSON error.
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`wrapCell`|fn||42-67|function wrapCell(text: string, width: number): string[]|
-|`renderAsciiTable`|fn||79-101|export function renderAsciiTable(headers: string[], rows:...|
-|`renderRow`|fn||85-94|const renderRow = (cells: string[]): string[] =>|
-|`buildCliRows`|fn||111-123|function buildCliRows(home?: string): string[][]|
-|`buildInstallRows`|fn||136-163|function buildInstallRows(home: string | undefined, resou...|
-|`buildCliShowReport`|fn||176-184|export function buildCliShowReport(options: { home?: stri...|
+|`wrapCell`|fn||43-68|function wrapCell(text: string, width: number): string[]|
+|`renderAsciiTable`|fn||83-106|export function renderAsciiTable(headers: string[], rows:...|
+|`borderLine`|fn||88-99|const borderLine = (left: string, middle: string, right: ...|
+|`renderRow`|fn||90-99|const renderRow = (cells: string[]): string[] =>|
+|`buildCliRows`|fn||116-128|function buildCliRows(home?: string): string[][]|
+|`buildInstallRows`|fn||141-168|function buildInstallRows(home: string | undefined, resou...|
+|`buildCliShowReport`|fn||181-189|export function buildCliShowReport(options: { home?: stri...|
 
 
 ---

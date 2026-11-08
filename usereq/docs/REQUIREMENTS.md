@@ -392,6 +392,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-168**: `host <host>` MUST persist a non-empty bind hostname into the settings `host` field with a human-readable confirmation, rejecting empty input while persisting nothing.
 - **REQ-169**: `port <port>` MUST persist an integer port 1-65535 into the settings `port` field with a human-readable confirmation, rejecting any other value while persisting nothing.
 - **REQ-184**: `enable <cli>` and `disable <cli>` MUST print on stdout a human-readable confirmation naming the resolved CLI and the resulting enabled state, exiting 0.
+- **REQ-185**: `show` MUST render both report tables as box-drawing grids using `┌`, `┬`, `┐`, `│`, `├`, `┼`, `┤`, `└`, `┴`, `┘`, and `─` characters with `│` column separators.
+- **REQ-186**: `show` table data rows MUST render without inter-row border lines, with exactly one `├─┼┤` separator between the header row and the data block and the `└─┴┘` border as the last line.
 
 ### 3.3 Known Limitations (True State)
 - **LIM-001**: `maps_search_nearby` may return fewer than 20 results when client-side `openNow`/`minRating` filters discard matches post-query.
