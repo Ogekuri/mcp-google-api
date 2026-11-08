@@ -84,9 +84,10 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PRJ-016**: MUST identify the distribution package, bin, CLI script name, and user-facing messages as `mcp-google-api` with no references to the superseded `mcp-google-map` name.
 - **PRJ-017**: MUST scope the server to Google APIs at large, with Google Maps as the currently implemented API family (PRJ-001).
 - **PRJ-018**: MUST ship `scripts/mcp-google-api.sh`, named after the installed `mcp-google-api` distribution bin, launching the local repository copy.
-- **PRJ-019**: `scripts/mcp-google-api.sh` MUST forward every argument to the local `dist/cli.js` entry without implicit install or build steps.
+- **PRJ-019**: `scripts/mcp-google-api.sh` MUST rebuild the local `dist/cli.js` entry from the current repository sources before every execution, aborting non-zero when the rebuild fails.
 - **PRJ-020**: The installed `mcp-google-api` bin MUST execute the packaged `dist/cli.js` Node entry, forwarding every argument unchanged with no implicit install or build steps.
 - **PRJ-021**: When the packaged `dist/cli.js` artifact is missing, the installed `mcp-google-api` bin MUST print JSON build-remediation guidance on stderr and exit non-zero.
+- **PRJ-022**: `scripts/mcp-google-api.sh` MUST forward every argument unchanged to the rebuilt local `dist/cli.js` entry and propagate its exit code.
 
 ### 2.2 Project Constraints
 - **CTN-001**: MUST declare all tools read-only, non-destructive, idempotent, and open-world via MCP tool annotations (evidence: `MAPS_TOOL_ANNOTATIONS`, `src/config.ts`).
@@ -117,7 +118,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-016**: MUST document configuration prerequisites in `README.md` and `docs/CONFIGURATION.md`: single Google Maps API key configured via `api-key`, enabled Google services, minimal operational subset, `tools` command restriction, and post-install `doctor` verification.
 - **PKG-017**: MUST fail `npm publish` via the `prepublishOnly` guard when the `package.json` version is `0.0.0`-based or carries a prerelease or build suffix.
 - **PKG-018**: MUST document in `README.md` the migration of the HTTP default bind from `0.0.0.0` to loopback `127.0.0.1`, including the `--host 0.0.0.0` opt-in.
-- **PKG-019**: MUST provide a single `npm run verify` pipeline (typecheck, unit tests, build) and keep helper scripts free of implicit chained install/build steps.
+- **PKG-019**: MUST provide a single `npm run verify` pipeline (typecheck, unit tests, build) and keep helper scripts other than the PRJ-018 development launcher free of implicit chained install/build steps.
 - **PKG-022**: MUST keep every documented example consistent with supported CLI flags, headers, and transports.
 - **PKG-023**: MUST document `enable`, `disable`, `install`, `uninstall`, and `show` commands with supported CLI targets in README.md.
 - **PKG-024**: MUST ship `src/resources/skills` inside the published npm package so `install` and `show` resolve manifest skills from installed packages.
