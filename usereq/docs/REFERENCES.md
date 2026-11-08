@@ -46,7 +46,7 @@
         └── upgradeManager.ts
 ```
 
-# cli.ts | TypeScript | 1798L | 38 symbols | 20 imports | 61 comments
+# cli.ts | TypeScript | 1795L | 38 symbols | 20 imports | 61 comments
 > Path: `src/cli.ts`
 
 ## Imports
@@ -198,22 +198,23 @@ JSON stderr error with exit code 1. Complexity O(1).
 - @see renderClientSnippet
 - @satisfies PRJ-010, REQ-092, REQ-093
 
-### fn `export function runEnableDisableCliCommand(` (L664-667)
+### fn `export function runEnableDisableCliCommand(` (L665-668)
 - @brief Enables or disables one supported CLI in the persisted settings.
 - @details Resolves the CLI adapter case-insensitively; unsupported names
 exit 2 with a JSON stderr error listing supported names (REQ-110).
 Idempotent: enabling an enabled CLI and disabling a disabled CLI succeed
-without rewriting the settings file (REQ-111). Success prints a JSON
-result on stdout (PRJ-008).
+without rewriting the settings file (REQ-111). Success prints a
+human-readable stdout confirmation naming the resolved CLI and the
+resulting enabled state (REQ-184, human-readable exception to PRJ-008).
 - @param name {string} CLI name from the command line.
 - @param enable {boolean} True to enable; false to disable.
 - @param options {object} `{ home?, streams? }`; streams default to process streams.
 - @return {number} Exit code: 0 on success, 2 for an unsupported CLI.
 - @see loadCliSettings
 - @see saveCliSettings
-- @satisfies REQ-110, REQ-111
+- @satisfies REQ-110, REQ-111, REQ-184
 
-### fn `export function runApiKeyCommand(` (L715-717)
+### fn `export function runApiKeyCommand(` (L712-714)
 - @brief Saves the Google Maps API key in the persisted settings and refreshes enabled-CLI registrations.
 - @details Validates the key first (REQ-020 format via `ApiKeyManager`),
 rejecting empty, whitespace-only, or malformed input with a human-readable
@@ -233,7 +234,7 @@ result, or the enable hint when zero CLIs are enabled.
 - @see installEnabledCliResources
 - @satisfies REQ-136, REQ-137, REQ-138, REQ-139, REQ-159
 
-### fn `export function runAutoUpdateCommand(` (L776-778)
+### fn `export function runAutoUpdateCommand(` (L773-775)
 - @brief Enables or disables the automatic update check in the persisted settings.
 - @details Accepts `enable`, `disable`, `1`, `0` case-insensitively (REQ-148)
 and persists the resolved boolean into the settings `autoUpdate` field
@@ -248,7 +249,7 @@ error listing the accepted values and persists nothing (REQ-151).
 - @see saveCliSettings
 - @satisfies REQ-148, REQ-149, REQ-150, REQ-151
 
-### fn `export function runToolsCommand(` (L821-823)
+### fn `export function runToolsCommand(` (L818-820)
 - @brief Persists the enabled-tool allowlist via the `tools` command.
 - @details Accepts a comma-separated tool-name list or the literal `*`
 (full set). Unknown names, empty items only, or a missing value print a
@@ -263,7 +264,7 @@ confirmation is printed. Complexity O(n + m).
 - @see saveCliSettings
 - @satisfies REQ-167
 
-### fn `export function runHostCommand(` (L878-880)
+### fn `export function runHostCommand(` (L875-877)
 - @brief Persists the HTTP bind host via the `host` command.
 - @details Rejects missing or whitespace-only values with a human-readable
 stderr error, persisting nothing (REQ-168); a valid non-empty hostname is
@@ -276,7 +277,7 @@ human-readable stdout confirmation is printed. Complexity O(1).
 - @see saveCliSettings
 - @satisfies REQ-168
 
-### fn `export function runPortCommand(` (L914-916)
+### fn `export function runPortCommand(` (L911-913)
 - @brief Persists the HTTP listen port via the `port` command.
 - @details Rejects missing or non-integer values outside 1..65535 with a
 human-readable stderr error, persisting nothing (REQ-169); a valid port is
@@ -289,7 +290,7 @@ human-readable stdout confirmation is printed. Complexity O(1).
 - @see saveCliSettings
 - @satisfies REQ-169
 
-### fn `export function runInstallUninstallCommand(` (L956-958)
+### fn `export function runInstallUninstallCommand(` (L953-955)
 - @brief Shared handler for the `install` and `uninstall` commands.
 - @details Runs the requested operation over every enabled CLI and prints a
 human-readable per-CLI activity report on stdout (REQ-166): one header
@@ -307,7 +308,7 @@ so each skill's declared debug overlay is appended to the installed
 - @see uninstallEnabledCliResources
 - @satisfies REQ-114, REQ-115, REQ-116, REQ-119, REQ-154, REQ-155, REQ-156, REQ-166
 
-### fn `export function runShowCommand(` (L1006-1007)
+### fn `export function runShowCommand(` (L1003-1004)
 - @brief Prints the CLI Configuration and Installation Status tables.
 - @details Delegates rendering to `buildCliShowReport` and writes the report
 text to stdout (human-readable exception to PRJ-008). Manifest or render
@@ -317,7 +318,7 @@ failures surface as a JSON stderr error with exit code 1.
 - @see buildCliShowReport
 - @satisfies REQ-117, REQ-118, REQ-119
 
-### fn `function isEntryMainModule(): boolean` (L1043-1053)
+### fn `function isEntryMainModule(): boolean` (L1040-1050)
 - @brief Detects whether this module is the process main module.
 - @details Compares the REAL paths of both sides after symlink resolution:
 `realpathSync(process.argv[1])` versus the real path of this module
@@ -336,7 +337,7 @@ metadata lookups; no side effects.
 - @return {boolean} True when this module was launched as the main module.
 - @satisfies PRJ-003
 
-### fn `export function describeUndispatchedServerStart(args: readonly string[]): string | undefined` (L1071-1082)
+### fn `export function describeUndispatchedServerStart(args: readonly string[]): string | undefined` (L1068-1079)
 - @brief Detects a stdio server-start argv shape that the entry gate skipped.
 - @details Matches the registered MCP-client stdio launch shape (REQ-114
 launcher `npx -y mcp-google-api start --stdio`): the post-entry argument
@@ -352,7 +353,7 @@ naming the local rebuild and the global-refresh commands; undefined for
 any other argv shape (plain module imports, unrelated commands).
 - @satisfies REQ-094
 
-### fn `export function handleUndispatchedEntry(` (L1099-1101)
+### fn `export function handleUndispatchedEntry(` (L1096-1098)
 - @brief Reports an undispatched server-start launch on stderr and exits non-zero.
 - @details Detects the server-start argv shape via
 `describeUndispatchedServerStart`; when present, writes exactly one JSON
@@ -367,7 +368,7 @@ code is returned, never exited inline.
 - @return {number} 1 when the remediation diagnostic was emitted; 0 otherwise.
 - @satisfies REQ-094, REQ-015, CTN-003
 
-### fn `const buildServerCommandOptions = (yargs: Argv) =>` (L1164-1189)
+### fn `const buildServerCommandOptions = (yargs: Argv) =>` (L1161-1186)
 - @brief Applies the shared server-start options to a yargs builder.
 - @details Declares `--port`, `--host`, and `--stdio` with defaults taken
 from the persisted settings (DES-015) plus the server-mode examples.
@@ -377,8 +378,8 @@ identical option surface (PRJ-003). Complexity O(1).
 - @return {Argv} The same builder instance with the typed server options attached.
 - @satisfies REQ-079, REQ-008
 
-- type `type ServerCommandArgs = BuilderArguments<typeof buildServerCommandOptions>;` (L1192)
-### fn `const runServerCommand = async (argv: ServerCommandArgs): Promise<void> =>` (L1211-1270)
+- type `type ServerCommandArgs = BuilderArguments<typeof buildServerCommandOptions>;` (L1189)
+### fn `const runServerCommand = async (argv: ServerCommandArgs): Promise<void> =>` (L1208-1267)
 - @brief Server-start handler shared by the `start` and `run` commands.
 - @details Resolves the effective API key exclusively from the persisted
 settings key (REQ-142) and injects it into `ApiKeyManager` (DES-006);
@@ -395,7 +396,7 @@ HTTP mode without an API key logs a warning and still starts (REQ-080).
 - @return {Promise<void>} Resolves when stdio mode stops; HTTP mode persists.
 - @satisfies REQ-079, REQ-080, REQ-082, REQ-095, REQ-142, REQ-143, REQ-165
 
-### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1714-1726)
+### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1711-1723)
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
@@ -423,21 +424,21 @@ HTTP mode without an API key logs a warning and still starts (REQ-080).
 |`DoctorOptions`|iface||484-489|export interface DoctorOptions|
 |`runDoctor`|fn||513-518|export async function runDoctor(|
 |`runSnippetCommand`|fn||628-630|export function runSnippetCommand(|
-|`runEnableDisableCliCommand`|fn||664-667|export function runEnableDisableCliCommand(|
-|`runApiKeyCommand`|fn||715-717|export function runApiKeyCommand(|
-|`runAutoUpdateCommand`|fn||776-778|export function runAutoUpdateCommand(|
-|`runToolsCommand`|fn||821-823|export function runToolsCommand(|
-|`runHostCommand`|fn||878-880|export function runHostCommand(|
-|`runPortCommand`|fn||914-916|export function runPortCommand(|
-|`runInstallUninstallCommand`|fn||956-958|export function runInstallUninstallCommand(|
-|`runShowCommand`|fn||1006-1007|export function runShowCommand(|
-|`isEntryMainModule`|fn||1043-1053|function isEntryMainModule(): boolean|
-|`describeUndispatchedServerStart`|fn||1071-1082|export function describeUndispatchedServerStart(args: rea...|
-|`handleUndispatchedEntry`|fn||1099-1101|export function handleUndispatchedEntry(|
-|`buildServerCommandOptions`|fn||1164-1189|const buildServerCommandOptions = (yargs: Argv) =>|
-|`ServerCommandArgs`|type||1192||
-|`runServerCommand`|fn||1211-1270|const runServerCommand = async (argv: ServerCommandArgs):...|
-|`semaphore`|fn||1714-1726|const semaphore = async (tasks: (() => Promise<void>)[], ...|
+|`runEnableDisableCliCommand`|fn||665-668|export function runEnableDisableCliCommand(|
+|`runApiKeyCommand`|fn||712-714|export function runApiKeyCommand(|
+|`runAutoUpdateCommand`|fn||773-775|export function runAutoUpdateCommand(|
+|`runToolsCommand`|fn||818-820|export function runToolsCommand(|
+|`runHostCommand`|fn||875-877|export function runHostCommand(|
+|`runPortCommand`|fn||911-913|export function runPortCommand(|
+|`runInstallUninstallCommand`|fn||953-955|export function runInstallUninstallCommand(|
+|`runShowCommand`|fn||1003-1004|export function runShowCommand(|
+|`isEntryMainModule`|fn||1040-1050|function isEntryMainModule(): boolean|
+|`describeUndispatchedServerStart`|fn||1068-1079|export function describeUndispatchedServerStart(args: rea...|
+|`handleUndispatchedEntry`|fn||1096-1098|export function handleUndispatchedEntry(|
+|`buildServerCommandOptions`|fn||1161-1186|const buildServerCommandOptions = (yargs: Argv) =>|
+|`ServerCommandArgs`|type||1189||
+|`runServerCommand`|fn||1208-1267|const runServerCommand = async (argv: ServerCommandArgs):...|
+|`semaphore`|fn||1711-1723|const semaphore = async (tasks: (() => Promise<void>)[], ...|
 
 
 ---

@@ -74,7 +74,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PRJ-005**: MUST support per-request and per-session Google Maps API keys so concurrent HTTP clients use isolated credentials.
 - **PRJ-006**: MUST allow restricting exposed tools via the persisted `enabledTools` settings field configured through the `tools` CLI command and resolved through the central typed configuration.
 - **PRJ-007**: MUST provide CLI batch geocoding of address files or stdin with bounded concurrency and JSON summary output.
-- **PRJ-008**: MUST report machine-readable JSON results on stdout and diagnostics on stderr in all CLI modes except the human-readable `show` report tables and the `api-key`, `auto-update`, `tools`, `host`, `port`, `install`, and `uninstall` operation reports.
+- **PRJ-008**: MUST report machine-readable JSON results on stdout and diagnostics on stderr in all CLI modes except the human-readable `show` report tables and the `enable`, `disable`, `api-key`, `auto-update`, `tools`, `host`, `port`, `install`, and `uninstall` operation reports.
 - **PRJ-015**: MUST provide CLI commands `enable <cli>`, `disable <cli>`, `install`, `uninstall`, and `show` managing MCP-server registration and packaged skill installation across supported CLI agents.
 - **PRJ-009**: MUST provide machine-readable tool/API dependency profiles covering all 18 tools, including the tool dependencies of composite tools.
 - **PRJ-010**: MUST provide a `snippet` CLI command that prints valid MCP-client registration snippets without modifying any client configuration file.
@@ -391,6 +391,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-167**: `tools <list|*>` MUST persist the comma-separated enabled-tool allowlist (or `*`) into the settings `enabledTools` field, rejecting unknown tool names with a human-readable stderr error and non-zero exit while persisting nothing.
 - **REQ-168**: `host <host>` MUST persist a non-empty bind hostname into the settings `host` field with a human-readable confirmation, rejecting empty input while persisting nothing.
 - **REQ-169**: `port <port>` MUST persist an integer port 1-65535 into the settings `port` field with a human-readable confirmation, rejecting any other value while persisting nothing.
+- **REQ-184**: `enable <cli>` and `disable <cli>` MUST print on stdout a human-readable confirmation naming the resolved CLI and the resulting enabled state, exiting 0.
 
 ### 3.3 Known Limitations (True State)
 - **LIM-001**: `maps_search_nearby` may return fewer than 20 results when client-side `openNow`/`minRating` filters discard matches post-query.

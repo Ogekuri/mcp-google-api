@@ -651,15 +651,16 @@ export function runSnippetCommand(
  * @details Resolves the CLI adapter case-insensitively; unsupported names
  * exit 2 with a JSON stderr error listing supported names (REQ-110).
  * Idempotent: enabling an enabled CLI and disabling a disabled CLI succeed
- * without rewriting the settings file (REQ-111). Success prints a JSON
- * result on stdout (PRJ-008).
+ * without rewriting the settings file (REQ-111). Success prints a
+ * human-readable stdout confirmation naming the resolved CLI and the
+ * resulting enabled state (REQ-184, human-readable exception to PRJ-008).
  * @param name {string} CLI name from the command line.
  * @param enable {boolean} True to enable; false to disable.
  * @param options {object} `{ home?, streams? }`; streams default to process streams.
  * @return {number} Exit code: 0 on success, 2 for an unsupported CLI.
  * @see loadCliSettings
  * @see saveCliSettings
- * @satisfies REQ-110, REQ-111
+ * @satisfies REQ-110, REQ-111, REQ-184
  */
 export function runEnableDisableCliCommand(
   name: string,
@@ -677,18 +678,14 @@ export function runEnableDisableCliCommand(
   const settings = loadCliSettings(options.home);
   const already = settings.enabled.includes(target.id);
   if (enable === already) {
-    streams.stdout.write(
-      JSON.stringify({ cli: target.id, enabled: enable, message: `${target.id} is already ${enable ? "enabled" : "disabled"}.` }, null, 2) + "\n"
-    );
+    streams.stdout.write(`${target.id} is already ${enable ? "enabled" : "disabled"}.\n`);
     return 0;
   }
   settings.enabled = enable
     ? [...settings.enabled, target.id]
     : settings.enabled.filter((item) => item !== target.id);
   saveCliSettings(settings, options.home);
-  streams.stdout.write(
-    JSON.stringify({ cli: target.id, enabled: enable, message: `${enable ? "Enabled" : "Disabled"} ${target.id}.` }, null, 2) + "\n"
-  );
+  streams.stdout.write(`${enable ? "Enabled" : "Disabled"} ${target.id}.\n`);
   return 0;
 }
 
