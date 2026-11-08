@@ -9,9 +9,14 @@
 # reachable from origin/master (PKG-042); tags reachable from develop but
 # not master build, pack, and create the GitHub Release without publishing
 # to npm (PKG-043). The package build and tarball packing run
-# exclusively in this release workflow (PKG-026). No tests run in the
-# release pipeline; `npm publish` runs the `prepublishOnly` lifecycle hook
-# (version guard + build) defined in package.json (PKG-005). npm
+# exclusively in this release workflow (PKG-026). The pre-release gate step
+# runs scripts/pre-release-check.sh (PKG-063) after dependency installation
+# and before every build, pack, publish, and release-creation step: the gate
+# executes the PKG-058 release-gating stages (publish-version guard,
+# typecheck, unit tests, build) in fail-fast order (PKG-059) and fails the
+# job so no tarball, no npm publication, and no GitHub Release are created
+# for a version whose tests fail. `npm publish` still runs the
+# `prepublishOnly` lifecycle hook (version guard + build, PKG-005). npm
 # authentication uses OIDC Trusted Publishing (PKG-010): the job grants
 # `id-token: write` (PKG-030), no publish-token secret or publish-token
 # environment variable is configured (PKG-031), and the pinned Node.js
@@ -87,12 +92,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Pre-release gate (PKG-063): runs scripts/pre-release-check.sh — the
+      # PKG-058 release-gating stages (publish-version guard, typecheck, unit
+      # tests, build) in mandatory fail-fast order (PKG-059) — after
+      # dependency installation (the gate never installs dependencies,
+      # PKG-060) and before every build, pack, publish, and release-creation
+      # step. A failed stage fails the job here, so no release artifact is
+      # created and no version with failing tests is published.
+      - name: Pre-release check (version guard, typecheck, unit tests, build)
+        run: bash scripts/pre-release-check.sh
+
       - name: Build if present
         run: npm run build --if-present
 
       # Release asset packed once (PKG-012): the built npm tarball, not raw
-      # sources. No tests run in the release pipeline; the development-phase
-      # minimum verification stays local (PKG-019).
+      # sources. The PKG-063 pre-release gate has already run the test stages
+      # before this step, so no tarball exists for a version whose tests
+      # failed.
       - name: Pack npm tarball (release asset)
         run: npm pack
 
