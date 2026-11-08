@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.25.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.24.0..v0.25.0) - 2026-11-08
+### 🐛  Bug Fixes
+- make doctor spawn tests hermetic with isolated home [useReq] *(cliSpawn)*
+  - Root cause of the CI-only failure: the doctor spawn test inherited the
+  - host HOME, so it read the developer machine's real
+  - ~/.config/mcp-google-api/config.json; locally the real API key made the
+  - REQ-070 api-key check pass (exit 0), while the clean CI runner had no
+  - settings file, so doctor correctly exited 1 and the gate failed.
+  - spawnCli now accepts an injectable HOME override; the doctor success
+  - test provisions an isolated home with the DES-018 settings fixture and
+  - a valid-format test key, so local runs reproduce the CI runner state
+  - exactly and the discrepancy can no longer hide before publication.
+  - Add a REQ-070 regression pin: doctor exits 1 on a clean isolated home
+  - without a configured API key (the exact CI failure state).
+  - Evidence: clean-HOME reproduction exited 1 with api-key fail before the
+  - fix; after the fix the suite passes 4/4 both with the real and a clean
+  - HOME; full suite 146/146; local pre-release gate green (exit 0).
+  - No source changes: doctor clean-env exit-1 behavior is REQ-070-correct.
+
 ## [0.24.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.23.0..v0.24.0) - 2026-11-08
 ### ⛰️  Features
 - add pre-release-check.sh release gate [useReq] *(scripts)*
@@ -617,6 +636,7 @@
 - \[0.22.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.22.0
 - \[0.23.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.23.0
 - \[0.24.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.24.0
+- \[0.25.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.25.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.2.0..v0.3.0
@@ -640,3 +660,4 @@
 [0.22.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.21.0..v0.22.0
 [0.23.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.23.0
 [0.24.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.23.0..v0.24.0
+[0.25.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.24.0..v0.25.0
