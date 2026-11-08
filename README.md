@@ -10,7 +10,7 @@
 > * **No Support or Feature Requests:** please **do not** open issues, bug reports, or feature requests. They will not be addressed or accepted at this stage.
 > * **No Warranty:** this software is provided **"AS IS"**, without warranty of any kind, express or implied. Use it strictly for testing and evaluation purposes at your own sole risk.
 
-# mcp-google-api / MCP Google API server (0.25.0)
+# mcp-google-api / MCP Google API server (0.26.0)
 
 <p align="center">
   <img src="https://img.shields.io/badge/node-%3E%3D24-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js >= 24">

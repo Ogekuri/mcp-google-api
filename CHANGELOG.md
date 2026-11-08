@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.26.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.25.0..v0.26.0) - 2026-11-08
+### 🚜  Changes
+- add opencode CLI support and alphabetical CLI listing [useReq] *(cliTargets)*
+  - REQ-110/DES-017 updated: opencode joins the supported CLI registry; supported-name listings print alphabetically.
+  - REQ-112/REQ-113 updated: opencode MCP config at ~/.config/opencode/opencode.json (JSON mcp map) and skills at ~/.config/opencode/skills.
+  - REQ-117 updated: show CLI Configuration table covers all seven CLIs in alphabetical order; CLI_TARGETS registry reordered alphabetically.
+  - JSON read-modify-write helpers gained a mapKey parameter (default mcpServers, mcp for opencode) preserving unrelated keys; CliTarget gained jsonMcpMapKey.
+  - Unit suite 146/146 green; behavioral proof verified paths, mcp-map install/uninstall round-trip, and alphabetical show rows.
+- rebuild dist binaries on every launcher run [useReq] *(mcp-google-api.sh)*
+  - PRJ-019 amended: the dev launcher rebuilds dist from the current sources before every execution and aborts non-zero when the rebuild fails; dependency installs stay explicit (npm ci).
+  - PRJ-022 added: every argument is forwarded unchanged to the rebuilt dist/cli.js with exit-code propagation via exec.
+  - PKG-019 amended: the helper-script no-implicit-install/build rule now carves out the PRJ-018 development launcher.
+  - Build output routes to stderr so the exec'd CLI keeps stdout clean for stdio JSON-RPC framing (CTN-003).
+  - No src/ changes; unit suite 146/146 green; live proof verified rebuild, exit propagation, and JSON-pure stdout.
+- render show tables as box-drawing grid [useReq] *(cliShow)*
+  - REQ-185 added: the show CLI Configuration and Installation Status tables render as box-drawing grids using the specific border characters.
+  - REQ-186 added: data rows emit without inter-row border lines, with exactly one header separator and a closing bottom border.
+  - renderAsciiTable now builds borders via a parametric borderLine helper (top/header/body/bottom) and pipe-delimited rows; column sizing, cell wrapping, and alignment are unchanged.
+  - WORKFLOW.md TRACE-K and EDGE-06 runtime model updated; REFERENCES.md regenerated; no test files modified.
+- print enable/disable result as human-readable confirmation [useReq] *(cli)*
+  - PRJ-008 updated: enable and disable join the human-readable stdout operation-report exceptions.
+  - REQ-184 added: enable/disable print a human-readable confirmation naming the resolved CLI and the resulting enabled state, exit 0.
+  - runEnableDisableCliCommand now writes plain-text confirmations on both success branches (state change and idempotent no-op); the unsupported-name JSON stderr diagnostic and exit 2 are unchanged (REQ-110).
+  - WORKFLOW.md TRACE-K and EDGE-06 runtime model updated; REFERENCES.md regenerated; no test files modified.
+- render GitHub probe failure reason in version report [useReq] *(upgradeManager)*
+  - REQ-181 added: --ver/--version now prints 'GitHub latest: unknown (<reason>)' when the GitHub releases probe fails, <reason> carrying the probe diagnostic message.
+  - REQ-164 updated to reference the REQ-181 failed-probe diagnostic rendering.
+  - probeLatestGitHubVersion embeds the GitHub API error message body field (e.g. HTTP 404 rate limit) via the new tolerant readGitHubErrorDetail helper.
+  - WORKFLOW.md TRACE-L and EDGE-06/EDGE-10 runtime model updated; REFERENCES.md regenerated; no test files modified.
+
 ## [0.25.0](https://github.com/Ogekuri/mcp-google-api/compare/v0.24.0..v0.25.0) - 2026-11-08
 ### 🐛  Bug Fixes
 - make doctor spawn tests hermetic with isolated home [useReq] *(cliSpawn)*
@@ -637,6 +667,7 @@
 - \[0.23.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.23.0
 - \[0.24.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.24.0
 - \[0.25.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.25.0
+- \[0.26.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.26.0
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.2.0..v0.3.0
@@ -661,3 +692,4 @@
 [0.23.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.22.0..v0.23.0
 [0.24.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.23.0..v0.24.0
 [0.25.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.24.0..v0.25.0
+[0.26.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.25.0..v0.26.0
