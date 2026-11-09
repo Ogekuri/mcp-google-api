@@ -11,7 +11,7 @@ import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
 import { readFileSync, writeFileSync, existsSync, realpathSync } from "fs";
 import { createInterface } from "readline";
-import { checkVersionIdle, parseManagementCommand, parseUpgradeChannel, runManagementCommand } from "./utils/upgradeManager.js";
+import { checkVersionIdle, parseManagementCommand, parseUpgradeChannel, parseUpgradeForce, runManagementCommand } from "./utils/upgradeManager.js";
 import {
   NODE_ENGINE_FLOOR,
   describeRuntimeConfig,
@@ -1134,11 +1134,13 @@ if (isMainModule) {
   // run exclusively here (REQ-120, REQ-125, REQ-126, REQ-127). The --upgrade
   // command additionally accepts the --develop option or its equivalent
   // --dev alias selecting the latest tagged GitHub release install source
-  // (REQ-170, REQ-177).
+  // (REQ-170, REQ-177) and the auxiliary --force option forcing package
+  // re-download and complete reinstallation (REQ-187).
   const managementCommand = parseManagementCommand(hideBin(process.argv));
   if (managementCommand !== undefined) {
     const upgradeChannel = parseUpgradeChannel(hideBin(process.argv));
-    void runManagementCommand(managementCommand, { currentVersion: packageVersion, channel: upgradeChannel })
+    const upgradeForce = parseUpgradeForce(hideBin(process.argv));
+    void runManagementCommand(managementCommand, { currentVersion: packageVersion, channel: upgradeChannel, force: upgradeForce })
       .then((code) => {
         process.exitCode = code;
       })
@@ -1273,9 +1275,11 @@ if (isMainModule) {
      * prints the help text so a bare invocation starts nothing (REQ-129).
      * Help output opens with `mcp-google-api v<version>` (REQ-130) and the
      * epilog documents the pre-yargs management commands `--ver`, `--version`,
-     * `--upgrade`, `--uninstall` (REQ-131).
+     * `--upgrade`, `--uninstall` (REQ-131) including the `--develop`/`--dev`
+     * upgrade-channel options (REQ-175) and the `--force` forced-reinstall
+     * option (REQ-191).
      * @return {Argv} Configured yargs instance ready for `parse()`.
-     * @satisfies REQ-079, REQ-129, REQ-130, REQ-131
+     * @satisfies REQ-079, REQ-129, REQ-130, REQ-131, REQ-191
      */
     const cli = yargs(hideBin(process.argv))
       .scriptName("mcp-google-api")
@@ -1785,6 +1789,7 @@ if (isMainModule) {
           `  --version     Alias of --ver\n` +
           `  --upgrade     Upgrade the global package to the latest version and refresh installed skills\n` +
           `                --develop | --dev: install the latest tagged GitHub release (any branch)\n` +
+          `                --force: force package re-download and complete reinstallation (npm install --force)\n` +
           `  --uninstall   Remove the globally installed mcp-google-api package`
       )
       .help();

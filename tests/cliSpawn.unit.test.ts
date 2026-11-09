@@ -222,7 +222,7 @@ test("no command prints the help text and exits 0 without starting a server", as
   const result = await spawnCli([]);
   // Assert: REQ-129 (help instead of a server start, exit 0), REQ-130 (version
   // adjacent to the first mcp-google-api line), REQ-131 (management commands
-  // documented in the help text).
+  // documented in the help text), REQ-191 (--force upgrade option documented).
   assert.equal(result.code, 0, `bare invocation must exit 0; stderr:\n${result.stderr}`);
   assert.equal(result.stderr, "");
   assert.match(result.stdout, /mcp-google-api v\d+\.\d+\.\d+/);
@@ -231,6 +231,7 @@ test("no command prints the help text and exits 0 without starting a server", as
   assert.equal(result.stdout.includes("--uninstall"), true);
   assert.equal(result.stdout.includes("--ver"), true);
   assert.equal(result.stdout.includes("--version"), true);
+  assert.equal(result.stdout.includes("--force"), true);
   // REQ-129: nothing was started (no server banner on any stream).
   assert.equal(result.stdout.includes("MCP Google API server"), false);
   assert.equal(result.stderr.includes("MCP Google API server"), false);

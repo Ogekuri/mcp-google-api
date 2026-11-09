@@ -10,7 +10,10 @@
  * installed/npmjs/GitHub latest-version report (REQ-120, REQ-161, REQ-162,
  * REQ-163, REQ-164); `--upgrade` accepts the `--develop` option and its
  * equivalent `--dev` alias selecting the latest tagged GitHub release as the
- * install source (REQ-170, REQ-177); in the default npm channel it reinstalls
+ * install source (REQ-170, REQ-177) plus the `--force` auxiliary option
+ * forcing package re-download and complete reinstallation through the
+ * channel-specific package-manager force flag (REQ-187, REQ-188, REQ-189,
+ * REQ-190); in the default npm channel it reinstalls
  * the latest package via npm in every invocation without any pre-upgrade
  * version comparison (REQ-125, REQ-146), re-runs the upgraded
  * package's `install` child command with captured stdout so packaged skills
@@ -82,6 +85,14 @@ export const PACKAGE_UPGRADE_COMMAND: readonly string[] = [
   `${DEFAULT_PACKAGE_NAME}@latest`,
 ];
 
+/**
+ * Auxiliary `--force` option accepted by `--upgrade` (REQ-187).
+ * @details Appended to the channel update child so the package manager forces
+ * re-download and complete reinstallation of the target package (REQ-188,
+ * REQ-189). Absent from the standard update child (REQ-190).
+ */
+export const UPGRADE_FORCE_OPTION = "--force";
+
 /** GitHub repository (owner/name) resolved by the develop upgrade channel (REQ-177). */
 export const GITHUB_UPGRADE_REPOSITORY = "Ogekuri/mcp-google-api";
 
@@ -90,17 +101,21 @@ export const GITHUB_UPGRADE_REPOSITORY = "Ogekuri/mcp-google-api";
  * @details Produces `npm install -g github:<repository>#<tag>` where `<tag>`
  * is the raw `tag_name` probed from the GitHub releases API (REQ-177), so the
  * develop channel installs the latest tagged release regardless of the branch
- * carrying it (REQ-170, REQ-172). npm fetches and builds the referenced tag;
- * child exit-code and spawn-failure semantics are identical to
- * `PACKAGE_UPGRADE_COMMAND` (REQ-125, REQ-128).
+ * carrying it (REQ-170, REQ-172). When `force` is true the npm `--force` flag
+ * is appended so the tagged package is re-downloaded and fully reinstalled
+ * (REQ-189); the default invocation carries no force flag (REQ-190). npm
+ * fetches and builds the referenced tag; child exit-code and spawn-failure
+ * semantics are identical to `PACKAGE_UPGRADE_COMMAND` (REQ-125, REQ-128).
  * @param tag {string} Raw GitHub release tag (`tag_name`, e.g. `v1.2.3`); MUST be non-empty.
+ * @param force {boolean} True to append the npm `--force` reinstall flag (REQ-189). Default: false.
  * @return {readonly string[]} Executable-plus-arguments command tuple.
- * @satisfies REQ-170, REQ-171, REQ-177
+ * @satisfies REQ-170, REQ-171, REQ-177, REQ-189, REQ-190
  * @note Complexity: O(n) in tag length. Pure; no side effects.
  * @see probeLatestGitHubVersion
  */
-export function buildDevelopUpgradeCommand(tag: string): readonly string[] {
-  return ["npm", "install", "-g", `github:${GITHUB_UPGRADE_REPOSITORY}#${tag}`];
+export function buildDevelopUpgradeCommand(tag: string, force = false): readonly string[] {
+  const command: string[] = ["npm", "install", "-g", `github:${GITHUB_UPGRADE_REPOSITORY}#${tag}`];
+  return force ? [...command, UPGRADE_FORCE_OPTION] : command;
 }
 
 /** Package-manager command executed by `--uninstall` (REQ-127). */
@@ -437,7 +452,10 @@ export interface PackageManagerDeps {
  * online check, and the starting version of the `--upgrade` summary; `home`
  * scopes the enabled-CLI settings read performed by the post-upgrade skill
  * installation; `channel` selects the `--upgrade` install source (`npm`
- * default; `develop` = latest tagged GitHub release, REQ-170, REQ-177).
+ * default; `develop` = latest tagged GitHub release, REQ-170, REQ-177);
+ * `force` selects the `--upgrade` forced package re-download and complete
+ * reinstallation via the channel-specific package-manager force flag
+ * (REQ-187, REQ-188, REQ-189).
  */
 export interface ManagementCommandOptions {
   /** Running package version printed by `--ver`/`--version`. */
@@ -446,6 +464,8 @@ export interface ManagementCommandOptions {
   home?: string;
   /** `--upgrade` install channel; `develop` selects the latest tagged GitHub release (REQ-170, REQ-177). Default: `npm`. */
   channel?: UpgradeChannel;
+  /** `--upgrade` `--force` option: appends the package-manager force flag to the channel update child (REQ-187, REQ-188, REQ-189). Default: false. */
+  force?: boolean;
 }
 
 /**
@@ -465,33 +485,47 @@ export interface ManagementCommandDeps extends PackageManagerDeps {
 /**
  * @brief Detects an exact management-command argv shape in a raw argv array.
  * @details Single-token shape: exactly one of `--ver`, `--version`,
- * `--upgrade`, `--uninstall`. Two-token shape: `--upgrade` paired with the
- * `--develop` option or its equivalent `--dev` alias, in either order
- * (REQ-170). Any other shape (including combined flags or subcommands)
- * yields undefined so normal yargs dispatch stays untouched.
+ * `--upgrade`, `--uninstall` (no options beside them). `--upgrade` shapes:
+ * `--upgrade` alone, or `--upgrade` combined with the `--develop` option, its
+ * equivalent `--dev` alias, and the `--force` auxiliary option (REQ-170,
+ * REQ-187), each option at most once and in any order. Any other shape
+ * (including combined flags or subcommands) yields undefined so normal yargs
+ * dispatch stays untouched.
  * @param args {readonly string[]} Raw argv after the Node binary/script tokens.
  * @return {ManagementCommandName | undefined} Canonical command name, or undefined.
- * @satisfies PRJ-003, REQ-120, REQ-125, REQ-127, REQ-170
- * @note Complexity: O(1). Pure.
+ * @satisfies PRJ-003, REQ-120, REQ-125, REQ-127, REQ-170, REQ-187
+ * @note Complexity: O(n) in argv length. Pure.
  */
 export function parseManagementCommand(
   args: readonly string[]
 ): ManagementCommandName | undefined {
-  if (args.length === 1) {
-    const arg = args[0];
-    if (arg === "--ver" || arg === "--version" || arg === "--upgrade" || arg === "--uninstall") {
-      return arg;
+  const upgradeCount = args.filter((arg) => arg === "--upgrade").length;
+  if (upgradeCount === 0) {
+    if (args.length === 1) {
+      const arg = args[0];
+      if (arg === "--ver" || arg === "--version" || arg === "--uninstall") {
+        return arg;
+      }
     }
     return undefined;
   }
-  if (args.length === 2) {
-    const hasUpgrade = args.includes("--upgrade");
-    const hasDevelop = args.includes("--develop") || args.includes("--dev");
-    if (hasUpgrade && hasDevelop) {
-      return "--upgrade";
-    }
+  if (upgradeCount !== 1) {
+    return undefined;
   }
-  return undefined;
+  const optionTokens = args.filter(
+    (arg) => arg === "--develop" || arg === "--dev" || arg === UPGRADE_FORCE_OPTION
+  );
+  if (args.length !== optionTokens.length + 1) {
+    return undefined;
+  }
+  const channelCount = optionTokens.filter(
+    (arg) => arg === "--develop" || arg === "--dev"
+  ).length;
+  const forceCount = optionTokens.filter((arg) => arg === UPGRADE_FORCE_OPTION).length;
+  if (channelCount > 1 || forceCount > 1) {
+    return undefined;
+  }
+  return "--upgrade";
 }
 
 /**
@@ -507,6 +541,22 @@ export function parseManagementCommand(
  */
 export function parseUpgradeChannel(args: readonly string[]): UpgradeChannel {
   return args.includes("--develop") || args.includes("--dev") ? "develop" : "npm";
+}
+
+/**
+ * @brief Detects the `--force` auxiliary upgrade option in a raw argv array.
+ * @details Returns true when the argv contains `--force` (REQ-187), the
+ * forced-reinstall selector consumed by the `--upgrade` channel update child
+ * (REQ-188, REQ-189). Meaningless beside the other management commands; only
+ * the `--upgrade` dispatch reads it. Pure; no side effects.
+ * @param args {readonly string[]} Raw argv after the Node binary/script tokens.
+ * @return {boolean} True when the `--force` option is present.
+ * @satisfies REQ-187
+ * @note Complexity: O(n) in argv length. Pure.
+ * @see parseUpgradeChannel
+ */
+export function parseUpgradeForce(args: readonly string[]): boolean {
+  return args.includes(UPGRADE_FORCE_OPTION);
 }
 
 /**
@@ -920,11 +970,16 @@ export async function runVersionCommand(
  * captured-stdout post-upgrade install (REQ-126), prints the
  * human-readable stdout summary with starting version, updated version,
  * install outcome, and per-CLI entries (REQ-132, REQ-133), and returns the
- * post-upgrade install exit code.
- * @param options {ManagementCommandOptions} Options carrying `currentVersion`, `home`, and `channel`.
+ * post-upgrade install exit code. When `options.force` is true (`--force`,
+ * REQ-187) the selected channel update child carries the package-manager
+ * force flag — `npm install -g mcp-google-api@latest --force` on the npm
+ * channel (REQ-188) and the appended npm `--force` flag on the develop
+ * channel (REQ-189); without it the standard unforced update child runs
+ * (REQ-190).
+ * @param options {ManagementCommandOptions} Options carrying `currentVersion`, `home`, `channel`, and `force`.
  * @param deps {ManagementCommandDeps} Optional spawner/idle-check/stdout overrides.
  * @return {Promise<number>} The upgrade exit code when non-zero, else the post-upgrade install exit code.
- * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-146, REQ-170, REQ-171, REQ-172, REQ-173, REQ-177, REQ-178, REQ-182, REQ-183
+ * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-146, REQ-170, REQ-171, REQ-172, REQ-173, REQ-177, REQ-178, REQ-182, REQ-183, REQ-187, REQ-188, REQ-189, REQ-190
  * @see probeLatestGitHubVersion
  * @see runPackageManagerCommand
  * @see runPackageUpdateCommand
@@ -943,7 +998,10 @@ export async function runUpgradeCommand(
       (deps.logger ?? Logger).error(`GitHub upgrade channel probe failed: ${githubProbe.message}`);
       return 1;
     }
-    const upgraded = runPackageUpdateCommand(buildDevelopUpgradeCommand(githubProbe.tag), deps);
+    const upgraded = runPackageUpdateCommand(
+      buildDevelopUpgradeCommand(githubProbe.tag, options.force === true),
+      deps
+    );
     if (upgraded !== 0) {
       return upgraded;
     }
@@ -953,7 +1011,11 @@ export async function runUpgradeCommand(
     return outcome.exitCode;
   }
   // REQ-146: unconditional package update — no pre-upgrade version comparison.
-  const upgraded = runPackageUpdateCommand(PACKAGE_UPGRADE_COMMAND, deps);
+  // REQ-190: the standard child carries no force flag; REQ-188 appends the npm
+  // `--force` reinstall flag only when the `--force` option was supplied.
+  const updateCommand =
+    options.force === true ? [...PACKAGE_UPGRADE_COMMAND, UPGRADE_FORCE_OPTION] : PACKAGE_UPGRADE_COMMAND;
+  const upgraded = runPackageUpdateCommand(updateCommand, deps);
   if (upgraded !== 0) {
     return upgraded;
   }
@@ -983,13 +1045,14 @@ export function runUninstallCommand(deps: ManagementCommandDeps = {}): number {
  * @brief Dispatches one management command to its handler.
  * @details Single dispatch surface for the CLI entry intercept:
  * `--ver`/`--version` -> `runVersionCommand` (async); `--upgrade` ->
- * `runUpgradeCommand` (honoring the forwarded develop-channel option);
- * `--uninstall` -> `runUninstallCommand`.
+ * `runUpgradeCommand` (honoring the forwarded develop-channel option and the
+ * forwarded `--force` forced-reinstall option, REQ-187); `--uninstall` ->
+ * `runUninstallCommand`.
  * @param command {ManagementCommandName} Canonical management command name.
- * @param options {ManagementCommandOptions} Options carrying version, home, and upgrade channel.
+ * @param options {ManagementCommandOptions} Options carrying version, home, upgrade channel, and force.
  * @param deps {ManagementCommandDeps} Optional dependency overrides.
  * @return {Promise<number>} Handler exit code suitable for `process.exitCode`.
- * @satisfies PRJ-003, REQ-120, REQ-125, REQ-126, REQ-127, REQ-132, REQ-133, REQ-134, REQ-135, REQ-170
+ * @satisfies PRJ-003, REQ-120, REQ-125, REQ-126, REQ-127, REQ-132, REQ-133, REQ-134, REQ-135, REQ-170, REQ-187
  * @see runVersionCommand
  * @see runUpgradeCommand
  * @see runUninstallCommand

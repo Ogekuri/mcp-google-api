@@ -7,8 +7,9 @@
  * blocking the parent forever (REQ-126). Verifies REQ-125 (upgrade child
  * spawn + exit propagation), REQ-126 (post-upgrade `install` child via the
  * upgraded package bin, captured stdout), REQ-127 (uninstall child), REQ-128
- * (spawn-failure hint), REQ-132/REQ-135 (summary fallback), and the
- * management-command exact-match dispatch (PRJ-003). All child processes,
+ * (spawn-failure hint), REQ-132/REQ-135 (summary fallback), the
+ * management-command exact-match dispatch (PRJ-003), and the `--force`
+ * auxiliary upgrade option (REQ-187, REQ-188, REQ-189, REQ-190). All child processes,
  * filesystem reads, network probes, and output streams are injected, so the
  * suite is deterministic and side-effect free.
  */
@@ -24,9 +25,11 @@ import {
   PACKAGE_UPGRADE_COMMAND,
   PACKAGE_UNINSTALL_COMMAND,
   parseManagementCommand,
+  parseUpgradeForce,
   runPackageManagerCommand,
   runUpgradeCommand,
   runUninstallCommand,
+  UPGRADE_FORCE_OPTION,
   type ManagementCommandDeps,
   type ManagementCommandOptions,
 } from "../src/utils/upgradeManager.js";
@@ -150,6 +153,44 @@ test("parseManagementCommand_rejects_any_other_argv_shape", async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Level 0 — --force option parsing (REQ-187: accepted only beside --upgrade)
+// ---------------------------------------------------------------------------
+
+test("parseManagementCommand_accepts_force_with_upgrade_and_channel_in_any_order", () => {
+  // Act + Assert: REQ-187 — --force combines with the default and develop
+  // channels in any argument order and stays a single management dispatch.
+  assert.equal(parseManagementCommand(["--upgrade", "--force"]), "--upgrade");
+  assert.equal(parseManagementCommand(["--force", "--upgrade"]), "--upgrade");
+  assert.equal(parseManagementCommand(["--upgrade", "--develop", "--force"]), "--upgrade");
+  assert.equal(parseManagementCommand(["--upgrade", "--force", "--develop"]), "--upgrade");
+  assert.equal(parseManagementCommand(["--develop", "--upgrade", "--force"]), "--upgrade");
+  assert.equal(parseManagementCommand(["--force", "--develop", "--upgrade"]), "--upgrade");
+  assert.equal(parseManagementCommand(["--upgrade", "--dev", "--force"]), "--upgrade");
+  assert.equal(parseManagementCommand(["--force", "--upgrade", "--dev"]), "--upgrade");
+});
+
+test("parseManagementCommand_rejects_force_beside_other_commands_or_duplicate_options", () => {
+  // Act + Assert: --force is an --upgrade-only auxiliary option; duplicates
+  // and unknown tokens keep normal yargs dispatch untouched.
+  assert.equal(parseManagementCommand(["--force"]), undefined);
+  assert.equal(parseManagementCommand(["--ver", "--force"]), undefined);
+  assert.equal(parseManagementCommand(["--version", "--force"]), undefined);
+  assert.equal(parseManagementCommand(["--uninstall", "--force"]), undefined);
+  assert.equal(parseManagementCommand(["--upgrade", "--force", "--force"]), undefined);
+  assert.equal(parseManagementCommand(["--upgrade", "--develop", "--dev"]), undefined);
+  assert.equal(parseManagementCommand(["--upgrade", "--stdio", "--force"]), undefined);
+});
+
+test("parseUpgradeForce_detects_the_force_option_only_when_present", () => {
+  // Act + Assert: REQ-187 selector is order-independent and absent-by-default.
+  assert.equal(parseUpgradeForce(["--upgrade", "--force"]), true);
+  assert.equal(parseUpgradeForce(["--force", "--upgrade", "--develop"]), true);
+  assert.equal(parseUpgradeForce(["--upgrade"]), false);
+  assert.equal(parseUpgradeForce(["--upgrade", "--develop"]), false);
+  assert.equal(parseUpgradeForce([]), false);
+});
+
+// ---------------------------------------------------------------------------
 // Level 1 — runUpgradeCommand (composes spawn + probe + post-upgrade install)
 // ---------------------------------------------------------------------------
 
@@ -253,6 +294,54 @@ test("runUpgradeCommand_spawn_failure_maps_to_exit_one_with_manual_hint", async 
 });
 
 // ---------------------------------------------------------------------------
+// Level 1 — runUpgradeCommand --force option (forced vs standard update child)
+// ---------------------------------------------------------------------------
+
+test("runUpgradeCommand_force_appends_the_npm_force_flag_to_the_update_child", async () => {
+  const home = createFakeHome([]);
+  try {
+    const { spawnStub, calls } = createSpawnStub([{ status: 0 }]);
+    const { logger } = createLoggerStub();
+    const deps = buildDeps(spawnStub, logger, process.stdout);
+    const options: ManagementCommandOptions = { currentVersion: "0.8.0", home, force: true };
+
+    // Act: run the forced default-channel upgrade with fully injected children.
+    const exitCode = await runUpgradeCommand(options, deps);
+
+    // Assert: REQ-188 — the forced npm channel runs the update child with the
+    // npm --force reinstall flag appended to the standard command; no extra
+    // child is spawned for the forced path.
+    assert.equal(exitCode, 0);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].command, PACKAGE_UPGRADE_COMMAND[0]);
+    assert.deepEqual([...calls[0].args], [...PACKAGE_UPGRADE_COMMAND.slice(1), UPGRADE_FORCE_OPTION]);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("runUpgradeCommand_without_force_runs_the_standard_unforced_update_child", async () => {
+  const home = createFakeHome([]);
+  try {
+    const { spawnStub, calls } = createSpawnStub([{ status: 0 }]);
+    const { logger } = createLoggerStub();
+    const deps = buildDeps(spawnStub, logger, process.stdout);
+    const options: ManagementCommandOptions = { currentVersion: "0.8.0", home, force: false };
+
+    const exitCode = await runUpgradeCommand(options, deps);
+
+    // Assert: REQ-190 — without --force the standard unforced update child
+    // runs verbatim (no force, no reinstall option) on the npm channel.
+    assert.equal(exitCode, 0);
+    assert.equal(calls.length, 1);
+    assert.deepEqual([...calls[0].args], [...PACKAGE_UPGRADE_COMMAND.slice(1)]);
+    assert.equal(calls[0].args.includes(UPGRADE_FORCE_OPTION), false);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Level 1 — runUninstallCommand (sibling management spawn)
 // ---------------------------------------------------------------------------
 
@@ -304,6 +393,17 @@ test("buildDevelopUpgradeCommand_builds_tagged_github_install_command", () => {
     [...buildDevelopUpgradeCommand("v1.2.3")],
     ["npm", "install", "-g", "github:Ogekuri/mcp-google-api#v1.2.3"]
   );
+});
+
+test("buildDevelopUpgradeCommand_appends_the_npm_force_flag_only_when_requested", () => {
+  // Act + Assert: REQ-189 — forced develop-channel install carries the npm
+  // --force flag; REQ-190 — the default invocation stays unforced.
+  assert.deepEqual(
+    [...buildDevelopUpgradeCommand("v1.2.3", true)],
+    ["npm", "install", "-g", "github:Ogekuri/mcp-google-api#v1.2.3", UPGRADE_FORCE_OPTION]
+  );
+  assert.equal(buildDevelopUpgradeCommand("v1.2.3").includes(UPGRADE_FORCE_OPTION), false);
+  assert.equal(buildDevelopUpgradeCommand("v1.2.3", false).includes(UPGRADE_FORCE_OPTION), false);
 });
 
 // ---------------------------------------------------------------------------
@@ -371,6 +471,35 @@ test("runUpgradeCommand_develop_channel_installs_even_when_tag_matches_installed
     assert.equal(calls.length, 1);
     assert.deepEqual([...calls[0].args], ["install", "-g", "github:Ogekuri/mcp-google-api#v0.8.0"]);
     assert.equal(exitCode, 0);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("runUpgradeCommand_develop_channel_force_appends_the_npm_force_flag", async () => {
+  const home = createFakeHome([]);
+  try {
+    const fetchImpl = (async () => {
+      return { ok: true, json: async () => ({ tag_name: "v1.2.3" }) } as unknown as Response;
+    }) as unknown as typeof fetch;
+    const { spawnStub, calls } = createSpawnStub([{ status: 0 }]);
+    const { logger } = createLoggerStub();
+    const deps: ManagementCommandDeps = {
+      ...buildDeps(spawnStub, logger, process.stdout),
+      githubCheck: { fetchImpl },
+    };
+    const options: ManagementCommandOptions = { currentVersion: "0.8.0", home, channel: "develop", force: true };
+
+    const exitCode = await runUpgradeCommand(options, deps);
+
+    // Assert: REQ-189 — the forced develop channel appends the npm --force
+    // flag to the tagged GitHub install command, preserving the REQ-171 shape.
+    assert.equal(exitCode, 0);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(
+      [...calls[0].args],
+      ["install", "-g", "github:Ogekuri/mcp-google-api#v1.2.3", UPGRADE_FORCE_OPTION]
+    );
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

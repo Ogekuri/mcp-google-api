@@ -212,11 +212,14 @@ mcp-google-api snippet --transport http --port 3100   # HTTP URL snippet
 ```bash
 mcp-google-api --ver         # installed version, npmjs latest, GitHub latest (three lines)
 mcp-google-api --upgrade     # npm install -g mcp-google-api@latest, then refresh skills and registrations with a summary
+mcp-google-api --upgrade --develop   # install the latest tagged GitHub release (any branch)
+mcp-google-api --upgrade --force     # force package re-download and complete reinstallation (npm install --force)
+mcp-google-api --upgrade --develop --force   # forced reinstall of the latest tagged GitHub release
 mcp-google-api uninstall     # remove MCP registrations + skills from every enabled CLI
 mcp-google-api --uninstall   # npm uninstall -g mcp-google-api
 ```
 
-`--upgrade` first checks the registry and skips cleanly when the installed version is already the latest; after a successful upgrade it re-runs `install` through the upgraded package and prints the starting → updated version transition plus one entry per processed CLI.
+`--upgrade` reinstalls the package in every invocation with no pre-upgrade version comparison; after a successful upgrade it re-runs `install` through the upgraded package and prints the starting → updated version transition plus one entry per processed CLI. `--force` appends the npm `--force` flag so the package is re-downloaded and fully reinstalled (standard runs, with or without `--develop`, stay unforced).
 
 # Documentation
 
