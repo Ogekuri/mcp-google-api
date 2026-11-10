@@ -316,10 +316,10 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-086**: MUST document the `auto-update` command and the settings `autoUpdate` field in `README.md` and `docs/CONFIGURATION.md`, stating that the automatic update check is enabled by default.
 
 #### Self-Upgrade and Version Reporting
-- **REQ-120**: MUST provide top-level `--ver` and `--version` commands that print on stdout three lines: the installed version, the npmjs latest line (REQ-162), and the GitHub latest line (REQ-163), exiting 0.
+- **REQ-120**: MUST provide top-level `--ver` and `--version` commands that print on stdout exactly three lines with all ` : ` separators column-aligned (REQ-192, REQ-162, REQ-163), exiting 0.
 - **REQ-161**: `--ver` and `--version` MUST probe the npm registry and the GitHub releases API online, bypassing the idle cache gate, before printing the REQ-120 lines.
-- **REQ-162**: `--ver` and `--version` MUST print the second stdout line exactly `npmjs latest: <version>` where `<version>` is the latest `mcp-google-api` version published on the npm registry.
-- **REQ-163**: `--ver` and `--version` MUST print the third stdout line exactly `GitHub latest: <version>` where `<version>` is the latest GitHub release of `Ogekuri/mcp-google-api` with any leading `v` stripped.
+- **REQ-162**: `--ver` and `--version` MUST print the second stdout line exactly `Latest @ NPMjs    : <version>` where `<version>` is the latest `mcp-google-api` version published on the npm registry.
+- **REQ-163**: `--ver` and `--version` MUST print the third stdout line exactly `Latest @ GitHub   : <version>` where `<version>` is the latest GitHub release of `Ogekuri/mcp-google-api` with any leading `v` stripped.
 - **REQ-164**: `--ver` and `--version` MUST print `unknown` in place of any REQ-120 version that cannot be determined: failed, disabled, or malformed probe result, or undetermined installed version, rendering failed-probe diagnostics per REQ-181.
 - **REQ-121**: MUST gate the automatic update check with an idle cache file at `~/.cache/mcp-google-api/check_version_idle-time.json`, skipping the registry request while its `idle_time_epoch` is in the future.
 - **REQ-122**: MUST persist cache fields `last_success_epoch`, `last_success_human`, `idle_time_epoch`, and `idle_time_human` (ISO-8601 UTC) after each executed check, tolerating missing or malformed cache content.
@@ -342,7 +342,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-178**: When the develop-channel GitHub probe fails, `--upgrade` MUST print a stderr diagnostic carrying the probe message, spawn no child process, and exit non-zero.
 - **REQ-179**: The `--ver`/`--version` npm probe MUST fetch the npm registry packument manifest listing all published package versions using the abbreviated-manifest Accept header.
 - **REQ-180**: The `--ver`/`--version` npm probe MUST resolve the npmjs latest version from the packument `dist-tags.latest` field.
-- **REQ-181**: When the GitHub releases probe fails, `--ver` and `--version` MUST print the third stdout line as `GitHub latest: unknown (<reason>)` where `<reason>` is the probe diagnostic message.
+- **REQ-181**: When the GitHub releases probe fails, `--ver` and `--version` MUST print the third stdout line as `Latest @ GitHub   : unknown (<reason>)` where `<reason>` is the probe diagnostic message.
+- **REQ-192**: `--ver` and `--version` MUST print the first stdout line exactly `Current Installed : <version>` where `<version>` is the installed package version, or `unknown` when undeterminable (REQ-164).
 - **REQ-182**: When a `--upgrade` package-update child exits non-zero with an ENOENT diagnostic in its captured stderr, `--upgrade` MUST run one tolerated `npm uninstall -g mcp-google-api` child and retry the package update once.
 - **REQ-183**: `--upgrade` MUST propagate the final non-zero exit code of the recovery retry and spawn no further recovery children after it.
 - **REQ-187**: `--upgrade` MUST accept the auxiliary `--force` option combined with the default channel or the `--develop`/`--dev` channel, in any option order.

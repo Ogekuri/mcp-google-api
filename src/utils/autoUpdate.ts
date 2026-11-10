@@ -352,7 +352,7 @@ export interface GitHubProbeDeps {
  * @brief Discriminated outcome of one GitHub latest-release probe without side effects.
  * @details Logging-free core result consumed by the `--ver`/`--version`
  * command (`runVersionCommand`, `src/utils/upgradeManager.ts`), which renders
- * `error` as `unknown (<message>)` on the `GitHub latest:` stdout line
+ * `error` as `unknown (<message>)` on the `Latest @ GitHub` stdout line
  * (REQ-164, REQ-181), and by the develop-channel `--upgrade` flow, which
  * installs the raw `tag` ref (REQ-171, REQ-177).
  */

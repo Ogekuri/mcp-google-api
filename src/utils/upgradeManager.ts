@@ -885,6 +885,35 @@ function resolveProbeLatestVersion(probe: LatestVersionProbe): string {
 }
 
 /**
+ * @brief Width of the left-aligned label column of the `--ver`/`--version` report (REQ-120).
+ * @details Longest label `Current Installed` measures 17 characters; every
+ * report label is right-padded to this width so the ` : ` separators of the
+ * three stdout lines align vertically (REQ-192, REQ-162, REQ-163).
+ * @satisfies REQ-120
+ */
+const VERSION_REPORT_LABEL_WIDTH = 17;
+
+/**
+ * @brief Renders one aligned label/value line of the `--ver`/`--version` report.
+ * @details Right-pads `label` with spaces to `VERSION_REPORT_LABEL_WIDTH`
+ * characters, then appends ` : ` and the value, producing the exact REQ-120
+ * report lines: `Current Installed : <version>` for the installed version
+ * (REQ-192), `Latest @ NPMjs    : <version>` for the npm-registry latest
+ * (REQ-162), and `Latest @ GitHub   : <version>` for the GitHub latest
+ * release (REQ-163), whose failed-probe value renders as
+ * `unknown (<reason>)` (REQ-181). Pure; never throws.
+ * @param label {string} Report label (`Current Installed`, `Latest @ NPMjs`, `Latest @ GitHub`); MUST be non-empty.
+ * @param value {string} Version text, or the `unknown` placeholder carrying the optional `(<reason>)` diagnostic suffix (REQ-164, REQ-181).
+ * @return {string} One report line without the trailing newline.
+ * @note Complexity: O(n) in label and value length. Pure; no side effects.
+ * @satisfies REQ-120, REQ-192, REQ-162, REQ-163, REQ-181
+ * @see resolveProbeLatestVersion
+ */
+function renderVersionReportLine(label: string, value: string): string {
+  return `${label.padEnd(VERSION_REPORT_LABEL_WIDTH, " ")} : ${value}`;
+}
+
+/**
  * @brief Resolves the updated package version reported by the `--upgrade` summary.
  * @details Runs one logging-free `probeLatestVersion` registry probe after the
  * upgrade child succeeds, forwarding the injected idle-check dependencies, and
@@ -918,15 +947,17 @@ async function resolveUpdatedVersion(
  * REQ-179, REQ-180) and the GitHub releases probe (`probeLatestGitHubVersion`)
  * concurrently, both bypassing the idle cache gate (REQ-161: no cache read, no
  * cache write, no persisted `autoUpdate` gating), then writes exactly three
- * stdout lines — the installed version, `npmjs latest: <version>` (REQ-162),
- * and `GitHub latest: <version>` (REQ-163) — and returns 0 (REQ-120). Any
- * undeterminable version prints as `unknown` (REQ-164); a failed GitHub
- * probe renders the third line as `GitHub latest: unknown (<reason>)` with
+ * stdout lines rendered through `renderVersionReportLine` so the ` : `
+ * separators column-align (REQ-120): `Current Installed : <version>`
+ * (REQ-192), `Latest @ NPMjs    : <version>` (REQ-162), and
+ * `Latest @ GitHub   : <version>` (REQ-163). Any undeterminable version
+ * prints as `unknown` (REQ-164); a failed GitHub probe renders the third
+ * line as `Latest @ GitHub   : unknown (<reason>)` with
  * `<reason>` carrying the probe diagnostic message (REQ-181).
  * @param options {ManagementCommandOptions} Options carrying `currentVersion`.
  * @param deps {ManagementCommandDeps} Optional idle-check/GitHub-check/stdout overrides.
  * @return {Promise<number>} Exit code 0.
- * @satisfies REQ-120, REQ-161, REQ-162, REQ-163, REQ-164, REQ-179, REQ-180, REQ-181
+ * @satisfies REQ-120, REQ-161, REQ-162, REQ-163, REQ-164, REQ-179, REQ-180, REQ-181, REQ-192
  * @see probeLatestManifestVersion
  * @see probeLatestGitHubVersion
  * @see resolveProbeLatestVersion
@@ -944,7 +975,13 @@ export async function runVersionCommand(
   const githubLatest =
     githubProbe.status === "ok" ? githubProbe.version : `unknown (${githubProbe.message})`;
   const stdout = deps.stdout ?? process.stdout;
-  stdout.write(`${installedVersion}\nnpmjs latest: ${npmLatest}\nGitHub latest: ${githubLatest}\n`);
+  stdout.write(
+    [
+      renderVersionReportLine("Current Installed", installedVersion),
+      renderVersionReportLine("Latest @ NPMjs", npmLatest),
+      renderVersionReportLine("Latest @ GitHub", githubLatest),
+    ].join("\n") + "\n",
+  );
   return 0;
 }
 

@@ -1290,7 +1290,7 @@ deterministic and network-free.
 - @brief Discriminated outcome of one GitHub latest-release probe without side effects.
 - @details Logging-free core result consumed by the `--ver`/`--version`
 command (`runVersionCommand`, `src/utils/upgradeManager.ts`), which renders
-`error` as `unknown (<message>)` on the `GitHub latest:` stdout line
+`error` as `unknown (<message>)` on the `Latest @ GitHub` stdout line
 (REQ-164, REQ-181), and by the develop-channel `--upgrade` flow, which
 installs the raw `tag` ref (REQ-171, REQ-177).
 ### fn `function stripReleaseTagPrefix(tag: string): string` (L371-373)
@@ -2264,7 +2264,7 @@ Complexity O(n) in tool names plus O(n*a) API union work.
 
 ---
 
-# upgradeManager.ts | TypeScript | 1074L | 40 symbols | 7 imports | 86 comments
+# upgradeManager.ts | TypeScript | 1111L | 41 symbols | 7 imports | 88 comments
 > Path: `src/utils/upgradeManager.ts`
 
 ## Imports
@@ -2594,7 +2594,23 @@ every other outcome (`disabled`, `unknown-version`, `error`) -> `unknown`
 - @see probeLatestVersion
 - @satisfies REQ-164
 
-### fn `async function resolveUpdatedVersion(` (L903-912)
+### fn `function renderVersionReportLine(label: string, value: string): string` (L912-914)
+- @brief Renders one aligned label/value line of the `--ver`/`--version` report.
+- @details Right-pads `label` with spaces to `VERSION_REPORT_LABEL_WIDTH`
+characters, then appends ` : ` and the value, producing the exact REQ-120
+report lines: `Current Installed : <version>` for the installed version
+(REQ-192), `Latest @ NPMjs : <version>` for the npm-registry latest
+(REQ-162), and `Latest @ GitHub : <version>` for the GitHub latest
+release (REQ-163), whose failed-probe value renders as
+`unknown (<reason>)` (REQ-181). Pure; never throws.
+- @param label {string} Report label (`Current Installed`, `Latest @ NPMjs`, `Latest @ GitHub`); MUST be non-empty.
+- @param value {string} Version text, or the `unknown` placeholder carrying the optional `(<reason>)` diagnostic suffix (REQ-164, REQ-181).
+- @return {string} One report line without the trailing newline.
+- @note Complexity: O(n) in label and value length. Pure; no side effects.
+- @see resolveProbeLatestVersion
+- @satisfies REQ-120, REQ-192, REQ-162, REQ-163, REQ-181
+
+### fn `async function resolveUpdatedVersion(` (L932-941)
 - @brief Resolves the updated package version reported by the `--upgrade` summary.
 - @details Runs one logging-free `probeLatestVersion` registry probe after the
 upgrade child succeeds, forwarding the injected idle-check dependencies, and
@@ -2610,17 +2626,19 @@ Invoked by `runUpgradeCommand` after the package-update child succeeds.
 - @see resolveProbeLatestVersion
 - @satisfies REQ-134
 
-### fn `export async function runVersionCommand(` (L934-936)
+### fn `export async function runVersionCommand(` (L965-967)
 - @brief Handles `--ver`/`--version`: dual online probe plus three-line version report.
 - @details Runs the npm packument-manifest probe (`probeLatestManifestVersion`,
 abbreviated-manifest Accept header, latest resolved from `dist-tags.latest`,
 REQ-179, REQ-180) and the GitHub releases probe (`probeLatestGitHubVersion`)
 concurrently, both bypassing the idle cache gate (REQ-161: no cache read, no
 cache write, no persisted `autoUpdate` gating), then writes exactly three
-stdout lines — the installed version, `npmjs latest: <version>` (REQ-162),
-and `GitHub latest: <version>` (REQ-163) — and returns 0 (REQ-120). Any
-undeterminable version prints as `unknown` (REQ-164); a failed GitHub
-probe renders the third line as `GitHub latest: unknown (<reason>)` with
+stdout lines rendered through `renderVersionReportLine` so the ` : `
+separators column-align (REQ-120): `Current Installed : <version>`
+(REQ-192), `Latest @ NPMjs : <version>` (REQ-162), and
+`Latest @ GitHub : <version>` (REQ-163). Any undeterminable version
+prints as `unknown` (REQ-164); a failed GitHub probe renders the third
+line as `Latest @ GitHub : unknown (<reason>)` with
 `<reason>` carrying the probe diagnostic message (REQ-181).
 - @param options {ManagementCommandOptions} Options carrying `currentVersion`.
 - @param deps {ManagementCommandDeps} Optional idle-check/GitHub-check/stdout overrides.
@@ -2628,9 +2646,9 @@ probe renders the third line as `GitHub latest: unknown (<reason>)` with
 - @see probeLatestManifestVersion
 - @see probeLatestGitHubVersion
 - @see resolveProbeLatestVersion
-- @satisfies REQ-120, REQ-161, REQ-162, REQ-163, REQ-164, REQ-179, REQ-180, REQ-181
+- @satisfies REQ-120, REQ-161, REQ-162, REQ-163, REQ-164, REQ-179, REQ-180, REQ-181, REQ-192
 
-### fn `export async function runUpgradeCommand(` (L991-993)
+### fn `export async function runUpgradeCommand(` (L1028-1030)
 - @brief Handles `--upgrade`: channel selection, package reinstall, then refresh skills with a stdout summary.
 - @details Develop channel (`options.channel === "develop"`, selected by the
 `--develop` option or its equivalent `--dev` alias, REQ-170): skips the
@@ -2670,7 +2688,7 @@ channel (REQ-189); without it the standard unforced update child runs
 - @see renderUpgradeSummary
 - @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-146, REQ-170, REQ-171, REQ-172, REQ-173, REQ-177, REQ-178, REQ-182, REQ-183, REQ-187, REQ-188, REQ-189, REQ-190
 
-### fn `export function runUninstallCommand(deps: ManagementCommandDeps = {}): number` (L1040-1042)
+### fn `export function runUninstallCommand(deps: ManagementCommandDeps = {}): number` (L1077-1079)
 - @brief Handles `--uninstall`: remove the globally installed package.
 - @details Runs `npm uninstall -g mcp-google-api` with inherited stdio and
 returns the child exit code (spawn failures map to 1 with the manual
@@ -2681,7 +2699,7 @@ responsibility of the existing `uninstall` subcommand.
 - @see runPackageManagerCommand
 - @satisfies REQ-127
 
-### fn `export async function runManagementCommand(` (L1060-1063)
+### fn `export async function runManagementCommand(` (L1097-1100)
 - @brief Dispatches one management command to its handler.
 - @details Single dispatch surface for the CLI entry intercept:
 `--ver`/`--version` -> `runVersionCommand` (async); `--upgrade` ->
@@ -2735,9 +2753,10 @@ forwarded `--force` forced-reinstall option, REQ-187); `--uninstall` ->
 |`reportSpawnFailure`|fn||793-797|const reportSpawnFailure = (message: string): PostUpgrade...|
 |`renderUpgradeSummary`|fn||835-864|export function renderUpgradeSummary(|
 |`resolveProbeLatestVersion`|fn||877-885|function resolveProbeLatestVersion(probe: LatestVersionPr...|
-|`resolveUpdatedVersion`|fn||903-912|async function resolveUpdatedVersion(|
-|`runVersionCommand`|fn||934-936|export async function runVersionCommand(|
-|`runUpgradeCommand`|fn||991-993|export async function runUpgradeCommand(|
-|`runUninstallCommand`|fn||1040-1042|export function runUninstallCommand(deps: ManagementComma...|
-|`runManagementCommand`|fn||1060-1063|export async function runManagementCommand(|
+|`renderVersionReportLine`|fn||912-914|function renderVersionReportLine(label: string, value: st...|
+|`resolveUpdatedVersion`|fn||932-941|async function resolveUpdatedVersion(|
+|`runVersionCommand`|fn||965-967|export async function runVersionCommand(|
+|`runUpgradeCommand`|fn||1028-1030|export async function runUpgradeCommand(|
+|`runUninstallCommand`|fn||1077-1079|export function runUninstallCommand(deps: ManagementComma...|
+|`runManagementCommand`|fn||1097-1100|export async function runManagementCommand(|
 
