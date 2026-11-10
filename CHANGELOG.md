@@ -1,7 +1,11 @@
 # Changelog
 
-## [0.26.1](https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.1) - 2026-11-09
+## [0.26.2](https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.2) - 2026-11-10
 ### 🚜  Changes
+- align --ver/--version report to padded labels [useReq] *(upgradeManager)*
+REQUIREMENTS: REQ-120/REQ-162/REQ-163/REQ-181 reworded to the aligned three-line report; REQ-192 added pinning 'Current Installed : <version>'.
+SRC: add pure renderVersionReportLine helper (label padEnd 17) consumed by runVersionCommand; sync stale probe doc in autoUpdate.ts.
+DOCS: WORKFLOW.md TRACE-L/EDGE-06/EDGE-10 runtime model updated; REFERENCES.md regenerated. Verified: static-check clean, typecheck exit 0, npm test 153/153 passed.
 - add --force forced-reinstall option to --upgrade [useReq] *(upgrade)*
 REQUIREMENTS: add REQ-187..REQ-191 (force option, forced channel commands,
 standard unforced child, help documentation) and PKG-064 (README coverage);
@@ -567,7 +571,7 @@ TST-003 extended to the pageSize-to-maxResultCount translation test; WORKFLOW.md
 - \[0.24.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.24.0
 - \[0.25.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.25.0
 - \[0.26.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.26.0
-- \[0.26.1\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.26.1
+- \[0.26.2\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.26.2
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.2.0..v0.3.0
@@ -593,4 +597,4 @@ TST-003 extended to the pageSize-to-maxResultCount translation test; WORKFLOW.md
 [0.24.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.23.0..v0.24.0
 [0.25.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.24.0..v0.25.0
 [0.26.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.25.0..v0.26.0
-[0.26.1]: https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.1
+[0.26.2]: https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.2
