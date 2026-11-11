@@ -189,8 +189,9 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-088**: `scripts/pre-release-check.sh` MUST NOT invoke destructive git commands (`git clean`, `git reset`, `git stash`, `git checkout`, `git restore`).
 - **PKG-089**: `scripts/pre-release-check.sh` MUST print a final result line naming `PASS` on success, or `FAILED` with the failing phase name and exit status otherwise.
 - **PKG-090**: `.gitignore` MUST NOT exclude the `dist/` directory as a whole; the `dist/` rule MUST be replaced by the inverse re-inclusions `!dist/` and `!dist/**/*`.
-- **PKG-091**: `.gitignore` MUST exclude generated build outputs under `dist/` through the rules `dist/**/*.js`, `dist/**/*.js.map`, `dist/**/*.d.ts`, `dist/**/*.d.ts.map`, `dist/**/*.tgz`, `dist/**/*.tsbuildinfo`, and `dist/**/*.tmp`.
+- **PKG-091**: MUST distribute the `scripts/build.sh` release artifacts through the git repository by version-controlling every `dist/` entry; `.gitignore` MUST NOT define any active rule excluding the `dist/` directory or its files.
 - **PKG-092**: `.gitignore` MUST place the `!dist/` and `!dist/**/*` re-inclusions before the CTN-009 `!tools/` and CTN-010 `!bin/` exceptions so those exceptions remain at the tail of the included-paths section.
+- **PKG-093**: `tools/check-release-artifacts.mjs` MUST reject every packed `dist/` entry matching `*.tgz`, so a repository-tracked release tarball is never nested inside a newly packed package.
 
 ## 3. Requirements
 
@@ -508,3 +509,4 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-026**: MUST verify REQ-209/REQ-210/REQ-211 by running `npm test` (`tests/configRenderer.unit.test.ts`): a structural validator parses real `--print` and `--info` output and rejects orphan connectors, extra continuation segments, and misplaced markers.
 - **TST-027**: MUST verify REQ-217/REQ-218 by running `npm test` (`tests/configTableRenderer.unit.test.ts`): border alignment, wide-character widths, escaped control characters, and empty-collection table omission are asserted.
 - **TST-028**: MUST verify REQ-193-REQ-208 and REQ-213-REQ-222 by running `npm test` (`tests/configCommands.unit.test.ts`): get/set/unset/print/info/print-raw behavior, exit codes, stream separation, resets, bounds, and no mutation on rejection are asserted.
+- **TST-029**: MUST verify PKG-090/PKG-091/PKG-092/PKG-093 by running `npm test` (`tests/gitignoreDist.unit.test.ts`): static contract asserts the `!dist/` and `!dist/**/*` re-inclusions in the included-paths section, their placement before the `!tools/` and `!bin/` tail exceptions, the absence of any active `.gitignore` rule excluding `dist/` entries, and the validator nested-tarball rejection guard; pass when all assertions hold.
