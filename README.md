@@ -22,7 +22,7 @@
 <p align="center">
   <strong>MCP Google API server — Google APIs for AI agents over the <a href="https://modelcontextprotocol.io">Model Context Protocol</a></strong>
   <br>
-  The server exposes Google API families to AI agents over stdio or Streamable HTTP. The currently implemented family is <strong>Google Maps</strong>, providing 18 read-only tools: geocoding and reverse geocoding, Places API (New) text/nearby search with server-side filters (<code>priceLevels</code>, <code>minRating</code>, <code>strictTypeFiltering</code>), place details, directions, distance matrix, timezone, elevation, weather, air quality, static maps, batch geocode, and the composite tools explore-area, plan-route, compare-places, search-along-route, and local-rank-tracker. Tools are declared read-only, non-destructive, idempotent, and open-world via MCP annotations. The server ships the <strong>eatspot-discovery</strong> agent skill for budget-, quality-, category-, and schedule-validated venue search, and installs itself plus its skills into supported CLI agents (pi, OpenClaw, Codex, Antigravity, Claude) with one command.
+  The server exposes Google API families to AI agents over stdio or Streamable HTTP. The currently implemented family is <strong>Google Maps</strong>, providing 18 read-only tools: geocoding and reverse geocoding, Places API (New) text/nearby search with server-side filters (<code>priceLevels</code>, <code>minRating</code>, <code>strictTypeFiltering</code>), place details, directions, distance matrix, timezone, elevation, weather, air quality, static maps, batch geocode, and the composite tools explore-area, plan-route, compare-places, search-along-route, and local-rank-tracker. Tools are declared read-only, non-destructive, idempotent, and open-world via MCP annotations. The server ships the <strong>eatspot-discovery</strong> agent skill for budget-, quality-, category-, and schedule-validated venue search, and installs itself plus its skills into supported CLI agents (antigravity, claude, codex, copilot, openclaw, opencode, pi) with one command.
 </p>
 
 <p align="center">
@@ -41,15 +41,15 @@
 
 # Feature Highlights
 
-One command installs the server and its agent skills; one configuration file holds every setting.
+`install` registers the server and its agent skills in every enabled CLI agent; one configuration file holds every setting.
 
-- **18 Google Maps tools** — geocoding, Places API (New) search and details, directions, distance matrix, weather, air quality, timezone, elevation, static maps, batch geocode, plus composite tools that chain geocoding, search, details, and routing internally (full catalog: [docs/TOOLS.md](docs/TOOLS.md)).
-- **Two transports** — stdio for local MCP clients and Streamable HTTP at `/mcp` with per-session state.
-- **One-command CLI integration** — `enable` your agents (pi, OpenClaw, Codex, Antigravity, Claude), then `install` registers the server and synchronizes the bundled skills into every enabled CLI with a human-readable activity report; `show` reports OK/MISSING/STALE status.
-- **Single-file configuration** — the Google Maps API key, enabled CLI agents, exposed tools, HTTP host/port, and the update check all live in `~/.config/mcp-google-api/config.json`, managed through dedicated commands; no environment variables.
-- **Per-request credentials** — HTTP requests may override the configured key with the `X-Google-Maps-API-Key` or `Authorization: Bearer` headers; each session keeps its own key.
+- **18 Google Maps tools** — geocoding, Places API (New) search and details, directions, distance matrix, weather, air quality, timezone, elevation, static maps, batch geocode, plus composite tools that chain geocoding, search, details, and routing (full catalog: [docs/TOOLS.md](docs/TOOLS.md)).
+- **Two transports** — stdio for locally registered MCP clients and Streamable HTTP at `/mcp` with per-session isolation.
+- **CLI agent integration** — `enable` selects agents (`antigravity`, `claude`, `codex`, `copilot`, `openclaw`, `opencode`, `pi`); `install` registers the server and synchronizes the bundled skills with a per-CLI activity report; `show` reports OK, MISSING, or STALE status.
+- **Single-file configuration** — the Google Maps API key, enabled agents, exposed tools, HTTP host and port, and the update check live in `~/.config/mcp-google-api/config.json`, managed through dedicated commands or the configuration interface; no environment variables.
+- **Per-request credentials** — HTTP requests may override the configured key with the `X-Google-Maps-API-Key` or `Authorization: Bearer` header; each session keeps its own key.
 - **Standalone CLI** — `doctor` self-checks, `exec` one-shot tool calls, `batch-geocode` with bounded concurrency, `snippet` registration JSON.
-- **Automatic update check** — compares the running version against the npm registry at startup (stderr only, never blocks startup, on by default) plus `--ver` and `--upgrade` management commands.
+- **Automatic update check** — compares the running version against the npm registry at startup (stderr only, never blocks startup, on by default); `--ver` and `--upgrade` management commands.
 
 # Quick Start
 
@@ -61,14 +61,14 @@ Install the package, configure the API key, run the server. Optional configurati
 npm install -g mcp-google-api
 ```
 
-**2. Configure** — create a Google Maps API key at <https://console.cloud.google.com/apis/credentials>, enable the services you need ([Requirements](#requirements)), then persist the key:
+**2. Configure** — create a Google Maps API key at <https://console.cloud.google.com/apis/credentials>, enable the APIs for the tools you use ([Requirements](#requirements)), then persist the key:
 
 ```bash
 mcp-google-api api-key "AIza..."
 mcp-google-api doctor          # local self-check: Node, package, key, settings (no network)
 ```
 
-**3. Run** — register the server into your CLI agents (supported: `pi`, `openclaw`, `codex`, `antigravity`, `claude`, `copilot`), then start it:
+**3. Run** — select the CLI agents to register (supported: `antigravity`, `claude`, `codex`, `copilot`, `openclaw`, `opencode`, `pi`), register the server, then start it:
 
 ```bash
 mcp-google-api enable pi
@@ -77,34 +77,34 @@ mcp-google-api start --stdio   # stdio transport (used by the registered CLI ent
 mcp-google-api start           # Streamable HTTP at http://127.0.0.1:3000/mcp
 ```
 
-Restart (or reload) the enabled CLI agent: the `mcp-google-api` server appears with its tools.
+Reload the enabled CLI agent after `install` so it loads the registered `mcp-google-api` server and its tools.
 
 # Requirements
 
 - **Node.js >= 24** (enforced by `doctor` and the release pipeline) and **npm** for installation.
-- A **Google Cloud project** with billing enabled and one **Google Maps API key** (<https://console.cloud.google.com/apis/credentials>).
-- **Google APIs enabled on the key** (minimal operational subset in bold; enable the others only for the tools you use):
+- A **Google Cloud project** and one **Google Maps API key** (<https://console.cloud.google.com/apis/credentials>).
+- **Google APIs enabled for the key.** Enable only the APIs used by the tools you run. `doctor` lists the Google APIs required by each enabled tool; `doctor --live` probes Geocoding, Places (New), and Routes.
 
 | API to enable | Needed for |
 | --- | --- |
-| **Places API (New)** | Place search/details tools — **required**; the `eatspot-discovery` skill needs it |
-| **Geocoding API** | `maps_geocode`, `maps_reverse_geocode`, `maps_batch_geocode`, address resolution |
-| **Routes API** | `maps_directions`, `maps_distance_matrix`, `maps_plan_route` |
+| **Places API (New)** | Place search and details tools, composite tools that use them, and the `eatspot-discovery` skill |
+| **Geocoding API** | `maps_geocode`, `maps_reverse_geocode`, `maps_batch_geocode`, and address resolution |
+| **Routes API** | `maps_directions`, `maps_distance_matrix`, `maps_plan_route`, `maps_search_along_route` |
 | **Time Zone API** | `maps_timezone` |
 | **Maps Elevation API** | `maps_elevation` |
 | **Maps Static API** | `maps_static_map` |
-| **Weather API** | `maps_weather` (limited regional coverage) |
-| **Air Quality API** | `maps_air_quality` (limited regional coverage) |
+| **Weather API** | `maps_weather` (unsupported locations return a dedicated error) |
+| **Air Quality API** | `maps_air_quality` |
 
-- **MCP client** (optional): any Model Context Protocol client for stdio or Streamable HTTP; the supported CLI agents are pi, OpenClaw, Codex, Antigravity, and Claude.
+- **MCP client** (optional): any Model Context Protocol client using stdio or Streamable HTTP. The CLI agents with automated registration are `antigravity`, `claude`, `codex`, `copilot`, `openclaw`, `opencode`, and `pi`.
 
-Minimal subset: **Places API (New) + Geocoding API**. After installation verify the setup with `mcp-google-api doctor` (no network calls) and optionally `mcp-google-api doctor --live` (billable probes); restrict the exposed tool set with `mcp-google-api tools` (see [User's Guide](#users-guide)).
+After installation verify the setup with `mcp-google-api doctor` (no network calls) and optionally `mcp-google-api doctor --live` (billable probes). Restrict the exposed tool set with `mcp-google-api tools` (see [User's Guide](#users-guide)).
 
 # User's Guide
 
 ## Configuration file
 
-Every setting is persisted in `~/.config/mcp-google-api/config.json` through dedicated commands; **no environment variables are used**:
+Every setting is persisted in `~/.config/mcp-google-api/config.json` through dedicated commands; **no environment variables are used**. `api-key` is the only API-key configuration path.
 
 ```json
 {
@@ -119,107 +119,147 @@ Every setting is persisted in `~/.config/mcp-google-api/config.json` through ded
 
 | Command | Field | Purpose |
 | --- | --- | --- |
-| `mcp-google-api api-key <key>` | `apiKey` | Validate (20-50 chars) and persist the Google Maps API key, then refresh every enabled CLI registration; masked in every report |
-| `mcp-google-api enable <cli>` / `disable <cli>` | `enabled` | Add/remove a CLI agent (idempotent, case-insensitive) |
-| `mcp-google-api tools <list|*>` | `enabledTools` | Restrict the exposed tools, e.g. `maps_geocode,maps_search_places`; `*` = all 18 (unknown names are rejected); a persisted list matching zero tools falls back to the full set with an error log |
+| `mcp-google-api api-key <key>` | `apiKey` | Validate (20-50 characters: letters, digits, hyphens, underscores), persist the Google Maps API key, then refresh every enabled CLI registration; masked in every report |
+| `mcp-google-api enable <cli>` / `disable <cli>` | `enabled` | Add or remove a CLI agent (idempotent, case-insensitive) |
+| `mcp-google-api tools <names\|*>` | `enabledTools` | Restrict the exposed tools with a comma-separated list, e.g. `maps_geocode,maps_search_places`; `*` exposes all 18 tools; unknown names are rejected; a persisted list matching zero tools falls back to the full set with an error log |
 | `mcp-google-api host <host>` | `host` | HTTP bind host (default `127.0.0.1` loopback; `0.0.0.0` for all interfaces) |
 | `mcp-google-api port <port>` | `port` | HTTP listen port, integer 1-65535 (default `3000`) |
-| `mcp-google-api auto-update <enable|disable|1|0>` | `autoUpdate` | Enable/disable the startup update check (enabled by default) |
+| `mcp-google-api auto-update <enable\|disable\|1\|0>` | `autoUpdate` | Enable or disable the startup update check (enabled by default) |
 
-The `--host` and `--port` flags override the persisted settings for a single `start`/`run` invocation. Missing or malformed settings content reloads with normalized defaults.
+The `--host` and `--port` flags (`-p`) override the persisted settings for a single `start` or `run` invocation. Missing or malformed settings content loads with normalized defaults.
+
+## Configuration interface
+
+The settings file is also readable and writable through canonical paths. The root section is `Settings` with parameters `enabled`, `apiKey`, `autoUpdate`, `enabledTools`, `host`, and `port`. Path segments are separated by `:` and are case-sensitive.
+
+| Flag | Purpose |
+| --- | --- |
+| `--print [Path]` | Print current values as a tree (whole file, one section, or one parameter) |
+| `--info [Path]` | Print the schema documentation as a tree |
+| `--print-raw` | Print the settings file bytes unchanged |
+| `--get Path` | Print one value as bare JSON (pipeable) |
+| `--set Path Value` | Set a value; non-string parameters take a JSON literal |
+| `--unset Path` | Restore the schema default, or delete one array element |
+
+Array operations on `Settings:enabled`:
+
+- `Settings:enabled:<Idx>` — read (`--get`), replace (`--set`), or delete (`--unset`); `0 <= Idx < length`.
+- `Settings:enabled:+` or `Settings:enabled:append` — append one element (write only).
+- `Settings:enabled:insert:<Idx>` — insert one element; `0 <= Idx <= length` (write only).
+
+```bash
+mcp-google-api --print
+mcp-google-api --info Settings:enabled
+mcp-google-api --get Settings:port
+mcp-google-api --set Settings:port 3100
+mcp-google-api --set Settings:enabled:+ "pi"
+mcp-google-api --unset Settings:enabled:0
+mcp-google-api --unset Settings:host
+```
+
+- The settings file and its directory are created from defaults when missing; an existing file is never rewritten by display commands.
+- `--set` and `--unset` validate the whole document. Malformed JSON, wrong types, violated constraints, or invalid existing content exit 1 with a stderr diagnostic and leave the file unchanged.
+- Successful `--set` and `--unset` print one confirmation naming the full canonical path.
+- `enabled` accepts only supported CLI names (stored in lowercase) and rejects duplicates.
+- `--set Settings:enabled` and `--set Settings:apiKey` update the settings file only; run `install` or `api-key` to refresh registrations and skills.
 
 ## CLI agents: registration and removal
 
-`mcp-google-api install` registers, for every enabled CLI, the stdio entry `mcp-google-api` launching `npx -y mcp-google-api start --stdio` (no API key or environment payload embedded — the registered server reads its key from its own configuration file at startup) and synchronizes every bundled skill; it prints a per-CLI activity report and exits 1 on any per-CLI failure. `mcp-google-api uninstall` is the exact reciprocal (absent entries count as removed). Unrelated configuration entries are always preserved.
+`mcp-google-api install` registers, for every enabled CLI, the stdio entry `mcp-google-api` launching `npx -y mcp-google-api start --stdio`, with no API key or environment payload embedded (the registered server reads its key from the settings file at startup), and synchronizes every bundled skill. It prints a per-CLI activity report and exits 1 on any per-CLI failure. `mcp-google-api uninstall` is the exact reciprocal; absent entries count as removed. Unrelated configuration entries are always preserved.
 
 | CLI | MCP configuration | Skills directory |
 | --- | --- | --- |
-| pi | `~/.pi/agent/mcp.json` | `~/.pi/agent/skills` |
-| openclaw | `~/.openclaw/openclaw.json` | `~/.openclaw/workspace/skills` |
-| codex | `~/.codex/config.toml` (`mcp_servers` table) | `~/.codex/skills` |
 | antigravity | `~/.gemini/settings.json` | `~/.gemini/config/skills` |
 | claude | `~/.claude.json` | `~/.claude/skills` |
-| copilot | `~/.copilot/mcp.json` | `~/.copilot/skills` |
+| codex | `~/.codex/config.toml` (`mcp_servers` table) | `~/.codex/skills` |
+| copilot | `~/.copilot/mcp.json` (`mcpServers` map) | `~/.copilot/skills` |
+| openclaw | `~/.openclaw/openclaw.json` | `~/.openclaw/workspace/skills` |
+| opencode | `~/.config/opencode/opencode.json` (`mcp` map) | `~/.config/opencode/skills` |
+| pi | `~/.pi/agent/mcp.json` | `~/.pi/agent/skills` |
 
-- **pi**: after installing, run `/reload` in the session if the configuration was changed externally; `/mcp` inspects status, tools, and connection errors.
-- **OpenClaw**: reload the gateway or restart the agent session so the new server gets connected.
-- `mcp-google-api show` prints the CLI Configuration table (all six agents) and the Installation Status table (server + each skill per enabled CLI with OK / MISSING / STALE).
-- `mcp-google-api install --debug-skills` additionally appends each skill's packaged debug overlay to the installed `SKILL.md`; plain installs and `api-key`/`--upgrade` refreshes never append it, and `show` reports OK in both modes.
+- **pi**: reload the pi session after `install` or `uninstall` so the changed MCP configuration is loaded.
+- **OpenClaw**: reload the gateway or restart the agent session so the new server is connected.
+- `mcp-google-api show` prints the CLI Configuration table (all seven agents) and the Installation Status table (server plus each skill per enabled CLI, with OK, MISSING, or STALE status).
+- `mcp-google-api install --debug-skills` additionally appends each skill's packaged debug overlay to the installed `SKILL.md`. Plain installs, `api-key`, and `--upgrade` refreshes never append it; `show` reports OK in both modes.
 
 ## Running the server
 
 ```bash
 mcp-google-api start --stdio                    # stdio transport (stdout reserved for JSON-RPC; logs on stderr)
 mcp-google-api start                            # Streamable HTTP at http://127.0.0.1:3000/mcp
-mcp-google-api start --host 0.0.0.0 --port 3100 # override host/port for one run
-mcp-google-api run                              # alias of start
+mcp-google-api start --host 0.0.0.0 --port 3100 # override host and port for one run
+mcp-google-api run --stdio                      # alias of start
 ```
 
-- **Loopback default**: the HTTP server binds to `127.0.0.1` (migrated from the previous `0.0.0.0` default); pass `--host 0.0.0.0` or persist `mcp-google-api host 0.0.0.0` to listen on all interfaces.
-- `SIGINT`/`SIGTERM` close all HTTP sessions and the listening socket before exit; the process exits non-zero when no instance can listen (invalid or taken port).
-- stdio mode refuses to start without a configured key and exits 1 with a stderr error inviting `mcp-google-api api-key <key>`; HTTP mode starts anyway and logs a warning (per-request header keys remain usable).
-- The automatic update check runs at startup (default on): a newer npm version is reported on stderr only with an upgrade command; it never blocks startup.
+- **Loopback default**: the HTTP server binds to `127.0.0.1`. The default was migrated from `0.0.0.0`; pass `--host 0.0.0.0` for one run, or persist it with `mcp-google-api host 0.0.0.0`, to listen on all interfaces.
+- `SIGINT` and `SIGTERM` close all HTTP sessions and the listening socket before exit. The process exits non-zero when no instance can listen (invalid or taken port).
+- stdio mode refuses to start without a configured key: it exits 1 with a stderr JSON error naming the `api-key` command. HTTP mode starts anyway and logs a warning; per-request header keys remain usable.
+- The automatic update check runs at startup (on by default): a newer npm version is reported on stderr only, with the current version, the latest version, and an upgrade command. It never blocks startup.
 
 ### stdio vs Streamable HTTP
 
 | | stdio | Streamable HTTP |
 |---|---|---|
-| Launch | `mcp-google-api start --stdio` (what `install` registers in MCP-client configs) | `mcp-google-api start` or `run`, with optional `--host`/`--port` |
-| Channel | JSON-RPC 2.0 frames over stdin/stdout; stdout carries only protocol traffic, diagnostics go to stderr | HTTP POST/GET/DELETE on `http://<host>:<port>/mcp`; GET upgrades to SSE for server-to-client notifications |
+| Launch | `mcp-google-api start --stdio` (what `install` registers in MCP-client configs) | `mcp-google-api start` or `run`, with optional `--host` and `--port` |
+| Channel | JSON-RPC 2.0 frames over stdin and stdout; stdout carries only protocol traffic, diagnostics go to stderr | HTTP POST, GET, and DELETE on `http://<host>:<port>/mcp`; GET serves SSE for server-to-client notifications |
 | API key | resolved once at startup from the persisted `apiKey` setting; startup fails without one | per-request `X-Google-Maps-API-Key` or `Authorization: Bearer` header, then the session key, then the configured setting; startup only warns without one |
-| Typical use | locally registered MCP clients (pi, OpenClaw, Codex, Antigravity, Claude) launched by `install` | remote or multi-client access to one shared server, each client isolated by its `mcp-session-id` |
+| Typical use | locally registered MCP clients (antigravity, claude, codex, copilot, openclaw, opencode, pi) launched by `install` | remote or multi-client access to one shared server, each client isolated by its `mcp-session-id` |
 
-Use **stdio** when a local MCP client launches the server from its own configuration; use **Streamable HTTP** when several clients, local or remote, share one server instance. Both transports expose the same 18 tools and the same per-session/per-request key isolation semantics.
+Use **stdio** when a local MCP client launches the server from its own configuration. Use **Streamable HTTP** when several clients, local or remote, share one server instance. Both transports expose the same 18 tools.
 
 ## Per-request API keys
 
-On the HTTP transport each request may supply its own key with top priority: the `X-Google-Maps-API-Key` header, or an `Authorization: Bearer <key>` header. Each session (`mcp-session-id`) keeps its session key; the configured `apiKey` setting is the fallback. This lets concurrent clients use isolated credentials against one server.
+On the HTTP transport each request may supply its own key with top priority: the `X-Google-Maps-API-Key` header, or an `Authorization: Bearer <key>` header. Each session (`mcp-session-id`) keeps its session key; the configured `apiKey` setting is the fallback. Concurrent clients can therefore use isolated credentials against one server.
 
 ## Diagnostics
 
 ```bash
-mcp-google-api doctor                          # local: Node >= 24, package version, key presence, effective settings (masked, per-field source), required Google APIs per enabled tool
-mcp-google-api doctor --live                   # billable probes: Geocoding, Places (New), Routes (independent results)
+mcp-google-api doctor                                    # local: Node >= 24, package version, key presence, effective settings (masked, with per-field source), Google APIs required per enabled tool
+mcp-google-api doctor --live                             # billable probes: Geocoding, Places (New), Routes
 mcp-google-api doctor --live --probes geocoding,routes   # probe only the selected subset
-mcp-google-api doctor --live --apikey "AIza..." # override the key for the probes only
+mcp-google-api doctor --live --apikey "AIza..."          # override the key for the probes only (alias -k)
 ```
 
-`doctor` prints a machine-readable JSON report on stdout (diagnostics on stderr) and exits 0 only when no check fails.
+`doctor` prints a machine-readable JSON report on stdout and diagnostics on stderr. It exits 0 only when no check fails.
 
 ## One-shot CLI tools
 
 ```bash
 mcp-google-api exec maps_geocode '{"address":"Tokyo Tower"}'    # run one tool by its canonical maps_ name
-mcp-google-api batch-geocode -i addresses.txt -o results.json # geocode one address per line
-cat addresses.txt | mcp-google-api batch-geocode -i -          # from stdin
+mcp-google-api batch-geocode -i addresses.txt -o results.json   # one address per line; summary written to the file
+cat addresses.txt | mcp-google-api batch-geocode -i -           # read addresses from stdin
 ```
 
-- `exec` prints the tool result as JSON on stdout (exit 1 with a JSON error on stderr when no key is configured, the tool fails, the JSON is invalid, or the name is unknown).
-- `batch-geocode` bounds concurrency with `--concurrency` (default 20, clamped 1-50), writes a JSON summary `{ total, succeeded, failed, results }` to `--output` or stdout, and exits 1 when any address failed.
-- Both resolve the API key from the persisted `api-key` setting only.
+- `exec` prints the tool result as pretty-printed JSON on stdout. It exits 1 with a JSON error on stderr when no key is configured, when the tool reports failure, when the parameters are not valid JSON, or when the tool name is unknown.
+- `batch-geocode` requires `-i`/`--input` (`-` for stdin). `-c`/`--concurrency` sets the parallel request count (default 20, clamped 1-50). It writes a JSON summary `{ total, succeeded, failed, results }` to `-o`/`--output` or stdout, and exits 1 when any address failed.
+- Both commands resolve the API key from the persisted `api-key` setting only.
 
 ## Registration snippets
 
 ```bash
-mcp-google-api snippet --client pi          # stdio snippet (npx launcher)
-mcp-google-api snippet --transport http --port 3100   # HTTP URL snippet
+mcp-google-api snippet --client pi                      # stdio snippet (npx launcher)
+mcp-google-api snippet --transport http --port 3100     # Streamable HTTP URL snippet
+mcp-google-api snippet --client pi --launcher node --command /abs/path/dist/cli.js
 ```
 
-`snippet` prints a valid `mcpServers` JSON registration on stdout (guidance notes on stderr) and never writes files. Entries embed no API key and no environment payload; the notes point to the `api-key` command.
+- `--client` accepts `generic`, `claude`, `cursor`, `pi`; `--launcher` accepts `npx`, `node`, `bin`; `--transport` accepts `stdio`, `http`.
+- `snippet` prints a valid `mcpServers` JSON registration on stdout and guidance notes on stderr. It never writes files. Entries embed no API key and no environment payload; configure the key with `api-key`.
 
 ## Version management and removal
 
 ```bash
-mcp-google-api --ver         # installed version, npmjs latest, GitHub latest (three lines)
-mcp-google-api --upgrade     # npm install -g mcp-google-api@latest, then refresh skills and registrations with a summary
-mcp-google-api --upgrade --develop   # install the latest tagged GitHub release (any branch)
-mcp-google-api --upgrade --force     # force package re-download and complete reinstallation (npm install --force)
-mcp-google-api --upgrade --develop --force   # forced reinstall of the latest tagged GitHub release
-mcp-google-api uninstall     # remove MCP registrations + skills from every enabled CLI
-mcp-google-api --uninstall   # npm uninstall -g mcp-google-api
+mcp-google-api --ver                        # installed, npm latest, and GitHub latest versions (three lines)
+mcp-google-api --upgrade                    # npm install -g mcp-google-api@latest, then refresh skills and registrations
+mcp-google-api --upgrade --develop          # install the latest tagged GitHub release (alias --dev)
+mcp-google-api --upgrade --force            # force package re-download and complete reinstallation
+mcp-google-api --upgrade --develop --force  # forced reinstall of the latest tagged GitHub release
+mcp-google-api uninstall                    # remove MCP registrations and skills from every enabled CLI
+mcp-google-api --uninstall                  # npm uninstall -g mcp-google-api
 ```
 
-`--upgrade` reinstalls the package in every invocation with no pre-upgrade version comparison; after a successful upgrade it re-runs `install` through the upgraded package and prints the starting → updated version transition plus one entry per processed CLI. `--force` appends the npm `--force` flag so the package is re-downloaded and fully reinstalled (standard runs, with or without `--develop`, stay unforced).
+- `--upgrade` reinstalls the package on every invocation, with no pre-upgrade version comparison. After a successful upgrade it re-runs `install` through the upgraded package and prints the starting version, the updated version, and one entry per processed CLI.
+- `--develop` (alias `--dev`) selects the latest tagged GitHub release regardless of the branch carrying the tag.
+- `--force` can be combined with either channel, in any option order. Standard runs stay unforced.
 
 # Documentation
 
@@ -229,20 +269,20 @@ mcp-google-api --uninstall   # npm uninstall -g mcp-google-api
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md) — configuration reference: settings file, commands, transports, per-request keys, registration.
 - [src/resources/skills/](src/resources/skills/) — bundled agent skills; `eatspot-discovery` implements budget (breakfast EUR 10 / lunch EUR 30 / dinner EUR 40 defaults), quality grades A-E, category and opening-hours validation, geographic search modes (3/10/20 km), and a binding anti-fabrication rule: every published Google Maps value must originate from an executed tool call.
 
-## Architecture overview
+## Data locations
 
-- **Three layers**: tool modules define name, description, zod input schema, and handler; a facade chains them (including the composite tools); dedicated clients call the Google APIs (Places API (New) via the official SDK, Routes via REST with explicit field masks, the remaining services via the legacy Maps services client).
-- **Transports**: one shared JSON-RPC core serves both stdio and Streamable HTTP; the HTTP transport creates a dedicated server instance and transport per session (`mcp-session-id`), and API keys propagate per request/session through an async-local context.
-- **Safety**: every tool is annotated read-only, non-destructive, idempotent, and open-world; Places results default to English; Google error codes are mapped to actionable messages (invalid key / API not enabled, quota exceeded).
-- **State**: all state is in-memory per process except the user-owned settings file and the update-check idle cache under `~/.cache/mcp-google-api/`.
+- `~/.config/mcp-google-api/config.json` — settings file, created with mode `0600` because it holds the API key.
+- `~/.cache/mcp-google-api/check_version_idle-time.json` — idle cache of the automatic update check.
+- The server keeps tool results and session state in memory only. `install`, `uninstall`, `api-key`, and `--upgrade` write the registrations and skill directories of the enabled CLI agents (see [CLI agents: registration and removal](#cli-agents-registration-and-removal)).
 
 ## Known limitations
 
-- `maps_search_nearby` may return fewer than 20 results when the client-side `openNow`/`minRating` filters discard matches after the query.
-- Transit routing has regional coverage gaps (notably Japan and India), surfaced as errors or warnings rather than fallbacks.
+- `maps_search_nearby` may return fewer than 20 results when the client-side `openNow` and `minRating` filters discard matches after the query.
 - `maps_static_map` does not enforce the documented 640x640 maximum size; only the 16384-character URL limit is enforced.
-- `maps_search_places` forwards `pageToken` but the Places SDK silently drops it, so pagination has no server-side effect; `nextPageToken` is still returned when present.
-- Weather API and Air Quality API have limited regional coverage; unsupported locations return a dedicated error message.
+- Transit routing has regional coverage gaps (notably Japan and India), surfaced as errors or warnings rather than fallbacks.
+- `maps_search_places` forwards `pageToken`, but the Places SDK silently drops it, so pagination has no server-side effect. `nextPageToken` is still returned when the API provides it.
+- Weather API returns a dedicated error for unsupported locations.
+- `--set Settings:enabled` and `--set Settings:apiKey` do not refresh MCP registrations or installed skills; run `install` or `api-key` for that.
 
 # License
 
