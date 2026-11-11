@@ -25,8 +25,8 @@ mcp-google-api/
 ├── .github/workflows/           # GitHub Actions: release-npm.yml (npm tag releases)
 ├── bin/                         # mcp-google-api.mjs installed-bin launcher
 ├── docs/                        # Usage docs (CONFIGURATION.md, TOOLS.md)
-├── scripts/                     # mcp-google-api.sh launcher + pre-release-check.sh release gate
-├── tools/                       # check-publish-version.mjs publish guard
+├── scripts/                     # mcp-google-api.sh launcher + build.sh release artifacts + pre-release-check.sh release gate
+├── tools/                       # check-publish-version.mjs publish guard + check-release-artifacts.mjs artifact validator
 ├── src/
 │   ├── cli.ts                   # yargs entry: doctor, exec, batch-geocode, server start
 │   ├── config.ts                # serverConfigs registry, tool annotations, filterTools()
@@ -156,13 +156,41 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-055**: README.md MUST document the Streamable HTTP transport serving MCP at `http://<host>:<port>/mcp` with `--host`/`--port` overrides and per-request API-key headers.
 - **PKG-056**: README.md MUST state per-transport applicability: stdio for locally registered MCP clients, Streamable HTTP for remote or multi-client access with per-session isolation.
 - **PKG-057**: The PKG-005 version guard MUST be implemented as `tools/check-publish-version.mjs`, wired as the first `prepublishOnly` stage via the `check:publish-version` script.
-- **PKG-058**: MUST ship `scripts/pre-release-check.sh` running the release-gating stages: `check:publish-version` guard, typecheck, unit tests, and the production build.
-- **PKG-059**: `scripts/pre-release-check.sh` MUST execute the release-gating stages in order: publish-version guard, typecheck, unit tests, build, aborting at the first failed stage.
+- **PKG-058**: MUST ship `scripts/pre-release-check.sh` running the release-gating stages: `check:publish-version` guard, typecheck, unit tests, production build, release artifact generation via `scripts/build.sh`, and release artifact validation.
+- **PKG-059**: `scripts/pre-release-check.sh` MUST execute the release-gating stages in order: publish-version guard, typecheck, unit tests, build, release artifact generation, release artifact validation, aborting at the first failed stage.
 - **PKG-060**: `scripts/pre-release-check.sh` MUST exit 0 only when every stage passes, exit non-zero otherwise, and MUST NOT run dependency installs or package publication.
 - **PKG-061**: `scripts/pre-release-check.sh` MUST remove on exit every artifact directory its stages created during the run, such as the tsup `dist/` tree, on success and failure.
 - **PKG-062**: `scripts/pre-release-check.sh` MUST preserve any build artifact directory that pre-existed before its run.
 - **PKG-063**: The release workflow MUST run `scripts/pre-release-check.sh` after dependency installation and before every build, pack, publish, and release-creation step, failing the job on gate failure.
 - **PKG-064**: README.md MUST document the `--upgrade` command with its `--develop`/`--dev` channel options and its `--force` forced-reinstall option.
+- **PKG-065**: MUST ship `scripts/build.sh` as the standalone release artifact generator, runnable without any prior execution of `scripts/pre-release-check.sh`.
+- **PKG-066**: `scripts/build.sh` MUST resolve the repository root from its own location and MUST produce identical outputs regardless of the invocation working directory.
+- **PKG-067**: `scripts/build.sh` MUST abort non-zero before any build step when Node.js major version is below 24, when `node`, `npm`, or `tar` is absent, or when `node_modules/.bin/tsup` is absent, naming the missing prerequisite.
+- **PKG-068**: `scripts/build.sh` MUST NOT install dependencies and MUST NOT publish packages.
+- **PKG-069**: `scripts/build.sh` MUST generate the ESM bundle and declaration files through the `build` npm script and the npm tarball through `npm pack --ignore-scripts`, writing every output into `dist/`.
+- **PKG-070**: `scripts/build.sh` MUST name the npm tarball `<name>-<version>.tgz` derived from `package.json` (PKG-045) and MUST verify that it is non-empty and readable by `tar`.
+- **PKG-071**: `scripts/build.sh` MUST remove obsolete generated outputs of earlier builds from `dist/` before writing new outputs, and MUST NOT remove non-generated entries of `dist/`.
+- **PKG-072**: `scripts/build.sh` MUST classify as generated every file in `dist/` matching `*.js`, `*.js.map`, `*.d.ts`, `*.d.ts.map`, `*.tgz`, `*.tsbuildinfo`, or `*.tmp`; every other entry is non-generated.
+- **PKG-073**: `scripts/build.sh` MUST restore the pre-run content of `dist/` and exit non-zero when any build phase fails, so a failed build never leaves a partial output set.
+- **PKG-074**: `scripts/build.sh` MUST print the path and byte size of every artifact in `dist/` on success, and MUST exit 0 only after every generation and verification step passes.
+- **PKG-075**: `tools/check-release-artifacts.mjs` MUST validate the packed tarball contents: every entry MUST be an npm invariant file or lie under an allowlisted runtime prefix (PKG-038); required entries MUST exist.
+- **PKG-076**: `tools/check-release-artifacts.mjs` MUST verify that the tarball `package/package.json` `name` and `version` equal the repository `package.json` values and that every `bin`, `main`, and `exports` target exists in the tarball.
+- **PKG-077**: `tools/check-release-artifacts.mjs` MUST verify that every skill `path` and `debug` entry of the packed `src/resources/skills/manifest.json` resolves to an existing packed file.
+- **PKG-078**: `tools/check-release-artifacts.mjs` MUST verify that every packed `dist/` file is byte-identical to its counterpart in the repository `dist/` directory.
+- **PKG-079**: `tools/check-release-artifacts.mjs` MUST verify syntax of the packed `dist/cli.js` and `dist/index.js` and MUST execute the repository `dist/cli.js --help` with exit code 0 and `mcp-google-api` on stdout.
+- **PKG-080**: `scripts/pre-release-check.sh` MUST run `scripts/build.sh` and then `tools/check-release-artifacts.mjs` as release-gating stages after the production build stage.
+- **PKG-081**: `scripts/pre-release-check.sh` MUST validate the toolchain before the first stage: Node.js >= 24, `git`, `npm`, `tar`, `diff`, `cmp`, and the installed binaries `node_modules/.bin/tsc`, `tsup`, and `tsx`, naming each missing item.
+- **PKG-082**: `scripts/pre-release-check.sh` MUST snapshot `git status --porcelain --ignored` before the first stage and MUST exit non-zero when the post-run snapshot differs, covering tracked, untracked, and git-ignored leftovers.
+- **PKG-083**: `scripts/pre-release-check.sh` MUST exit non-zero before any stage when the working directory is not a git work tree, because repository integrity cannot be verified.
+- **PKG-084**: `scripts/pre-release-check.sh` MUST restore a pre-existing `dist/` directory to its pre-run content snapshot and MUST remove `dist/` only when the run created it.
+- **PKG-085**: `scripts/pre-release-check.sh` MUST run its cleanup in an EXIT trap and MUST preserve the original failing exit status when cleanup or integrity verification also fails.
+- **PKG-086**: `scripts/pre-release-check.sh` MUST exit non-zero when every stage passes but cleanup or integrity verification fails.
+- **PKG-087**: `scripts/pre-release-check.sh` MUST handle SIGINT, SIGTERM, and SIGHUP by exiting through the EXIT trap with status 130, 143, and 129 respectively.
+- **PKG-088**: `scripts/pre-release-check.sh` MUST NOT invoke destructive git commands (`git clean`, `git reset`, `git stash`, `git checkout`, `git restore`).
+- **PKG-089**: `scripts/pre-release-check.sh` MUST print a final result line naming `PASS` on success, or `FAILED` with the failing phase name and exit status otherwise.
+- **PKG-090**: `.gitignore` MUST NOT exclude the `dist/` directory as a whole; the `dist/` rule MUST be replaced by the inverse re-inclusions `!dist/` and `!dist/**/*`.
+- **PKG-091**: `.gitignore` MUST exclude generated build outputs under `dist/` through the rules `dist/**/*.js`, `dist/**/*.js.map`, `dist/**/*.d.ts`, `dist/**/*.d.ts.map`, `dist/**/*.tgz`, `dist/**/*.tsbuildinfo`, and `dist/**/*.tmp`.
+- **PKG-092**: `.gitignore` MUST place the `!dist/` and `!dist/**/*` re-inclusions before the CTN-009 `!tools/` and CTN-010 `!bin/` exceptions so those exceptions remain at the tail of the included-paths section.
 
 ## 3. Requirements
 

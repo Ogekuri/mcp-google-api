@@ -48,6 +48,9 @@
 !tsconfig.json
 !tsup.config.ts
 !eslint.config.js
+# dist/ is traversable and visible; generated outputs are excluded in the specific-exclusion section (PKG-090, PKG-092)
+!dist/
+!dist/**/*
 !tools/
 !tools/**/*
 !bin/
@@ -74,7 +77,6 @@ __pycache__/
 .Python
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -89,6 +91,15 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Release artifacts generated under dist/ by scripts/build.sh (PKG-091)
+dist/**/*.js
+dist/**/*.js.map
+dist/**/*.d.ts
+dist/**/*.d.ts.map
+dist/**/*.tgz
+dist/**/*.tsbuildinfo
+dist/**/*.tmp
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
