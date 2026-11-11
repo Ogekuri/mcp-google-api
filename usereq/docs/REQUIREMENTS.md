@@ -167,7 +167,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-066**: `scripts/build.sh` MUST resolve the repository root from its own location and MUST produce identical outputs regardless of the invocation working directory.
 - **PKG-067**: `scripts/build.sh` MUST abort non-zero before any build step when Node.js major version is below 24, when `node`, `npm`, or `tar` is absent, or when `node_modules/.bin/tsup` is absent, naming the missing prerequisite.
 - **PKG-068**: `scripts/build.sh` MUST NOT install dependencies and MUST NOT publish packages.
-- **PKG-069**: `scripts/build.sh` MUST generate the ESM bundle and declaration files through the `build` npm script and the npm tarball through `npm pack --ignore-scripts`, writing every output into `dist/`.
+- **PKG-069**: `scripts/build.sh` MUST generate the ESM runtime bundle and its shared chunks through the `build` npm script, writing every output into `dist/`.
 - **PKG-070**: `scripts/build.sh` MUST name the npm tarball `<name>-<version>.tgz` derived from `package.json` (PKG-045) and MUST verify that it is non-empty and readable by `tar`.
 - **PKG-071**: `scripts/build.sh` MUST remove obsolete generated outputs of earlier builds from `dist/` before writing new outputs, and MUST NOT remove non-generated entries of `dist/`.
 - **PKG-072**: `scripts/build.sh` MUST classify as generated every file in `dist/` matching `*.js`, `*.js.map`, `*.d.ts`, `*.d.ts.map`, `*.tgz`, `*.tsbuildinfo`, or `*.tmp`; every other entry is non-generated.
@@ -200,6 +200,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-099**: `scripts/clean.sh` MUST NOT install dependencies and MUST NOT publish packages.
 - **PKG-100**: `scripts/clean.sh` MUST NOT invoke destructive git commands (`git clean`, `git reset`, `git stash`, `git checkout`, `git restore`).
 - **PKG-101**: `scripts/clean.sh` MUST print on stdout each removed path and a final result line naming `PASS` on success or `FAILED` with the failing entry otherwise.
+- **PKG-102**: `scripts/build.sh` MUST pack the npm tarball into a private OS-temp work directory outside `dist/` and remove it before exit.
+- **PKG-103**: `tools/check-release-artifacts.mjs` MUST create the packed tarball from the repository in a private OS-temp directory outside `dist/` and remove it before exit.
 
 ## 3. Requirements
 

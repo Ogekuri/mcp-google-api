@@ -7,16 +7,17 @@
 #  * 1. Preflight (PKG-067, PKG-068): Node.js >= 24, `node`, `npm`, `tar` on PATH and the
 #  *    installed `node_modules/.bin/tsup` binary. Dependencies are never installed here.
 #  * 2. Snapshot (PKG-073): a pre-existing `dist/` is copied to a private temp directory.
-#  * 3. Compile (PKG-069): `npm run build` runs tsup (ESM bundle plus declarations). The
+#  * 3. Compile (PKG-069): `npm run build` runs tsup (ESM runtime bundle and shared chunks). The
 #  *    project tsup configuration sets `clean: true`, so tsup clears `dist/` first.
-#  * 4. Compile verification (PKG-069, PKG-074): `dist/cli.js`, `dist/index.js`, `dist/cli.d.ts`,
-#  *    and `dist/index.d.ts` must exist and be non-empty; `dist/cli.js` and `dist/index.js` must pass
+#  * 4. Compile verification (PKG-069, PKG-074): `dist/cli.js` and `dist/index.js` must exist and be
+#  *    non-empty; both must pass
 #  *    `node --check`; every relative import target of both entries must exist and be non-empty.
 #  * 5. Preservation (PKG-071, PKG-072): every non-generated snapshot file absent from the
 #  *    new build is copied back into `dist/`. Generated files are never restored.
-#  * 6. Pack (PKG-069, PKG-070): stale `*.tgz` removed, then
-#  *    `npm pack --ignore-scripts --json --pack-destination dist`. The tarball name MUST equal
-#  *    `<name>-<version>.tgz` from `package.json`; the tarball MUST be non-empty and readable by `tar`.
+#  * 6. Pack (PKG-070, PKG-102): stale `*.tgz` removed from `dist/`, then
+#  *    `npm pack --ignore-scripts --json --pack-destination <private work directory>`; the tarball is never
+#  *    written into `dist/`. The tarball name MUST equal `<name>-<version>.tgz` from `package.json`; the
+#  *    tarball MUST be non-empty and readable by `tar`, then is removed before exit (PKG-102).
 #  * 7. Summary (PKG-074): path and byte size of every file in `dist/`.
 #  * Failure semantics (PKG-073): any failing phase exits non-zero. The EXIT trap then
 #  * restores the pre-run `dist/` snapshot, or removes `dist/` when none pre-existed, so a
@@ -279,7 +280,7 @@ log "preflight passed (node $(node -p 'process.versions.node'), dist/ state: $PR
 log "compile: npm run build"
 npm run build
 
-for artifact in cli.js index.js cli.d.ts index.d.ts; do
+for artifact in cli.js index.js; do
   if [ ! -s "$DIST_DIR/$artifact" ]; then
     fail "compile output missing or empty: $DIST_DIR/$artifact"
   fi
@@ -288,26 +289,30 @@ node --check "$DIST_DIR/cli.js"
 node --check "$DIST_DIR/index.js"
 verify_relative_imports "$DIST_DIR/cli.js"
 verify_relative_imports "$DIST_DIR/index.js"
-log "compile verified: $DIST_DIR/cli.js, $DIST_DIR/index.js, declaration files present, relative imports resolved"
+log "compile verified: $DIST_DIR/cli.js, $DIST_DIR/index.js, relative imports resolved"
 
 # Preservation of non-generated dist/ entries (PKG-071, PKG-072).
 preserve_non_generated_entries
 
-# Pack (PKG-069, PKG-070).
+# Pack (PKG-070, PKG-102): the tarball is packed into a private work directory outside dist/.
 rm -f -- "$DIST_DIR"/*.tgz
-log "pack: npm pack --ignore-scripts --pack-destination $DIST_DIR"
-PACK_JSON="$(npm pack --ignore-scripts --json --pack-destination "$DIST_DIR")"
+PACK_DIR="$WORKDIR/pack"
+mkdir -p "$PACK_DIR"
+log "pack: npm pack --ignore-scripts --pack-destination <private work directory>"
+PACK_JSON="$(npm pack --ignore-scripts --json --pack-destination "$PACK_DIR")"
 TARBALL_NAME="$(printf '%s' "$PACK_JSON" | node -e 'let raw = ""; process.stdin.setEncoding("utf8"); process.stdin.on("data", (chunk) => { raw += chunk; }); process.stdin.on("end", () => { const entries = JSON.parse(raw); if (!Array.isArray(entries) || typeof entries[0]?.filename !== "string") { process.exit(1); } process.stdout.write(entries[0].filename); });')"
 EXPECTED_TARBALL="$(node -p 'const pkg = require("./package.json"); pkg.name + "-" + pkg.version + ".tgz";')"
 if [ "$TARBALL_NAME" != "$EXPECTED_TARBALL" ]; then
   fail "tarball name mismatch: npm produced '$TARBALL_NAME', expected '$EXPECTED_TARBALL'"
 fi
-if [ ! -s "$DIST_DIR/$TARBALL_NAME" ]; then
-  fail "tarball missing or empty: $DIST_DIR/$TARBALL_NAME"
+if [ ! -s "$PACK_DIR/$TARBALL_NAME" ]; then
+  fail "tarball missing or empty: $PACK_DIR/$TARBALL_NAME"
 fi
-if ! tar -tzf "$DIST_DIR/$TARBALL_NAME" >/dev/null; then
-  fail "tarball not readable by tar: $DIST_DIR/$TARBALL_NAME"
+if ! tar -tzf "$PACK_DIR/$TARBALL_NAME" >/dev/null; then
+  fail "tarball not readable by tar: $PACK_DIR/$TARBALL_NAME"
 fi
+rm -f -- "$PACK_DIR/$TARBALL_NAME"
+log "pack verified: $TARBALL_NAME (private work directory, removed before exit)"
 
 # Summary (PKG-074).
 log "SUCCESS: release artifacts generated in $DIST_DIR/:"

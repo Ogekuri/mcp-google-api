@@ -6,16 +6,16 @@
  * import resolves.
  * @details UUT: the tracked shell script `scripts/build.sh`, executed from a temp-directory
  * sandbox whose toolchain is replaced by stubs: `node_modules/.bin/tsup` emits `dist/cli.js`,
- * `dist/index.js`, and declaration files, optionally with the chunk module they import; the
+ * `dist/index.js`, optionally with the chunk module they import; the
  * `npm` stub resolves `run build` to the tsup stub and `pack` to a tar-readable tarball. Enforced
  * contract: the build exits non-zero and names the dangling import when `./chunk-ABC.js` is absent,
  * and leaves no partial `dist/` behind (PKG-073); with every relative import resolved the build
- * exits 0 and produces `<name>-<version>.tgz` (PKG-070, PKG-074). Isolation: `PATH` is prefixed with
+ * exits 0, writes no tarball or declaration file into `dist/` (PKG-069, PKG-102), and packs `<name>-<version>.tgz` only into its private work directory (PKG-070, PKG-074). Isolation: `PATH` is prefixed with
  * the stub directory only for the child process; the sandbox is removed in `finally`; no network,
  * no dependency installation, no write into the repository tree.
  * @note HDT level 1 (composed): depends on the shell runtime (`bash`, `tar`, `node`) as isolated
  * external boundaries. Test cases are independent and each owns its sandbox.
- * @satisfies PKG-069, PKG-070, PKG-073, PKG-074, TST-024
+ * @satisfies PKG-069, PKG-070, PKG-073, PKG-074, PKG-102, TST-024
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -74,7 +74,7 @@ const NPM_STUB: string = [
   "",
 ].join("\n");
 
-/** Sandbox tsup stub source: emits the entry and declaration files; the chunk only when requested. */
+/** Sandbox tsup stub source: emits the runtime entry files; the chunk only when requested. */
 const TSUP_STUB: string = [
   "#!/usr/bin/env bash",
   "set -euo pipefail",
@@ -82,8 +82,6 @@ const TSUP_STUB: string = [
   "mkdir -p dist",
   `printf 'import { value } from "./${FIXTURE_CHUNK}";\\nconsole.log(value);\\n' > dist/cli.js`,
   `printf 'export { value } from "./${FIXTURE_CHUNK}";\\n' > dist/index.js`,
-  "printf 'export {};\\n' > dist/cli.d.ts",
-  "printf 'export {};\\n' > dist/index.d.ts",
   'if [ "${FIXTURE_WRITE_CHUNK:-0}" = "1" ]; then',
   `  printf 'export const value = 1;\\n' > dist/${FIXTURE_CHUNK}`,
   "fi",
@@ -282,14 +280,15 @@ test("test_build_restores_snapshot_on_non_generated_path_collision", () => {
 /**
  * @brief Positive control: every relative import resolved must yield a successful release build.
  * @details Sandbox run with the tsup stub emitting `./chunk-ABC.js`. Expects exit 0, the chunk, and
- * the tarball `<name>-<version>.tgz`. Complexity O(build) plus one bash child.
+ * no tarball or declaration file in `dist/`. Complexity O(build) plus one bash child.
  * @return {void} No value; assertions throw on a failed build condition.
  * @throws {AssertionError} When the build fails or expected artifacts are absent.
- * @satisfies PKG-069, PKG-070, PKG-074
+ * @satisfies PKG-069, PKG-070, PKG-074, PKG-102
  */
 test("test_build_succeeds_when_every_relative_import_resolves", () => {
-  // PKG-069/PKG-070/PKG-074: every relative import resolves; the build exits 0 and produces the
-  // tarball named <name>-<version>.tgz. Positive control for the failing scenario above.
+  // PKG-069/PKG-070/PKG-102/PKG-074: every relative import resolves; the build exits 0, keeps the
+  // chunk in dist/, and leaves no tarball or declaration file in dist/. Positive control for the
+  // failing scenario above.
   // Arrange
   const sandbox = createSandbox();
   try {
@@ -298,7 +297,8 @@ test("test_build_succeeds_when_every_relative_import_resolves", () => {
     // Assert
     assert.equal(result.status, 0, `build must succeed when imports resolve; stderr: ${result.stderr}`);
     assert.equal(existsSync(join(sandbox.root, "dist", FIXTURE_CHUNK)), true, "chunk must remain in dist/");
-    assert.equal(existsSync(join(sandbox.root, "dist", FIXTURE_TARBALL)), true, "tarball must be generated (PKG-070)");
+    assert.equal(existsSync(join(sandbox.root, "dist", FIXTURE_TARBALL)), false, "tarball must not be written into dist/ (PKG-102)");
+    assert.equal(existsSync(join(sandbox.root, "dist", "cli.d.ts")), false, "declaration files must not be written into dist/ (PKG-069)");
   } finally {
     rmSync(sandbox.root, { recursive: true, force: true });
   }

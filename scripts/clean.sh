@@ -6,7 +6,7 @@
 #  * any prior build or release-gate execution, in fail-fast order:
 #  * 1. Scope guard (PKG-096, PKG-098): an absent `dist/` is a successful no-op; a non-directory
 #  *    `dist` entry aborts with a FAILED diagnostic.
-#  * 2. File sweep (PKG-096): every `dist/` regular file matching the PKG-072 generated
+#  * 2. File sweep (PKG-096): every `dist/` regular file matching the PKG-072 generated (legacy declaration and tarball outputs of earlier builds included, PKG-071)
 #  *    classification (`*.js`, `*.js.map`, `*.d.ts`, `*.d.ts.map`, `*.tgz`, `*.tsbuildinfo`,
 #  *    `*.tmp`) is removed; symlinks, directories, and every other entry are non-generated and
 #  *    preserved, and no path outside `dist/` is ever touched.
