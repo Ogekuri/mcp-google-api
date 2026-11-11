@@ -33,6 +33,7 @@ import {
   type CliOperationResult,
 } from "./utils/cliInstaller.js";
 import { buildCliShowReport } from "./utils/cliShow.js";
+import { CONFIG_CLI_USAGE, runConfigCommandIfMatched } from "./utils/configCli.js";
 
 // Get the directory of the current module
 const __filename = fileURLToPath(import.meta.url);
@@ -1149,6 +1150,10 @@ if (isMainModule) {
         process.stderr.write(JSON.stringify({ error: message }, null, 2) + "\n");
         process.exitCode = 1;
       });
+  } else if (runConfigCommandIfMatched(hideBin(process.argv))) {
+    // The configuration interface (--print/--info/--print-raw/--get/--set/--unset)
+    // is dispatched before yargs because those actions are flags carrying
+    // positional arguments rather than subcommands (DES-028, PRJ-023).
   } else {
     /**
      * @brief Applies the shared server-start options to a yargs builder.
@@ -1790,7 +1795,8 @@ if (isMainModule) {
           `  --upgrade     Upgrade the global package to the latest version and refresh installed skills\n` +
           `                --develop | --dev: install the latest tagged GitHub release (any branch)\n` +
           `                --force: force package re-download and complete reinstallation (npm install --force)\n` +
-          `  --uninstall   Remove the globally installed mcp-google-api package`
+          `  --uninstall   Remove the globally installed mcp-google-api package\n\n` +
+          CONFIG_CLI_USAGE
       )
       .help();
     cli.parse();

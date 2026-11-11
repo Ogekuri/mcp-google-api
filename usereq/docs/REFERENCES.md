@@ -40,13 +40,17 @@
         ├── cliSettings.ts
         ├── cliShow.ts
         ├── cliTargets.ts
+        ├── configCli.ts
+        ├── configRenderer.ts
         ├── configResolver.ts
+        ├── configSchema.ts
+        ├── configView.ts
         ├── requestContext.ts
         ├── toolProfiles.ts
         └── upgradeManager.ts
 ```
 
-# cli.ts | TypeScript | 1800L | 38 symbols | 20 imports | 62 comments
+# cli.ts | TypeScript | 1806L | 38 symbols | 21 imports | 65 comments
 > Path: `src/cli.ts`
 
 ## Imports
@@ -71,17 +75,18 @@ import { loadCliSettings, loadConfiguredApiKey, saveCliSettings } from "./utils/
 import { resolveCliTarget, supportedCliNames } from "./utils/cliTargets.js";
 import {
 import { buildCliShowReport } from "./utils/cliShow.js";
+import { CONFIG_CLI_USAGE, runConfigCommandIfMatched } from "./utils/configCli.js";
 ```
 
 ## Definitions
 
-### iface `export interface ServerStartupOutcome` (L47-51)
+### iface `export interface ServerStartupOutcome` (L48-52)
 - @brief Aggregated HTTP startup result across all configured server instances.
 - @details `started`/`failed` count per instance; `servers` holds only the
 instances that are listening, so a zero-length array with `started === 0`
 is the reliable-failure signal consumed by the default command (REQ-095).
 
-### fn `export async function startServer(` (L71-128)
+### fn `export async function startServer(` (L72-129)
 - @brief Starts every configured HTTP MCP server instance and reports the outcome.
 - @details Validates the requested listen port (integer 1-65535), skips the
 invalid instance with remediation guidance while marking it failed
@@ -99,9 +104,9 @@ diagnostics identify the application as `MCP Google API server`
 - @see installShutdownHandlers
 - @satisfies REQ-008, REQ-009, REQ-096, REQ-165
 
-- type `export type ShutdownExitHook = (code: number) => void;` (L131)
+- type `export type ShutdownExitHook = (code: number) => void;` (L132)
 - @brief Exit hook signature used by the shutdown handler. */
-### fn `export function createShutdownHandler(` (L145-159)
+### fn `export function createShutdownHandler(` (L146-160)
 - @brief Builds a one-shot orderly shutdown handler for HTTP server instances.
 - @details On first invocation it stops every given server via
 `stopHttpServer()` (transport close + socket close, errors tolerated) and
@@ -113,7 +118,7 @@ signals never double-stop. Complexity O(servers).
 - @see stopHttpServer
 - @satisfies REQ-096
 
-### fn `export function installShutdownHandlers(servers: readonly BaseMcpServer[]): void` (L171-175)
+### fn `export function installShutdownHandlers(servers: readonly BaseMcpServer[]): void` (L172-176)
 - @brief Registers SIGINT/SIGTERM handlers that orderly-stop the given servers.
 - @details Wraps `createShutdownHandler` and attaches it to both signals so
 Ctrl-C and terminate requests close all HTTP sessions and the listening
@@ -123,32 +128,32 @@ socket before process exit (REQ-096). Complexity O(1).
 - @see createShutdownHandler
 - @satisfies REQ-096
 
-- type `type ExecFailureResponse = {` (L200)
-### iface `interface ExecOutput` (L205-207)
+- type `type ExecFailureResponse = {` (L201)
+### iface `interface ExecOutput` (L206-208)
 
-### iface `interface ExecStreams` (L209-212)
+### iface `interface ExecStreams` (L210-213)
 
-- type `type ExecToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L214)
-- type `export type DoctorCheck = {` (L216)
-- type `export type DoctorReport = {` (L222)
-- type `type DoctorToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L229)
-### fn `function isExecFailureResponse(result: unknown): result is ExecFailureResponse` (L231-238)
+- type `type ExecToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L215)
+- type `export type DoctorCheck = {` (L217)
+- type `export type DoctorReport = {` (L223)
+- type `type DoctorToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L230)
+### fn `function isExecFailureResponse(result: unknown): result is ExecFailureResponse` (L232-239)
 
-### fn `function getExecFailureMessage(toolName: string, result: ExecFailureResponse): string` (L240-248)
+### fn `function getExecFailureMessage(toolName: string, result: ExecFailureResponse): string` (L241-249)
 
-### fn `export async function execTool(toolName: string, params: any, apiKey: string): Promise<any>` (L250-364)
+### fn `export async function execTool(toolName: string, params: any, apiKey: string): Promise<any>` (L251-365)
 
-### fn `export async function runExecCommand(` (L374-379)
+### fn `export async function runExecCommand(` (L375-380)
 
-- type `export type DoctorProbeId = "geocoding" | "places-new" | "routes";` (L399)
+- type `export type DoctorProbeId = "geocoding" | "places-new" | "routes";` (L400)
 - @brief Selectable live-probe identifier used by `doctor --live --probes`. */
-### iface `export interface DoctorLiveProbe` (L402-407)
+### iface `export interface DoctorLiveProbe` (L403-408)
 - @brief Static definition of one billable live probe executed by doctor. */
 
-### iface `export interface DoctorProbesParseResult` (L439-442)
+### iface `export interface DoctorProbesParseResult` (L440-443)
 - @brief Parsed `--probes` CLI value: either valid probe ids or an error. */
 
-### fn `export function parseDoctorProbes(raw: string | undefined): DoctorProbesParseResult` (L454-476)
+### fn `export function parseDoctorProbes(raw: string | undefined): DoctorProbesParseResult` (L455-477)
 - @brief Parses the raw `--probes` CLI string into validated probe ids.
 - @details `undefined` input -> `{ probes: undefined }` (probe all three,
 legacy `--live` behavior). Splits on commas, trims, lowercases, maps through
@@ -158,13 +163,13 @@ with a remediation error. Complexity O(n) in items; pure.
 - @return {DoctorProbesParseResult} Validated ids, or `error` describing the invalid input.
 - @satisfies REQ-091
 
-### iface `export interface DoctorOptions` (L484-489)
+### iface `export interface DoctorOptions` (L485-490)
 - @brief Injectable doctor dependencies for deterministic testing.
 - @details `nodeVersion` overrides `process.versions.node`; `config` overrides
 environment-derived runtime configuration; `allToolNames` overrides the
 registered tool-name registry used by the profile check.
 
-### fn `export async function runDoctor(` (L513-518)
+### fn `export async function runDoctor(` (L514-519)
 - @brief Runs the readiness self-check decoupled from server startup.
 - @details Local checks (zero network calls): Node major >=
 `NODE_ENGINE_FLOOR` (24, aligned with `package.json` `engines`, REQ-070),
@@ -186,7 +191,7 @@ to the exit code.
 - @see describeToolsProfile
 - @satisfies REQ-070, REQ-071, REQ-072, REQ-089, REQ-090, REQ-091
 
-### fn `export function runSnippetCommand(` (L628-630)
+### fn `export function runSnippetCommand(` (L629-631)
 - @brief Renders a client registration snippet and routes output per PRJ-008.
 - @details Delegates JSON construction to `renderClientSnippet`, writes the
 snippet JSON to `stdout` and each guidance note to `stderr` so stdout stays
@@ -198,7 +203,7 @@ JSON stderr error with exit code 1. Complexity O(1).
 - @see renderClientSnippet
 - @satisfies PRJ-010, REQ-092, REQ-093
 
-### fn `export function runEnableDisableCliCommand(` (L665-668)
+### fn `export function runEnableDisableCliCommand(` (L666-669)
 - @brief Enables or disables one supported CLI in the persisted settings.
 - @details Resolves the CLI adapter case-insensitively; unsupported names
 exit 2 with a JSON stderr error listing supported names (REQ-110).
@@ -214,7 +219,7 @@ resulting enabled state (REQ-184, human-readable exception to PRJ-008).
 - @see saveCliSettings
 - @satisfies REQ-110, REQ-111, REQ-184
 
-### fn `export function runApiKeyCommand(` (L712-714)
+### fn `export function runApiKeyCommand(` (L713-715)
 - @brief Saves the Google Maps API key in the persisted settings and refreshes enabled-CLI registrations.
 - @details Validates the key first (REQ-020 format via `ApiKeyManager`),
 rejecting empty, whitespace-only, or malformed input with a human-readable
@@ -234,7 +239,7 @@ result, or the enable hint when zero CLIs are enabled.
 - @see installEnabledCliResources
 - @satisfies REQ-136, REQ-137, REQ-138, REQ-139, REQ-159
 
-### fn `export function runAutoUpdateCommand(` (L773-775)
+### fn `export function runAutoUpdateCommand(` (L774-776)
 - @brief Enables or disables the automatic update check in the persisted settings.
 - @details Accepts `enable`, `disable`, `1`, `0` case-insensitively (REQ-148)
 and persists the resolved boolean into the settings `autoUpdate` field
@@ -249,7 +254,7 @@ error listing the accepted values and persists nothing (REQ-151).
 - @see saveCliSettings
 - @satisfies REQ-148, REQ-149, REQ-150, REQ-151
 
-### fn `export function runToolsCommand(` (L818-820)
+### fn `export function runToolsCommand(` (L819-821)
 - @brief Persists the enabled-tool allowlist via the `tools` command.
 - @details Accepts a comma-separated tool-name list or the literal `*`
 (full set). Unknown names, empty items only, or a missing value print a
@@ -264,7 +269,7 @@ confirmation is printed. Complexity O(n + m).
 - @see saveCliSettings
 - @satisfies REQ-167
 
-### fn `export function runHostCommand(` (L875-877)
+### fn `export function runHostCommand(` (L876-878)
 - @brief Persists the HTTP bind host via the `host` command.
 - @details Rejects missing or whitespace-only values with a human-readable
 stderr error, persisting nothing (REQ-168); a valid non-empty hostname is
@@ -277,7 +282,7 @@ human-readable stdout confirmation is printed. Complexity O(1).
 - @see saveCliSettings
 - @satisfies REQ-168
 
-### fn `export function runPortCommand(` (L911-913)
+### fn `export function runPortCommand(` (L912-914)
 - @brief Persists the HTTP listen port via the `port` command.
 - @details Rejects missing or non-integer values outside 1..65535 with a
 human-readable stderr error, persisting nothing (REQ-169); a valid port is
@@ -290,7 +295,7 @@ human-readable stdout confirmation is printed. Complexity O(1).
 - @see saveCliSettings
 - @satisfies REQ-169
 
-### fn `export function runInstallUninstallCommand(` (L953-955)
+### fn `export function runInstallUninstallCommand(` (L954-956)
 - @brief Shared handler for the `install` and `uninstall` commands.
 - @details Runs the requested operation over every enabled CLI and prints a
 human-readable per-CLI activity report on stdout (REQ-166): one header
@@ -308,7 +313,7 @@ so each skill's declared debug overlay is appended to the installed
 - @see uninstallEnabledCliResources
 - @satisfies REQ-114, REQ-115, REQ-116, REQ-119, REQ-154, REQ-155, REQ-156, REQ-166
 
-### fn `export function runShowCommand(` (L1003-1004)
+### fn `export function runShowCommand(` (L1004-1005)
 - @brief Prints the CLI Configuration and Installation Status tables.
 - @details Delegates rendering to `buildCliShowReport` and writes the report
 text to stdout (human-readable exception to PRJ-008). Manifest or render
@@ -318,7 +323,7 @@ failures surface as a JSON stderr error with exit code 1.
 - @see buildCliShowReport
 - @satisfies REQ-117, REQ-118, REQ-119
 
-### fn `function isEntryMainModule(): boolean` (L1040-1050)
+### fn `function isEntryMainModule(): boolean` (L1041-1051)
 - @brief Detects whether this module is the process main module.
 - @details Compares the REAL paths of both sides after symlink resolution:
 `realpathSync(process.argv[1])` versus the real path of this module
@@ -337,7 +342,7 @@ metadata lookups; no side effects.
 - @return {boolean} True when this module was launched as the main module.
 - @satisfies PRJ-003
 
-### fn `export function describeUndispatchedServerStart(args: readonly string[]): string | undefined` (L1068-1079)
+### fn `export function describeUndispatchedServerStart(args: readonly string[]): string | undefined` (L1069-1080)
 - @brief Detects a stdio server-start argv shape that the entry gate skipped.
 - @details Matches the registered MCP-client stdio launch shape (REQ-114
 launcher `npx -y mcp-google-api start --stdio`): the post-entry argument
@@ -353,7 +358,7 @@ naming the local rebuild and the global-refresh commands; undefined for
 any other argv shape (plain module imports, unrelated commands).
 - @satisfies REQ-094
 
-### fn `export function handleUndispatchedEntry(` (L1096-1098)
+### fn `export function handleUndispatchedEntry(` (L1097-1099)
 - @brief Reports an undispatched server-start launch on stderr and exits non-zero.
 - @details Detects the server-start argv shape via
 `describeUndispatchedServerStart`; when present, writes exactly one JSON
@@ -368,7 +373,7 @@ code is returned, never exited inline.
 - @return {number} 1 when the remediation diagnostic was emitted; 0 otherwise.
 - @satisfies REQ-094, REQ-015, CTN-003
 
-### fn `const buildServerCommandOptions = (yargs: Argv) =>` (L1163-1188)
+### fn `const buildServerCommandOptions = (yargs: Argv) =>` (L1168-1193)
 - @brief Applies the shared server-start options to a yargs builder.
 - @details Declares `--port`, `--host`, and `--stdio` with defaults taken
 from the persisted settings (DES-015) plus the server-mode examples.
@@ -378,8 +383,8 @@ identical option surface (PRJ-003). Complexity O(1).
 - @return {Argv} The same builder instance with the typed server options attached.
 - @satisfies REQ-079, REQ-008
 
-- type `type ServerCommandArgs = BuilderArguments<typeof buildServerCommandOptions>;` (L1191)
-### fn `const runServerCommand = async (argv: ServerCommandArgs): Promise<void> =>` (L1210-1269)
+- type `type ServerCommandArgs = BuilderArguments<typeof buildServerCommandOptions>;` (L1196)
+### fn `const runServerCommand = async (argv: ServerCommandArgs): Promise<void> =>` (L1215-1274)
 - @brief Server-start handler shared by the `start` and `run` commands.
 - @details Resolves the effective API key exclusively from the persisted
 settings key (REQ-142) and injects it into `ApiKeyManager` (DES-006);
@@ -396,49 +401,49 @@ HTTP mode without an API key logs a warning and still starts (REQ-080).
 - @return {Promise<void>} Resolves when stdio mode stops; HTTP mode persists.
 - @satisfies REQ-079, REQ-080, REQ-082, REQ-095, REQ-142, REQ-143, REQ-165
 
-### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1715-1727)
+### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1720-1732)
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`ServerStartupOutcome`|iface||47-51|export interface ServerStartupOutcome|
-|`startServer`|fn||71-128|export async function startServer(|
-|`ShutdownExitHook`|type||131||
-|`createShutdownHandler`|fn||145-159|export function createShutdownHandler(|
-|`installShutdownHandlers`|fn||171-175|export function installShutdownHandlers(servers: readonly...|
-|`ExecFailureResponse`|type||200||
-|`ExecOutput`|iface||205-207|interface ExecOutput|
-|`ExecStreams`|iface||209-212|interface ExecStreams|
-|`ExecToolRunner`|type||214||
-|`DoctorCheck`|type||216||
-|`DoctorReport`|type||222||
-|`DoctorToolRunner`|type||229||
-|`isExecFailureResponse`|fn||231-238|function isExecFailureResponse(result: unknown): result i...|
-|`getExecFailureMessage`|fn||240-248|function getExecFailureMessage(toolName: string, result: ...|
-|`execTool`|fn||250-364|export async function execTool(toolName: string, params: ...|
-|`runExecCommand`|fn||374-379|export async function runExecCommand(|
-|`DoctorProbeId`|type||399||
-|`DoctorLiveProbe`|iface||402-407|export interface DoctorLiveProbe|
-|`DoctorProbesParseResult`|iface||439-442|export interface DoctorProbesParseResult|
-|`parseDoctorProbes`|fn||454-476|export function parseDoctorProbes(raw: string | undefined...|
-|`DoctorOptions`|iface||484-489|export interface DoctorOptions|
-|`runDoctor`|fn||513-518|export async function runDoctor(|
-|`runSnippetCommand`|fn||628-630|export function runSnippetCommand(|
-|`runEnableDisableCliCommand`|fn||665-668|export function runEnableDisableCliCommand(|
-|`runApiKeyCommand`|fn||712-714|export function runApiKeyCommand(|
-|`runAutoUpdateCommand`|fn||773-775|export function runAutoUpdateCommand(|
-|`runToolsCommand`|fn||818-820|export function runToolsCommand(|
-|`runHostCommand`|fn||875-877|export function runHostCommand(|
-|`runPortCommand`|fn||911-913|export function runPortCommand(|
-|`runInstallUninstallCommand`|fn||953-955|export function runInstallUninstallCommand(|
-|`runShowCommand`|fn||1003-1004|export function runShowCommand(|
-|`isEntryMainModule`|fn||1040-1050|function isEntryMainModule(): boolean|
-|`describeUndispatchedServerStart`|fn||1068-1079|export function describeUndispatchedServerStart(args: rea...|
-|`handleUndispatchedEntry`|fn||1096-1098|export function handleUndispatchedEntry(|
-|`buildServerCommandOptions`|fn||1163-1188|const buildServerCommandOptions = (yargs: Argv) =>|
-|`ServerCommandArgs`|type||1191||
-|`runServerCommand`|fn||1210-1269|const runServerCommand = async (argv: ServerCommandArgs):...|
-|`semaphore`|fn||1715-1727|const semaphore = async (tasks: (() => Promise<void>)[], ...|
+|`ServerStartupOutcome`|iface||48-52|export interface ServerStartupOutcome|
+|`startServer`|fn||72-129|export async function startServer(|
+|`ShutdownExitHook`|type||132||
+|`createShutdownHandler`|fn||146-160|export function createShutdownHandler(|
+|`installShutdownHandlers`|fn||172-176|export function installShutdownHandlers(servers: readonly...|
+|`ExecFailureResponse`|type||201||
+|`ExecOutput`|iface||206-208|interface ExecOutput|
+|`ExecStreams`|iface||210-213|interface ExecStreams|
+|`ExecToolRunner`|type||215||
+|`DoctorCheck`|type||217||
+|`DoctorReport`|type||223||
+|`DoctorToolRunner`|type||230||
+|`isExecFailureResponse`|fn||232-239|function isExecFailureResponse(result: unknown): result i...|
+|`getExecFailureMessage`|fn||241-249|function getExecFailureMessage(toolName: string, result: ...|
+|`execTool`|fn||251-365|export async function execTool(toolName: string, params: ...|
+|`runExecCommand`|fn||375-380|export async function runExecCommand(|
+|`DoctorProbeId`|type||400||
+|`DoctorLiveProbe`|iface||403-408|export interface DoctorLiveProbe|
+|`DoctorProbesParseResult`|iface||440-443|export interface DoctorProbesParseResult|
+|`parseDoctorProbes`|fn||455-477|export function parseDoctorProbes(raw: string | undefined...|
+|`DoctorOptions`|iface||485-490|export interface DoctorOptions|
+|`runDoctor`|fn||514-519|export async function runDoctor(|
+|`runSnippetCommand`|fn||629-631|export function runSnippetCommand(|
+|`runEnableDisableCliCommand`|fn||666-669|export function runEnableDisableCliCommand(|
+|`runApiKeyCommand`|fn||713-715|export function runApiKeyCommand(|
+|`runAutoUpdateCommand`|fn||774-776|export function runAutoUpdateCommand(|
+|`runToolsCommand`|fn||819-821|export function runToolsCommand(|
+|`runHostCommand`|fn||876-878|export function runHostCommand(|
+|`runPortCommand`|fn||912-914|export function runPortCommand(|
+|`runInstallUninstallCommand`|fn||954-956|export function runInstallUninstallCommand(|
+|`runShowCommand`|fn||1004-1005|export function runShowCommand(|
+|`isEntryMainModule`|fn||1041-1051|function isEntryMainModule(): boolean|
+|`describeUndispatchedServerStart`|fn||1069-1080|export function describeUndispatchedServerStart(args: rea...|
+|`handleUndispatchedEntry`|fn||1097-1099|export function handleUndispatchedEntry(|
+|`buildServerCommandOptions`|fn||1168-1193|const buildServerCommandOptions = (yargs: Argv) =>|
+|`ServerCommandArgs`|type||1196||
+|`runServerCommand`|fn||1215-1274|const runServerCommand = async (argv: ServerCommandArgs):...|
+|`semaphore`|fn||1720-1732|const semaphore = async (tasks: (() => Promise<void>)[], ...|
 
 
 ---
@@ -1474,7 +1479,7 @@ remaining CLIs still run.
 
 ---
 
-# cliSettings.ts | TypeScript | 277L | 11 symbols | 2 imports | 18 comments
+# cliSettings.ts | TypeScript | 340L | 13 symbols | 3 imports | 20 comments
 > Path: `src/utils/cliSettings.ts`
 - @brief Persist the program configuration file for the CLI configuration-management commands.
 - @details Stores `{"enabled": ["<cli>", ...], "apiKey": "<key>", "autoUpdate": true, "enabledTools": "*", "host": "127.0.0.1", "port": 3000}` at
@@ -1485,17 +1490,18 @@ Loading tolerates missing, unreadable, non-object, or malformed content by
 returning normalized defaults; saving serializes with two-space
 indentation plus a trailing newline, writes a sibling temporary file,
 and replaces the target atomically.
-- @satisfies DES-018, DES-021, DES-023, DES-024, REQ-167, REQ-168, REQ-169
+- @satisfies DES-018, DES-021, DES-023, DES-024, DES-026, REQ-167, REQ-168, REQ-169
 
 ## Imports
 ```
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { CONFIG_DEFAULTS, CONFIG_SECTION, type ConfigDocument } from "./configSchema.js";
 ```
 
 ## Definitions
 
-### iface `export interface CliSettings` (L79-86)
+- iface `export interface CliSettings extends ConfigDocument {}` (L55)
 - @brief Program configuration shape loaded at bootstrap and persisted by the configuration commands.
 - @details `enabled` lists canonical CLI names in persistence order; `apiKey`
 is the Google Maps API key (DES-023) and defaults to the empty string;
@@ -1504,9 +1510,8 @@ true; `enabledTools` is the tool allowlist (`*` = full set, REQ-167);
 `host` is the HTTP bind address (REQ-168); `port` is the HTTP port
 (REQ-169). The configuration file is the only configuration source
 (CTN-002, DES-015, REQ-083, REQ-142).
-- @satisfies DES-018, DES-023, DES-024, REQ-167, REQ-168, REQ-169
-
-### fn `export function resolveCliSettingsPath(home?: string): string` (L97-100)
+- @satisfies DES-018, DES-023, DES-024, DES-025, REQ-167, REQ-168, REQ-169, REQ-193
+### fn `export function resolveCliSettingsPath(home?: string): string` (L66-69)
 - @brief Resolve the user settings file path for a home root.
 - @details Joins the effective home directory with
 `.config/<SETTINGS_PROGRAM_NAME>/config.json` — the program-owned path
@@ -1515,7 +1520,7 @@ derived from the distribution name, never a shared directory (DES-021).
 - @return {string} Absolute settings file path.
 - @satisfies DES-018, DES-021
 
-### fn `function normalizeEnabledTools(value: unknown): string` (L110-116)
+### fn `function normalizeEnabledTools(value: unknown): string` (L79-85)
 - @brief Normalize an arbitrary parsed `enabledTools` value.
 - @details Accepts only strings; trims surrounding whitespace; collapses an
 empty result to the `"*"` full-set default so hand-edited files never
@@ -1523,7 +1528,7 @@ disable every tool by omission (DES-018, REQ-167). Pure; complexity O(n).
 - @param value {unknown} Candidate JSON value.
 - @return {string} Normalized allowlist string.
 
-### fn `function normalizeHost(value: unknown): string` (L126-132)
+### fn `function normalizeHost(value: unknown): string` (L95-101)
 - @brief Normalize an arbitrary parsed `host` value.
 - @details Accepts only non-empty strings after trimming; any other value
 (missing, empty, non-string) yields the loopback default (DES-018,
@@ -1531,7 +1536,7 @@ REQ-168). Pure; complexity O(n).
 - @param value {unknown} Candidate JSON value.
 - @return {string} Normalized bind hostname.
 
-### fn `function normalizePort(value: unknown): number` (L142-147)
+### fn `function normalizePort(value: unknown): number` (L111-116)
 - @brief Normalize an arbitrary parsed `port` value.
 - @details Accepts finite integers in 1..65535; any other value (missing,
 fractional, out-of-range, non-number) yields the default port 3000
@@ -1539,13 +1544,37 @@ fractional, out-of-range, non-number) yields the default port 3000
 - @param value {unknown} Candidate JSON value.
 - @return {number} Normalized HTTP port.
 
-### fn `function defaultSettings(): CliSettings` (L155-164)
+### fn `function defaultSettings(): CliSettings` (L124-133)
 - @brief Build the normalized default configuration.
 - @details Single source of the load-time defaults shared by every error and
 miss path of `loadCliSettings` (DES-018). Complexity O(1); pure.
 - @return {CliSettings} Default settings object.
 
-### fn `export function isUnsetApiKey(value: string | undefined | null): boolean` (L174-176)
+### fn `export function readCliSettingsDocument(` (L148-173)
+- @brief Read the persisted settings document without normalizing it.
+- @details Returns the parsed JSON object so configuration mutations can
+validate the whole document strictly before writing (REQ-204, REQ-206). A
+missing file yields an empty object with `exists: false`; unreadable or
+malformed content yields a diagnostic instead of silent defaults, so a
+`--set`/`--unset` never rewrites a file it could not parse.
+- @param home {string | undefined} Home-directory override.
+- @return {{ ok: true; document: Record<string, unknown>; exists: boolean } | { ok: false; error: string }} Parsed document or diagnostic.
+- @note Complexity O(file size).
+- @see validateConfigDocument
+- @satisfies DES-018, DES-025, REQ-206
+
+### fn `export function bootstrapCliSettings(home?: string): string` (L186-192)
+- @brief Initialize the settings file from schema defaults when it is missing.
+- @details Creates the program-owned directory and writes the canonical
+default document only when the file does not exist, so an existing user file
+is never rewritten (REQ-199). Every configuration display and mutation
+command calls this first.
+- @param home {string | undefined} Home-directory override.
+- @return {string} Absolute settings file path.
+- @throws {Error} When the default document cannot be persisted.
+- @satisfies DES-018, REQ-199
+
+### fn `export function isUnsetApiKey(value: string | undefined | null): boolean` (L202-204)
 - @brief Classify a candidate API key value as unset.
 - @details True for undefined/null and empty or whitespace-only strings
 (REQ-142). Pure; complexity O(1).
@@ -1553,12 +1582,12 @@ miss path of `loadCliSettings` (DES-018). Complexity O(1); pure.
 - @return {boolean} True when the value must be treated as no key.
 - @satisfies REQ-142
 
-### fn `function uniqueStrings(value: unknown): string[]` (L183-192)
+### fn `function uniqueStrings(value: unknown): string[]` (L211-220)
 - @brief Normalize an arbitrary parsed value into unique non-empty strings.
 - @param value {unknown} Candidate JSON value.
 - @return {string[]} Unique strings in first-seen order; empty for non-lists.
 
-### fn `export function loadCliSettings(home?: string): CliSettings` (L206-224)
+### fn `export function loadCliSettings(home?: string): CliSettings` (L234-252)
 - @brief Load the program configuration with normalized defaults.
 - @details Reads JSON from `resolveCliSettingsPath`; missing, unreadable,
 malformed, or non-object content yields the normalized defaults. `apiKey`
@@ -1570,7 +1599,7 @@ dedicated helpers (REQ-167, REQ-168, REQ-169). Never throws.
 - @return {CliSettings} Normalized configuration object.
 - @satisfies DES-018, DES-021, DES-023, DES-024, REQ-167, REQ-168, REQ-169
 
-### fn `export function loadConfiguredApiKey(home?: string): string | undefined` (L236-239)
+### fn `export function loadConfiguredApiKey(home?: string): string | undefined` (L264-267)
 - @brief Load the user-configured API key from the persisted configuration.
 - @details Reads `loadCliSettings().apiKey` and normalizes empty values to
 undefined so callers receive only a usable key (DES-023, REQ-142).
@@ -1580,37 +1609,39 @@ Tolerates any malformed configuration content by delegation.
 - @see isUnsetApiKey
 - @satisfies DES-023, REQ-142
 
-### fn `export function saveCliSettings(settings: CliSettings, home?: string): string` (L258-277)
+### fn `export function saveCliSettings(settings: CliSettings, home?: string): string` (L286-340)
 - @brief Persist the program configuration to the configuration file atomically.
-- @details Creates parent directories, serializes `enabled`, `apiKey`
-(DES-023, empty string when unset), `autoUpdate` (DES-024), and the
-`enabledTools`/`host`/`port` fields (REQ-167, REQ-168, REQ-169) with
-two-space indentation and a trailing newline, writes
-`<file>.tmp`, then renames over the target so readers never observe a
-partial file. Target path is the program-owned
-`.config/<SETTINGS_PROGRAM_NAME>/config.json` (DES-021).
+- @details Creates parent directories, serializes the schema fields in
+declaration order with two-space indentation plus a trailing newline, writes a
+sibling temporary file, flushes and fsyncs it, renames it over the target, and
+fsyncs the containing directory so the replacement is durable (DES-026). The
+mode of an existing target is preserved; a new file is created with `0600`
+because it may hold the plaintext API key. A failed write leaves the previous
+valid file untouched and removes the temporary file (REQ-206).
 - @param settings {CliSettings} Settings object to persist.
 - @param home {string | undefined} Home-directory override.
 - @return {string} Written settings file path.
 - @throws {Error} With descriptive message when directory creation, writing,
-or replacement fails; the temporary file is best-effort removed.
-- @satisfies DES-018, DES-021, DES-023, DES-024, REQ-167, REQ-168, REQ-169
+flushing, or replacement fails; the temporary file is best-effort removed.
+- @satisfies DES-018, DES-021, DES-023, DES-024, DES-026, REQ-167, REQ-168, REQ-169, REQ-206
 - @post The configuration file contains the serialized `settings` object.
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`CliSettings`|iface||79-86|export interface CliSettings|
-|`resolveCliSettingsPath`|fn||97-100|export function resolveCliSettingsPath(home?: string): st...|
-|`normalizeEnabledTools`|fn||110-116|function normalizeEnabledTools(value: unknown): string|
-|`normalizeHost`|fn||126-132|function normalizeHost(value: unknown): string|
-|`normalizePort`|fn||142-147|function normalizePort(value: unknown): number|
-|`defaultSettings`|fn||155-164|function defaultSettings(): CliSettings|
-|`isUnsetApiKey`|fn||174-176|export function isUnsetApiKey(value: string | undefined |...|
-|`uniqueStrings`|fn||183-192|function uniqueStrings(value: unknown): string[]|
-|`loadCliSettings`|fn||206-224|export function loadCliSettings(home?: string): CliSettings|
-|`loadConfiguredApiKey`|fn||236-239|export function loadConfiguredApiKey(home?: string): stri...|
-|`saveCliSettings`|fn||258-277|export function saveCliSettings(settings: CliSettings, ho...|
+|`CliSettings`|iface||55|export interface CliSettings extends ConfigDocument {}|
+|`resolveCliSettingsPath`|fn||66-69|export function resolveCliSettingsPath(home?: string): st...|
+|`normalizeEnabledTools`|fn||79-85|function normalizeEnabledTools(value: unknown): string|
+|`normalizeHost`|fn||95-101|function normalizeHost(value: unknown): string|
+|`normalizePort`|fn||111-116|function normalizePort(value: unknown): number|
+|`defaultSettings`|fn||124-133|function defaultSettings(): CliSettings|
+|`readCliSettingsDocument`|fn||148-173|export function readCliSettingsDocument(|
+|`bootstrapCliSettings`|fn||186-192|export function bootstrapCliSettings(home?: string): string|
+|`isUnsetApiKey`|fn||202-204|export function isUnsetApiKey(value: string | undefined |...|
+|`uniqueStrings`|fn||211-220|function uniqueStrings(value: unknown): string[]|
+|`loadCliSettings`|fn||234-252|export function loadCliSettings(home?: string): CliSettings|
+|`loadConfiguredApiKey`|fn||264-267|export function loadConfiguredApiKey(home?: string): stri...|
+|`saveCliSettings`|fn||286-340|export function saveCliSettings(settings: CliSettings, ho...|
 
 
 ---
@@ -2044,6 +2075,375 @@ Complexity O(1).
 
 ---
 
+# configCli.ts | TypeScript | 489L | 20 symbols | 7 imports | 22 comments
+> Path: `src/utils/configCli.ts`
+- @brief Command handlers and argument parsing of the configuration interface.
+- @details Implements the pre-yargs command surface `--print [Path]`,
+`--info [Path]`, `--print-raw`, `--get Path`, `--set Path Value`, and
+`--unset Path` (PRJ-023, REQ-200-REQ-208). Every handler bootstraps the
+settings file from schema defaults (REQ-199), resolves the canonical path
+against the canonical schema (REQ-194), renders through the shared tree and
+table renderers (REQ-209, REQ-217), writes valid output to stdout, English
+diagnostics to stderr, and returns exit code 0 or 1 (REQ-208, REQ-219).
+- @note No business logic of the MCP server, Google API clients, or existing
+settings subcommands is changed; they keep writing through the same settings
+module (REQ-223).
+- @satisfies DES-025, DES-028, PRJ-023, REQ-199, REQ-200, REQ-208
+
+## Imports
+```
+import { readFileSync } from "node:fs";
+import serverConfigs from "../config.js";
+import {
+import { renderConfigTree } from "./configRenderer.js";
+import { buildConfigInfoView, buildConfigPrintView } from "./configView.js";
+import {
+import { supportedCliNames } from "./cliTargets.js";
+```
+
+## Definitions
+
+- type `export type ConfigAction = "--print" | "--info" | "--print-raw" | "--get" | "--set" | "--unset";` (L44)
+- @brief Configuration interface action selected by the first argument.
+- @details Exactly the six supported flags; no alternate mutation flag is
+accepted (PRJ-023).
+- @satisfies PRJ-023
+### iface `export interface ConfigCommandInvocation` (L59-63)
+- @brief Parsed configuration interface invocation.
+- @details `path` is present for `--print`, `--info`, `--get`, `--set`, and
+`--unset` (optional for the first two); `value` only for `--set`.
+- @satisfies PRJ-023
+
+- type `export type ConfigCommandParse =` (L71)
+- @brief Result of detecting a configuration interface invocation in argv.
+- @details `matched: false` means the argv belongs to yargs; `matched: true`
+with `ok: false` carries an English usage diagnostic (REQ-208).
+- @satisfies REQ-208
+### iface `export interface ConfigOutputStream` (L82-84)
+- @brief Configurable output sink accepting text or raw bytes.
+- @details `--print-raw` writes the settings file bytes through this sink so the
+raw JSON file content is preserved unchanged (REQ-202).
+- @satisfies REQ-202
+
+### iface `export interface ConfigCommandStreams` (L91-94)
+- @brief Injectable stdout/stderr sinks of the configuration interface.
+- @details Defaults to the process streams; tests inject capturing sinks.
+- @satisfies REQ-208
+
+### iface `export interface ConfigCommandOptions` (L102-105)
+- @brief Options shared by every configuration interface handler.
+- @details `home` scopes the settings file to an alternative home root; `streams`
+injects the output sinks.
+- @satisfies REQ-199
+
+### fn `export function createConfigSchemaContext(): ConfigSchemaContext` (L139-147)
+- @brief Builds the schema validation context from the live registries.
+- @details Supported CLI names come from the CLI adapter registry (REQ-110,
+REQ-221); tool names come from the registered MCP tool registry (PRJ-001,
+REQ-222).
+- @return {ConfigSchemaContext} Registry inputs for constraint validation.
+- @note Complexity O(n) in registry size.
+- @satisfies REQ-221, REQ-222
+
+### fn `export function parseConfigCommand(args: readonly string[]): ConfigCommandParse` (L159-194)
+- @brief Detects and parses a configuration interface invocation.
+- @details Requires the action flag to be the first argument and validates the
+exact argument count of each action, so no implicit mutation flag or partial
+success is accepted (REQ-208).
+- @param args {readonly string[]} Post-entry argument vector (argv slice 2).
+- @return {ConfigCommandParse} Not-matched marker, invocation, or usage diagnostic.
+- @note Complexity O(n) in argument count. Pure.
+- @satisfies PRJ-023, REQ-208
+
+- fn `const reject = (error: string): ConfigCommandParse => ({ matched: true, ok: false, error });` (L165)
+### fn `function resolveStreams(options: ConfigCommandOptions): ConfigCommandStreams` (L202-204)
+- @brief Resolves the effective output sinks of one handler call.
+- @param options {ConfigCommandOptions} Handler options.
+- @return {ConfigCommandStreams} Injected or process streams.
+- @note Complexity O(1). Pure.
+
+### fn `function reportConfigFailure(streams: ConfigCommandStreams, action: ConfigAction, message: string): number` (L217-220)
+- @brief Reports one configuration command failure on stderr.
+- @details Diagnostics always go to stderr and the handler returns exit code 1
+without stdout output (REQ-208).
+- @param streams {ConfigCommandStreams} Output sinks.
+- @param action {ConfigAction} Failing action flag.
+- @param message {string} English diagnostic.
+- @return {number} Exit code 1.
+- @note Complexity O(n) in message length.
+- @satisfies REQ-208, REQ-219
+
+### fn `function loadConfigurationForRead(` (L231-240)
+- @brief Loads the current configuration after bootstrapping the settings file.
+- @details Tolerant load used by the read-only commands so a hand-edited file
+still renders with schema defaults for invalid fields (DES-018); mutation
+commands validate the document strictly instead (REQ-206).
+- @param home {string | undefined} Home-directory override.
+- @return {{ ok: true; settings: ConfigDocument } | { ok: false; error: string }} Settings or diagnostic.
+- @satisfies REQ-199, DES-018
+
+### fn `function loadConfigurationForWrite(` (L252-270)
+- @brief Loads and strictly validates the document targeted by a mutation.
+- @details Bootstraps the file, parses it without normalizing, and validates the
+whole document against the schema so an invalid file is reported instead of
+silently rewritten (REQ-206).
+- @param home {string | undefined} Home-directory override.
+- @param context {ConfigSchemaContext} Supported CLI and tool name registries.
+- @return {{ ok: true; settings: ConfigDocument } | { ok: false; error: string }} Validated settings or diagnostic.
+- @satisfies REQ-199, REQ-206
+
+### fn `export function runConfigPrintCommand(` (L285-286)
+- @brief Renders `--print` or `--info` output for the whole tree or one path.
+- @details Both modes share `buildConfigPrintView`/`buildConfigInfoView` and the
+single renderer, so topology is identical and only headings/details differ
+(REQ-200, REQ-201, REQ-209). Output lines are written to stdout with a
+trailing newline; failures produce a stderr diagnostic and exit 1 (REQ-208).
+- @param options {ConfigCommandOptions & { info: boolean; path?: string }} Mode and optional path.
+- @return {number} Exit code 0 on success, 1 on failure.
+- @see buildConfigPrintView
+- @see buildConfigInfoView
+- @see renderConfigTree
+- @satisfies REQ-200, REQ-201, REQ-209, REQ-212
+
+### fn `export function runConfigPrintRawCommand(options: ConfigCommandOptions = {}): number` (L320-336)
+- @brief Writes the raw settings file bytes to stdout unchanged.
+- @details Byte-preserving debug output: no tree formatting, no re-serialization,
+no heading, and no trailing text (REQ-202). The file is bootstrapped from
+defaults first so the command always has a document to print (REQ-199).
+- @param options {ConfigCommandOptions} Handler options.
+- @return {number} Exit code 0 on success, 1 on failure.
+- @satisfies REQ-199, REQ-202
+
+### fn `export function runConfigGetCommand(path: string, options: ConfigCommandOptions = {}): number` (L348-364)
+- @brief Emits one addressed configuration value as bare JSON.
+- @details No labels, tree decoration, prompts, or confirmations, so the output
+pipes into JSON tooling directly (REQ-203). Section targets yield a JSON
+object, parameter targets their typed value, and index targets one element.
+- @param path {string} Canonical path argument.
+- @param options {ConfigCommandOptions} Handler options.
+- @return {number} Exit code 0 on success, 1 on failure.
+- @satisfies REQ-194, REQ-203, REQ-208
+
+### fn `export function runConfigSetCommand(path: string, rawValue: string, options: ConfigCommandOptions = {}): number` (L378-400)
+- @brief Applies one validated `--set` mutation and persists it atomically.
+- @details Parses the value into the schema type, applies the addressed
+operation (`value`, `index`, `append`, `insert`), validates the resulting
+document, persists it durably, and prints an English confirmation naming the
+full canonical path (REQ-196, REQ-204, REQ-206, REQ-207).
+- @param path {string} Canonical path argument.
+- @param rawValue {string} Raw value argument.
+- @param options {ConfigCommandOptions} Handler options.
+- @return {number} Exit code 0 on success, 1 on failure.
+- @satisfies REQ-196, REQ-204, REQ-206, REQ-207
+
+### fn `export function runConfigUnsetCommand(path: string, options: ConfigCommandOptions = {}): number` (L413-435)
+- @brief Applies one validated `--unset` mutation and persists it atomically.
+- @details Restores the schema default of a parameter or section, deletes one
+array element for an index path and compacts the remaining indices, then
+persists durably and prints an English confirmation naming the full canonical
+path (REQ-196, REQ-205, REQ-206, REQ-207).
+- @param path {string} Canonical path argument.
+- @param options {ConfigCommandOptions} Handler options.
+- @return {number} Exit code 0 on success, 1 on failure.
+- @satisfies REQ-196, REQ-205, REQ-206, REQ-207
+
+### fn `export function runConfigCommandInvocation(` (L446-448)
+- @brief Dispatches one parsed invocation to its handler.
+- @details Single dispatch surface of the configuration interface; the returned
+code becomes the process exit code (REQ-208).
+- @param invocation {ConfigCommandInvocation} Parsed invocation.
+- @param options {ConfigCommandOptions} Handler options.
+- @return {number} Handler exit code.
+- @satisfies PRJ-023, REQ-208
+
+### fn `export function runConfigCommandIfMatched(args: readonly string[], options: ConfigCommandOptions = {}): boolean` (L476-489)
+- @brief Handles the configuration interface when the argv matches one action.
+- @details Called before yargs dispatch: returns false when the argv belongs to
+another command, otherwise executes the action, records the exit code on
+`process.exitCode`, and returns true (DES-028, REQ-208).
+- @param args {readonly string[]} Post-entry argument vector (argv slice 2).
+- @param options {ConfigCommandOptions} Handler options.
+- @return {boolean} True when a configuration action handled the invocation.
+- @satisfies DES-028, PRJ-023, REQ-208
+
+## Symbol Index
+|Symbol|Kind|Vis|Lines|Sig|
+|---|---|---|---|---|
+|`ConfigAction`|type||44||
+|`ConfigCommandInvocation`|iface||59-63|export interface ConfigCommandInvocation|
+|`ConfigCommandParse`|type||71||
+|`ConfigOutputStream`|iface||82-84|export interface ConfigOutputStream|
+|`ConfigCommandStreams`|iface||91-94|export interface ConfigCommandStreams|
+|`ConfigCommandOptions`|iface||102-105|export interface ConfigCommandOptions|
+|`createConfigSchemaContext`|fn||139-147|export function createConfigSchemaContext(): ConfigSchema...|
+|`parseConfigCommand`|fn||159-194|export function parseConfigCommand(args: readonly string[...|
+|`reject`|fn||165|const reject = (error: string): ConfigCommandParse => ({ ...|
+|`resolveStreams`|fn||202-204|function resolveStreams(options: ConfigCommandOptions): C...|
+|`reportConfigFailure`|fn||217-220|function reportConfigFailure(streams: ConfigCommandStream...|
+|`loadConfigurationForRead`|fn||231-240|function loadConfigurationForRead(|
+|`loadConfigurationForWrite`|fn||252-270|function loadConfigurationForWrite(|
+|`runConfigPrintCommand`|fn||285-286|export function runConfigPrintCommand(|
+|`runConfigPrintRawCommand`|fn||320-336|export function runConfigPrintRawCommand(options: ConfigC...|
+|`runConfigGetCommand`|fn||348-364|export function runConfigGetCommand(path: string, options...|
+|`runConfigSetCommand`|fn||378-400|export function runConfigSetCommand(path: string, rawValu...|
+|`runConfigUnsetCommand`|fn||413-435|export function runConfigUnsetCommand(path: string, optio...|
+|`runConfigCommandInvocation`|fn||446-448|export function runConfigCommandInvocation(|
+|`runConfigCommandIfMatched`|fn||476-489|export function runConfigCommandIfMatched(args: readonly ...|
+
+
+---
+
+# configRenderer.ts | TypeScript | 283L | 14 symbols | 0 imports | 17 comments
+> Path: `src/utils/configRenderer.ts`
+- @brief Deterministic renderer for every hierarchical configuration layout.
+- @details One recursive tree renderer and one display-width table formatter
+shared by `--print` and `--info` (DES-027). Structural topology depends only
+on the real node tree: `├── `, `└── `, `│ `, and four-space segments are
+derived from sibling positions, never from display column widths, text
+length, or hard-coded spacing (REQ-209, REQ-210). Attached details reuse the
+owning node continuation prefix and never carry tree edge markers
+(REQ-210). Tables are built from column definitions and rows with widths
+computed from terminal display width, so borders stay aligned for wide and
+combining characters (REQ-217).
+- @note Pure module: no I/O, no ANSI output, no environment access.
+- @satisfies DES-027, REQ-209, REQ-210, REQ-217
+
+## Definitions
+
+### iface `export interface ConfigDetail` (L23-25)
+- @brief One attached detail block of a configuration node.
+- @details `lines` are independent logical output lines; the renderer prefixes
+each of them with the owning node's continuation prefix (REQ-210).
+- @satisfies REQ-210
+
+### iface `export interface ConfigRenderNode` (L33-37)
+- @brief One real configuration node of a rendered tree.
+- @details `heading` is marker-free; `children` are real configuration nodes
+only, so metadata never adds a tree level (REQ-209, REQ-210).
+- @satisfies REQ-209, REQ-210
+
+### iface `export interface ConfigTable` (L46-49)
+- @brief Tabular payload attached to one configuration parameter.
+- @details `headers` and each row share the same column count; an empty `rows`
+list is rendered as no output so callers can omit empty collection tables
+entirely (REQ-218).
+- @satisfies REQ-217, REQ-218
+
+### fn `function codePointWidth(code: number): number` (L76-100)
+- @brief Code-point width classification used by the display-width routine.
+- @details East Asian Wide/Fullwidth ranges occupy two terminal columns;
+combining marks occupy zero (REQ-217). Ranges are intentionally coarse: every
+supported range makes border alignment correct for the affected scripts.
+- @param code {number} Unicode code point.
+- @return {number} 0 for combining marks, 2 for wide code points, else 1.
+- @note Complexity O(1). Pure.
+- @satisfies REQ-217
+
+### fn `export function displayWidth(text: string): number` (L111-117)
+- @brief Computes the terminal display width of one text fragment.
+- @details Sums code-point widths so wide (CJK/emoji) characters count as two
+and combining marks count as zero (REQ-217). Never assumes byte length.
+- @param text {string} Text fragment.
+- @return {number} Display width in terminal columns.
+- @note Complexity O(n) in code points. Pure.
+- @satisfies REQ-217
+
+### fn `export function escapeDetailText(text: string): string` (L129-146)
+- @brief Escapes control characters so one physical line stays one logical line.
+- @details Tabs, carriage returns, and newlines become the two-character
+sequences `\t`, `\r`, and `\n`; other C0/C1 controls become `\uXXXX`
+escapes (REQ-210, REQ-218). Escaping happens before width measurement.
+- @param text {string} Raw cell text.
+- @return {string} Escaped single-line text.
+- @note Complexity O(n). Pure.
+- @satisfies REQ-210, REQ-217
+
+### fn `function padCell(text: string, width: number): string` (L158-160)
+- @brief Pads one escaped cell to a fixed display width.
+- @details Right padding only; left padding is contributed by the caller's
+uniform cell padding so every border character aligns (REQ-217).
+- @param text {string} Escaped cell text.
+- @param width {number} Target content width in display columns.
+- @return {string} Padded cell text.
+- @note Complexity O(n). Pure.
+- @satisfies REQ-217
+
+### fn `export function renderConfigTable(table: ConfigTable): string[]` (L176-211)
+- @brief Renders one box-drawing table as attached detail lines.
+- @details Column widths are the maximum display width of the header and all
+cells plus one space of padding on both sides; the top border uses
+`┌ ┬ ┐`, the header separator `├ ┼ ┤`, data rows `│`, and the bottom border
+`└ ┴ ┘`, so `┬`, `┼`, and `┴` align with every `│` (REQ-217). An empty row
+list returns no lines so empty collections omit the table entirely (REQ-218).
+Cells carrying newlines or control characters are escaped before measuring
+widths and are never truncated (REQ-210, REQ-218).
+- @param table {ConfigTable} Headers plus rows.
+- @return {string[]} Rendered lines without any tree prefix.
+- @note Complexity O(rows * columns). Pure.
+- @satisfies REQ-217, REQ-218
+
+### fn `const segment = (index: number): string => "─".repeat(widths[index] + TABLE_PADDING * 2)` (L196-208)
+
+### fn `const border = (left: string, middle: string, right: string): string =>` (L197-208)
+
+### fn `const line = (cells: readonly string[]): string =>` (L199-208)
+
+### fn `function emitConfigNode(` (L228-245)
+- @brief Emits one real node and its subtree into a line accumulator.
+- @details Prefix segments come exclusively from `ancestorHasNext`: one
+`│ ` per ancestor with a later sibling, otherwise four spaces (REQ-209).
+The marker is `└── ` for the last real sibling and `├── ` otherwise, and every
+attached detail line receives the same ancestor prefix plus exactly one own
+continuation segment (REQ-210). Complexity O(nodes + details).
+- @param node {ConfigRenderNode} Real configuration node.
+- @param ancestorHasNext {boolean[]} Later-sibling flags of the real ancestors.
+- @param isLast {boolean} True when this node is the last real sibling.
+- @param out {string[]} Line accumulator.
+- @return {void}
+- @note Complexity O(subtree size). Pure.
+- @satisfies REQ-209, REQ-210
+
+### fn `export function renderConfigTree(root: ConfigRenderNode): string[]` (L258-269)
+- @brief Renders one configuration tree with an unconnected display root.
+- @details The root heading is printed without any tree marker and its own
+details use a simple four-space indent, so a requested subtree never invents
+ancestors or emits a dangling continuation column (REQ-212). Real children
+are emitted through the REQ-209 sibling algorithm (REQ-209, REQ-210).
+- @param root {ConfigRenderNode} Display root node.
+- @return {string[]} Rendered lines without a trailing newline element.
+- @note Complexity O(nodes + details). Pure.
+- @satisfies REQ-209, REQ-210, REQ-212
+
+### fn `export function asConfigTableDetail(table: ConfigTable): ConfigDetail[]` (L280-283)
+- @brief Attaches one table to a node detail list when it carries rows.
+- @details Returns an empty detail list for zero rows so empty collections show
+only their no-data action hint (REQ-218).
+- @param table {ConfigTable} Candidate table.
+- @return {ConfigDetail[]} Zero or one detail block holding the rendered table.
+- @note Complexity O(rows * columns). Pure.
+- @satisfies REQ-217, REQ-218
+
+## Symbol Index
+|Symbol|Kind|Vis|Lines|Sig|
+|---|---|---|---|---|
+|`ConfigDetail`|iface||23-25|export interface ConfigDetail|
+|`ConfigRenderNode`|iface||33-37|export interface ConfigRenderNode|
+|`ConfigTable`|iface||46-49|export interface ConfigTable|
+|`codePointWidth`|fn||76-100|function codePointWidth(code: number): number|
+|`displayWidth`|fn||111-117|export function displayWidth(text: string): number|
+|`escapeDetailText`|fn||129-146|export function escapeDetailText(text: string): string|
+|`padCell`|fn||158-160|function padCell(text: string, width: number): string|
+|`renderConfigTable`|fn||176-211|export function renderConfigTable(table: ConfigTable): st...|
+|`segment`|fn||196-208|const segment = (index: number): string => "─".repeat(wid...|
+|`border`|fn||197-208|const border = (left: string, middle: string, right: stri...|
+|`line`|fn||199-208|const line = (cells: readonly string[]): string =>|
+|`emitConfigNode`|fn||228-245|function emitConfigNode(|
+|`renderConfigTree`|fn||258-269|export function renderConfigTree(root: ConfigRenderNode):...|
+|`asConfigTableDetail`|fn||280-283|export function asConfigTableDetail(table: ConfigTable): ...|
+
+
+---
+
 # configResolver.ts | TypeScript | 275L | 12 symbols | 1 imports | 15 comments
 > Path: `src/utils/configResolver.ts`
 
@@ -2164,6 +2564,436 @@ complexity O(n + m) with n registry names and m allowlist items.
 |`validateHttpEndpoint`|fn||220-229|export function validateHttpEndpoint(config: ResolvedRunt...|
 |`EnabledToolsResolution`|iface||237-242|export interface EnabledToolsResolution|
 |`resolveEnabledToolNames`|fn||255-275|export function resolveEnabledToolNames(|
+
+
+---
+
+# configSchema.ts | TypeScript | 788L | 24 symbols | 1 imports | 29 comments
+> Path: `src/utils/configSchema.ts`
+- @brief Canonical configuration schema for the mcp-google-api settings file.
+- @details Single source of truth for the configuration section tree, canonical
+CLI path grammar, typed value parsing, constraint validation, schema
+defaults, and display encoding (DES-025, DES-029). The persisted document is
+one flat JSON object; the schema projects it onto the top-level section
+`Settings` so every consumer (path resolution, `--print`, `--info`, `--get`,
+`--set`, `--unset`, and the CLI help) reads the same node set (REQ-193,
+REQ-220). Sections and parameters are declared in the on-disk key order
+(`enabled`, `apiKey`, `autoUpdate`, `enabledTools`, `host`, `port`).
+- @note Pure module: no filesystem, network, or process access.
+- @satisfies DES-025, DES-029, REQ-193, REQ-194
+
+## Imports
+```
+import { resolveCliTarget } from "./cliTargets.js";
+```
+
+## Definitions
+
+- type `export type ConfigParameterType = "String" | "Boolean" | "Integer" | "StringArray";` (L32)
+- @brief Scalar/collection type tag of one configuration parameter.
+- @details `StringArray` models a primitive array of strings addressed by
+`:<Idx>`, `:+`, `:append`, and `:insert:<Idx>` (REQ-198).
+- @satisfies DES-025, REQ-198
+### iface `export interface ConfigDocument` (L41-48)
+- @brief Typed configuration document persisted at the settings path.
+- @details Mirrors the DES-018 JSON shape exactly; every field is required and
+carries a schema default. `enabled` element order is the persistence order of
+enabled CLI agents (REQ-221).
+- @satisfies DES-018, DES-025, REQ-193
+
+### iface `export interface ConfigParameter` (L57-63)
+- @brief Declaration of one configuration leaf parameter.
+- @details `token` is the byte-exact CLI and display identifier (REQ-193);
+`constraints` renders the `--info` type badge; `example` is a schema-valid
+value used by published `--info` commands (REQ-215).
+- @satisfies DES-025, REQ-193, REQ-215
+
+### iface `export interface ConfigSection` (L71-75)
+- @brief Declaration of one configuration section node.
+- @details Section tokens are canonical CLI path prefixes and carry no
+parameters below their direct children (REQ-193, REQ-211).
+- @satisfies DES-025, REQ-193, REQ-211
+
+### iface `export interface ConfigSchemaContext` (L163-166)
+- @brief Runtime registry inputs required by constraint validation.
+- @details `cliNames` lists the supported CLI agents (REQ-110, REQ-221);
+`toolNames` lists the registered MCP tool names (PRJ-001, REQ-222). Injected
+by the caller so this module stays free of registry/model imports.
+- @satisfies REQ-221, REQ-222
+
+- type `export type ConfigPathOperation = "value" | "index" | "append" | "insert";` (L174)
+- @brief Address form of one resolved canonical configuration path.
+- @details `value` addresses a section or a whole parameter; `index` a single
+array element; `append`/`insert` are write-only operations (REQ-198).
+- @satisfies DES-025, REQ-194, REQ-198
+### iface `export interface ConfigPathTarget` (L183-189)
+- @brief Resolved target of one canonical configuration path.
+- @details `parameter` is absent for a section target; `index` is present for
+`index` and `insert` operations; `canonicalPath` echoes the normalized path
+used in confirmations and diagnostics (REQ-207).
+- @satisfies DES-025, REQ-194, REQ-207
+
+- type `export type ConfigPathResult =` (L197)
+- @brief Result of resolving a canonical configuration path.
+- @details `ok: false` carries an English diagnostic naming the offending path
+or token (REQ-195).
+- @satisfies REQ-195
+- type `export type ConfigParseResult<T> =` (L207)
+- @brief Result of one typed value parse or document validation.
+- @details `ok: false` carries an English diagnostic; callers MUST abort the
+mutation without touching the settings file (REQ-206).
+- @satisfies REQ-206
+- type `export type ConfigMutationResult =` (L217)
+- @brief Result of one `--set`/`--unset` mutation over a typed document.
+- @details `settings` is a fresh validated document; `description` is the
+English confirmation tail naming the canonical path (REQ-207).
+- @satisfies REQ-204, REQ-205, REQ-207
+### fn `export function formatConfigPath(section: ConfigSection, parameter: ConfigParameter): string` (L229-231)
+- @brief Full canonical path of one parameter.
+- @details `Section:Parameter`; used by confirmations, help, and errors (REQ-207).
+- @param section {ConfigSection} Owning section.
+- @param parameter {ConfigParameter} Addressed parameter.
+- @return {string} Canonical colon-separated path.
+- @note Complexity O(n) in token lengths. Pure.
+
+### fn `export function formatConfigDisplayValue(value: unknown): string` (L243-246)
+- @brief Encodes one configuration value for human-readable display.
+- @details Strings become JSON-quoted strings (so newlines render as `\n`),
+booleans/numbers JSON literals, arrays/objects JSON text (REQ-213, REQ-218).
+Never masks or truncates the value (REQ-218).
+- @param value {unknown} Typed configuration value.
+- @return {string} Single-line display encoding.
+- @note Complexity O(n) in the value size. Pure.
+- @satisfies REQ-213, REQ-218
+
+### fn `export function describeConfigType(parameter: ConfigParameter): string` (L257-259)
+- @brief Renders the `--info` type badge of one parameter.
+- @details `[<Type>: <constraints>]` form (REQ-215); the badge follows the
+byte-exact parameter token on the heading line (REQ-210).
+- @param parameter {ConfigParameter} Addressed parameter.
+- @return {string} Type badge without surrounding whitespace.
+- @note Complexity O(n). Pure.
+- @satisfies REQ-215
+
+### fn `function parseIndexToken(token: string, ownerPath: string): number | string` (L272-281)
+- @brief Parses one non-negative array index token.
+- @details Accepts only a decimal non-negative integer (REQ-196); rejects
+negatives, fractions, empty tokens, and non-numeric text with an English
+diagnostic naming the owning path (REQ-195).
+- @param token {string} Raw path segment.
+- @param ownerPath {string} Canonical path of the owning array parameter.
+- @return {number | string} Parsed index, or the diagnostic message.
+- @note Complexity O(n) in token length. Pure.
+- @satisfies REQ-195, REQ-196
+
+### fn `export function parseConfigPath(path: string): ConfigPathResult` (L296-368)
+- @brief Resolves a canonical colon-separated configuration path.
+- @details Grammar: `Settings`, `Settings:<Parameter>`, and for the
+`StringArray` parameter `Settings:enabled:<Idx>`, `Settings:enabled:+`,
+`Settings:enabled:append`, `Settings:enabled:insert:<Idx>` (REQ-194,
+REQ-198). Tokens are case-sensitive and matched against the schema only,
+never against rendered labels (REQ-194). Unresolvable tokens yield an
+English diagnostic listing the valid alternatives (REQ-195).
+- @param path {string} Raw path argument from the command line.
+- @return {ConfigPathResult} Resolved target, or the diagnostic message.
+- @note Complexity O(sections * parameters). Pure.
+- @satisfies REQ-194, REQ-195, REQ-198
+
+### fn `export function describeIndexRangeError(` (L382-391)
+- @brief Builds the out-of-range diagnostic of one array index path.
+- @details Names the full path, the rejected index, the valid range, and the
+`:+` append alternative (REQ-197).
+- @param ownerPath {string} Canonical path of the owning array parameter.
+- @param index {number} Rejected index.
+- @param length {number} Current array length.
+- @param allowEnd {boolean} True for insertion, where `Idx == length` is valid.
+- @return {string} English diagnostic message.
+- @note Complexity O(1). Pure.
+- @satisfies REQ-197
+
+### fn `export function validateConfigValue(` (L407-489)
+- @brief Validates one candidate value against its parameter constraints.
+- @details Enforces the `enabled` CLI-name allowlist with canonical lowercase
+normalization and duplicate rejection (REQ-221), the `enabledTools`
+`*`/comma-list tool registry constraint (REQ-222), the `port` integer range
+(REQ-222), the non-empty `host` constraint, the boolean `autoUpdate`
+constraint, and the plain-string `apiKey` constraint (REQ-193).
+- @param parameter {ConfigParameter} Addressed parameter.
+- @param value {unknown} Candidate typed value.
+- @param context {ConfigSchemaContext} Supported CLI and tool name registries.
+- @return {{ ok: true; value: unknown } | { ok: false; error: string }} Normalized value or diagnostic.
+- @note Complexity O(n) in list length. Pure.
+- @satisfies REQ-206, REQ-221, REQ-222
+
+### fn `export function parseConfigInput(` (L504-520)
+- @brief Parses one raw `--set` argument into the addressed parameter type.
+- @details String parameters take the raw argument verbatim (`apiKey` may be
+empty); every other type requires a valid JSON literal, so numbers and
+booleans stay typed and malformed JSON fails without mutation (REQ-204,
+REQ-206). A `StringArray` parameter requires a JSON array.
+- @param parameter {ConfigParameter} Addressed parameter.
+- @param raw {string} Raw argument text.
+- @param context {ConfigSchemaContext} Supported CLI and tool name registries.
+- @return {ConfigParseResult<unknown>} Parsed and validated value, or diagnostic.
+- @note Complexity O(n) in argument length. Pure.
+- @satisfies REQ-204, REQ-206
+
+### fn `export function parseConfigItem(` (L533-543)
+- @brief Parses one raw `--set` argument as a single array element.
+- @details Used by `:+`, `:append`, `:insert:<Idx>`, and `:<Idx>` so a single
+item is supplied per operation rather than an array (REQ-216).
+- @param parameter {ConfigParameter} Addressed `StringArray` parameter.
+- @param raw {string} Raw argument text carrying exactly one CLI name.
+- @param context {ConfigSchemaContext} Supported CLI and tool name registries.
+- @return {ConfigParseResult<string>} Canonical element, or diagnostic.
+- @note Complexity O(n). Pure.
+- @satisfies REQ-216, REQ-221
+
+### fn `export function validateConfigDocument(` (L557-585)
+- @brief Validates a complete candidate configuration document.
+- @details Reads every schema field, applies the schema default when the key is
+absent, validates each value, and returns a normalized typed document. Unknown
+keys are not part of the schema and are dropped on the next persistence
+(REQ-206). Diagnostics name the offending canonical path.
+- @param document {unknown} Parsed JSON document.
+- @param context {ConfigSchemaContext} Supported CLI and tool name registries.
+- @return {ConfigParseResult<ConfigDocument>} Normalized document, or diagnostic.
+- @note Complexity O(parameters * value size). Pure.
+- @satisfies REQ-204, REQ-206
+
+### fn `function copyConfigDocument(settings: ConfigDocument): ConfigDocument` (L593-602)
+- @brief Copies a configuration document into a mutable independent object.
+- @param settings {ConfigDocument} Source document.
+- @return {ConfigDocument} Shallow copy with a copied `enabled` array.
+- @note Complexity O(n) in the `enabled` length. Pure.
+
+### fn `export function readConfigValue(settings: ConfigDocument, target: ConfigPathTarget): ConfigParseResult<unknown>` (L616-642)
+- @brief Reads the value addressed by one resolved canonical path.
+- @details Section targets yield a JSON object in schema key order; parameter
+targets yield the whole typed value; `index` targets yield one element;
+`append`/`insert` are write-only and are rejected (REQ-198). Out-of-range
+indices produce the REQ-197 diagnostic.
+- @param settings {ConfigDocument} Validated configuration document.
+- @param target {ConfigPathTarget} Resolved canonical path.
+- @return {ConfigParseResult<unknown>} Addressed value, or diagnostic.
+- @note Complexity O(1) plus O(n) for the section projection. Pure.
+- @satisfies REQ-196, REQ-197, REQ-198, REQ-203
+
+### fn `export function applyConfigSet(` (L658-735)
+- @brief Applies one `--set` operation to a configuration document.
+- @details Section targets require a full JSON object validated against the
+schema; parameter targets parse the raw argument into the schema type;
+`index` replaces one element, `append` appends one element, and `insert`
+inserts one element at an in-range position (REQ-196, REQ-204, REQ-216).
+- @param settings {ConfigDocument} Currently validated document.
+- @param target {ConfigPathTarget} Resolved canonical path.
+- @param rawValue {string} Raw command-line value.
+- @param context {ConfigSchemaContext} Supported CLI and tool name registries.
+- @return {ConfigMutationResult} Mutated document plus confirmation, or diagnostic.
+- @note Complexity O(n) in the `enabled` length. Pure.
+- @satisfies REQ-196, REQ-197, REQ-204, REQ-216
+
+### fn `export function applyConfigUnset(` (L750-788)
+- @brief Applies one `--unset` operation to a configuration document.
+- @details Section targets restore every schema default; parameter targets
+restore the parameter default; `index` targets delete one element and compact
+the remaining indices (REQ-196, REQ-205). Write-only operations are rejected
+(REQ-198).
+- @param settings {ConfigDocument} Currently validated document.
+- @param target {ConfigPathTarget} Resolved canonical path.
+- @param context {ConfigSchemaContext} Supported CLI and tool name registries.
+- @return {ConfigMutationResult} Mutated document plus confirmation, or diagnostic.
+- @note Complexity O(n) in the `enabled` length. Pure.
+- @satisfies REQ-196, REQ-197, REQ-198, REQ-205
+
+## Symbol Index
+|Symbol|Kind|Vis|Lines|Sig|
+|---|---|---|---|---|
+|`ConfigParameterType`|type||32||
+|`ConfigDocument`|iface||41-48|export interface ConfigDocument|
+|`ConfigParameter`|iface||57-63|export interface ConfigParameter|
+|`ConfigSection`|iface||71-75|export interface ConfigSection|
+|`ConfigSchemaContext`|iface||163-166|export interface ConfigSchemaContext|
+|`ConfigPathOperation`|type||174||
+|`ConfigPathTarget`|iface||183-189|export interface ConfigPathTarget|
+|`ConfigPathResult`|type||197||
+|`ConfigParseResult`|type||207||
+|`ConfigMutationResult`|type||217||
+|`formatConfigPath`|fn||229-231|export function formatConfigPath(section: ConfigSection, ...|
+|`formatConfigDisplayValue`|fn||243-246|export function formatConfigDisplayValue(value: unknown):...|
+|`describeConfigType`|fn||257-259|export function describeConfigType(parameter: ConfigParam...|
+|`parseIndexToken`|fn||272-281|function parseIndexToken(token: string, ownerPath: string...|
+|`parseConfigPath`|fn||296-368|export function parseConfigPath(path: string): ConfigPath...|
+|`describeIndexRangeError`|fn||382-391|export function describeIndexRangeError(|
+|`validateConfigValue`|fn||407-489|export function validateConfigValue(|
+|`parseConfigInput`|fn||504-520|export function parseConfigInput(|
+|`parseConfigItem`|fn||533-543|export function parseConfigItem(|
+|`validateConfigDocument`|fn||557-585|export function validateConfigDocument(|
+|`copyConfigDocument`|fn||593-602|function copyConfigDocument(settings: ConfigDocument): Co...|
+|`readConfigValue`|fn||616-642|export function readConfigValue(settings: ConfigDocument,...|
+|`applyConfigSet`|fn||658-735|export function applyConfigSet(|
+|`applyConfigUnset`|fn||750-788|export function applyConfigUnset(|
+
+
+---
+
+# configView.ts | TypeScript | 381L | 11 symbols | 2 imports | 13 comments
+> Path: `src/utils/configView.ts`
+- @brief Builds the `--print` and `--info` configuration trees from the schema.
+- @details Both views share one node model and one renderer
+(`src/utils/configRenderer.ts`); only headings and attached detail formatters
+differ (DES-027, DES-029). Trees are built exclusively from schema nodes and
+typed values, never from rendered strings or hard-coded fragments
+(DES-029). `--print` shows current values (REQ-200, REQ-213, REQ-214);
+`--info` shows schema documentation with complete, schema-valid example
+commands (REQ-201, REQ-215, REQ-216).
+- @note Pure module: no I/O, no process access.
+- @satisfies DES-027, DES-029, REQ-200, REQ-201
+
+## Imports
+```
+import {
+import {
+```
+
+## Definitions
+
+- type `export type ConfigViewResult =` (L57)
+- @brief Result of building one configuration view.
+- @details `ok: false` carries an English diagnostic for stderr (REQ-208).
+- @satisfies REQ-208
+### fn `export function quoteShellLiteral(value: unknown): string` (L72-83)
+- @brief Quotes one published `--info` example value for the shell.
+- @details JSON arrays/objects are wrapped in single quotes; booleans and
+numbers stay bare JSON literals; plain strings are double-quoted with
+backslash and quote escapes (REQ-215, REQ-216). Examples never carry prose
+notes so every published command is copy/pasteable.
+- @param value {unknown} Schema-valid example value.
+- @return {string} Shell-quoted literal.
+- @note Complexity O(n). Pure.
+- @satisfies REQ-215, REQ-216
+
+### fn `function sectionHeading(section: ConfigSection): string` (L95-97)
+- @brief Builds the heading of one section node.
+- @details `Token - [Path: <canonical path>] Description` keeps the token
+byte-identical and places the canonical path badge on the heading line
+(REQ-210, REQ-211).
+- @param section {ConfigSection} Section node.
+- @return {string} Marker-free heading text.
+- @note Complexity O(n). Pure.
+- @satisfies REQ-210, REQ-211
+
+### fn `function buildPrintSectionNode(` (L111-121)
+- @brief Builds the `--print` node of one section and its real children.
+- @details Children are the schema parameters in declaration order; each
+parameter node carries its own value rendering plus attached tables or action
+hints (REQ-200, REQ-213, REQ-214).
+- @param settings {ConfigDocument} Current typed configuration.
+- @param section {ConfigSection} Section node.
+- @param context {ConfigSchemaContext} Supported CLI and tool name registries.
+- @return {ConfigRenderNode} Section node with real children.
+- @note Complexity O(parameters). Pure.
+- @satisfies REQ-200, REQ-213, REQ-214
+
+### fn `function buildPrintParameterNode(` (L138-176)
+- @brief Builds the `--print` node of one parameter.
+- @details Scalars render `Token = <value> (default)` or
+`Token = <value> (custom | default: <JSON default>)` with strings JSON-quoted
+(REQ-213). The `enabled` array renders `(N items | row target: ... | add: ...)`
+with an `Idx | Value` table, or an empty-list hint carrying a complete `--set`
+command when empty (REQ-214, REQ-218).
+- @param settings {ConfigDocument} Current typed configuration.
+- @param section {ConfigSection} Owning section.
+- @param parameter {ConfigParameter} Addressed parameter.
+- @param context {ConfigSchemaContext} Supported CLI and tool name registries.
+- @return {ConfigRenderNode} Parameter node with attached details.
+- @note Complexity O(n) in collection size. Pure.
+- @satisfies REQ-213, REQ-214, REQ-218
+
+### fn `function enabledAllowedValuesTable(` (L190-205)
+- @brief Builds the `Allowed Values` table of the `enabled` parameter.
+- @details One row per supported CLI in registry order with the schema token,
+whether it belongs to the default set, its English meaning, and a complete
+append command (REQ-215, REQ-216, REQ-221).
+- @param section {ConfigSection} Owning section.
+- @param parameter {ConfigParameter} Addressed parameter.
+- @param context {ConfigSchemaContext} Supported CLI name registry.
+- @return {ConfigTable} `Value | Default | Meaning | Set cmd` rows.
+- @note Complexity O(cli names). Pure.
+- @satisfies REQ-215, REQ-216, REQ-221
+
+### fn `function enabledToolsAllowedValuesTable(context: ConfigSchemaContext): { headers: string[]; rows: string[][] }` (L216-224)
+- @brief Builds the `Allowed Values` table of the `enabledTools` parameter.
+- @details Row `*` documents the full registry and every registered tool name
+follows as its own token row (REQ-215, REQ-222).
+- @param context {ConfigSchemaContext} Registered tool name registry.
+- @return {ConfigTable} `Value | Meaning` rows.
+- @note Complexity O(tool names). Pure.
+- @satisfies REQ-215, REQ-222
+
+### fn `function buildInfoSectionNode(section: ConfigSection, context: ConfigSchemaContext): ConfigRenderNode` (L236-242)
+- @brief Builds the `--info` node of one section and its real children.
+- @details The section shows its canonical path badge plus a complete
+`Reset block` command before its real children (REQ-211, REQ-215).
+- @param section {ConfigSection} Section node.
+- @param context {ConfigSchemaContext} Supported CLI and tool name registries.
+- @return {ConfigRenderNode} Section node with real children.
+- @note Complexity O(parameters). Pure.
+- @satisfies REQ-211, REQ-215
+
+### fn `function buildInfoParameterNode(` (L258-294)
+- @brief Builds the `--info` node of one parameter.
+- @details Heading `Token - [Type: constraints] description` followed by a
+`Default` detail carrying its restoring `--unset` command and a `Set cmd`
+detail with a schema-valid shell-quoted example (REQ-215). Array parameters
+additionally publish overwrite, append, insert, replace, delete, and reset
+commands whose item arguments carry exactly one element (REQ-216).
+- @param section {ConfigSection} Owning section.
+- @param parameter {ConfigParameter} Addressed parameter.
+- @param context {ConfigSchemaContext} Supported CLI and tool name registries.
+- @return {ConfigRenderNode} Parameter node with attached details.
+- @note Complexity O(n) in registry size. Pure.
+- @satisfies REQ-215, REQ-216, REQ-222
+
+### fn `export function buildConfigPrintView(` (L310-341)
+- @brief Builds the `--print` view of the whole configuration or one target.
+- @details Absent path renders the complete tree under the virtual
+`Application_Configuration` heading; a section path renders that section as the
+unconnected root; a parameter path renders that parameter alone with its
+attached details (REQ-200, REQ-212). Write-only array operations cannot be
+printed and yield a diagnostic naming the readable path (REQ-198).
+- @param settings {ConfigDocument} Current typed configuration.
+- @param context {ConfigSchemaContext} Supported CLI and tool name registries.
+- @param path {string | undefined} Raw optional path argument.
+- @return {ConfigViewResult} Display root, or diagnostic.
+- @note Complexity O(nodes). Pure.
+- @satisfies REQ-198, REQ-200, REQ-212
+
+### fn `export function buildConfigInfoView(context: ConfigSchemaContext, path?: string): ConfigViewResult` (L354-381)
+- @brief Builds the `--info` view of the whole schema or one target.
+- @details Same node set and renderer as `--print`; only headings and details
+change (REQ-201, REQ-212). Write-only array operations cannot be documented
+directly and yield a diagnostic naming the documented path (REQ-198).
+- @param context {ConfigSchemaContext} Supported CLI and tool name registries.
+- @param path {string | undefined} Raw optional path argument.
+- @return {ConfigViewResult} Display root, or diagnostic.
+- @note Complexity O(nodes). Pure.
+- @satisfies REQ-198, REQ-201, REQ-212
+
+## Symbol Index
+|Symbol|Kind|Vis|Lines|Sig|
+|---|---|---|---|---|
+|`ConfigViewResult`|type||57||
+|`quoteShellLiteral`|fn||72-83|export function quoteShellLiteral(value: unknown): string|
+|`sectionHeading`|fn||95-97|function sectionHeading(section: ConfigSection): string|
+|`buildPrintSectionNode`|fn||111-121|function buildPrintSectionNode(|
+|`buildPrintParameterNode`|fn||138-176|function buildPrintParameterNode(|
+|`enabledAllowedValuesTable`|fn||190-205|function enabledAllowedValuesTable(|
+|`enabledToolsAllowedValuesTable`|fn||216-224|function enabledToolsAllowedValuesTable(context: ConfigSc...|
+|`buildInfoSectionNode`|fn||236-242|function buildInfoSectionNode(section: ConfigSection, con...|
+|`buildInfoParameterNode`|fn||258-294|function buildInfoParameterNode(|
+|`buildConfigPrintView`|fn||310-341|export function buildConfigPrintView(|
+|`buildConfigInfoView`|fn||354-381|export function buildConfigInfoView(context: ConfigSchema...|
 
 
 ---

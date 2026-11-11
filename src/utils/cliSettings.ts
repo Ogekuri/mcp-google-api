@@ -9,36 +9,12 @@
  * returning normalized defaults; saving serializes with two-space
  * indentation plus a trailing newline, writes a sibling temporary file,
  * and replaces the target atomically.
- * @satisfies DES-018, DES-021, DES-023, DES-024, REQ-167, REQ-168, REQ-169
+ * @satisfies DES-018, DES-021, DES-023, DES-024, DES-026, REQ-167, REQ-168, REQ-169
  */
 
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-
-/**
- * @brief Default HTTP bind address persisted when the settings file omits `host`.
- * @details Mirrors `DEFAULT_HTTP_HOST` in `src/utils/configResolver.ts`; the
- * settings loader normalizes missing or invalid `host` values to this loopback
- * default (DES-018, REQ-168). Complexity O(1); pure constant.
- * @satisfies DES-018
- */
-const DEFAULT_SETTINGS_HOST = "127.0.0.1";
-
-/**
- * @brief Default HTTP port persisted when the settings file omits `port`.
- * @details Mirrors `DEFAULT_HTTP_PORT` in `src/utils/configResolver.ts`; the
- * settings loader normalizes missing or out-of-range `port` values to this
- * default (DES-018, REQ-169). Complexity O(1); pure constant.
- * @satisfies DES-018
- */
-const DEFAULT_SETTINGS_PORT = 3000;
-
-/**
- * @brief Default enabled-tools allowlist persisted when the settings file omits `enabledTools`.
- * @details `"*"` selects the full tool registry (REQ-010). Complexity O(1); pure constant.
- * @satisfies DES-018, REQ-167
- */
-const DEFAULT_SETTINGS_ENABLED_TOOLS = "*";
+import { CONFIG_DEFAULTS, CONFIG_SECTION, type ConfigDocument } from "./configSchema.js";
 
 /**
  * @brief Distribution program name owning the settings directory.
@@ -74,16 +50,9 @@ export const MCP_SERVER_NAME = "mcp-google-api";
  * `host` is the HTTP bind address (REQ-168); `port` is the HTTP port
  * (REQ-169). The configuration file is the only configuration source
  * (CTN-002, DES-015, REQ-083, REQ-142).
- * @satisfies DES-018, DES-023, DES-024, REQ-167, REQ-168, REQ-169
+ * @satisfies DES-018, DES-023, DES-024, DES-025, REQ-167, REQ-168, REQ-169, REQ-193
  */
-export interface CliSettings {
-  enabled: string[];
-  apiKey: string;
-  autoUpdate: boolean;
-  enabledTools: string;
-  host: string;
-  port: number;
-}
+export interface CliSettings extends ConfigDocument {}
 
 /**
  * @brief Resolve the user settings file path for a home root.
@@ -109,10 +78,10 @@ export function resolveCliSettingsPath(home?: string): string {
  */
 function normalizeEnabledTools(value: unknown): string {
   if (typeof value !== "string") {
-    return DEFAULT_SETTINGS_ENABLED_TOOLS;
+    return CONFIG_DEFAULTS.enabledTools;
   }
   const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : DEFAULT_SETTINGS_ENABLED_TOOLS;
+  return trimmed.length > 0 ? trimmed : CONFIG_DEFAULTS.enabledTools;
 }
 
 /**
@@ -125,10 +94,10 @@ function normalizeEnabledTools(value: unknown): string {
  */
 function normalizeHost(value: unknown): string {
   if (typeof value !== "string") {
-    return DEFAULT_SETTINGS_HOST;
+    return CONFIG_DEFAULTS.host;
   }
   const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : DEFAULT_SETTINGS_HOST;
+  return trimmed.length > 0 ? trimmed : CONFIG_DEFAULTS.host;
 }
 
 /**
@@ -141,7 +110,7 @@ function normalizeHost(value: unknown): string {
  */
 function normalizePort(value: unknown): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > 65535) {
-    return DEFAULT_SETTINGS_PORT;
+    return CONFIG_DEFAULTS.port;
   }
   return value;
 }
@@ -154,13 +123,72 @@ function normalizePort(value: unknown): number {
  */
 function defaultSettings(): CliSettings {
   return {
-    enabled: [],
-    apiKey: "",
-    autoUpdate: true,
-    enabledTools: DEFAULT_SETTINGS_ENABLED_TOOLS,
-    host: DEFAULT_SETTINGS_HOST,
-    port: DEFAULT_SETTINGS_PORT,
+    enabled: [...CONFIG_DEFAULTS.enabled],
+    apiKey: CONFIG_DEFAULTS.apiKey,
+    autoUpdate: CONFIG_DEFAULTS.autoUpdate,
+    enabledTools: CONFIG_DEFAULTS.enabledTools,
+    host: CONFIG_DEFAULTS.host,
+    port: CONFIG_DEFAULTS.port,
   };
+}
+
+/**
+ * @brief Read the persisted settings document without normalizing it.
+ * @details Returns the parsed JSON object so configuration mutations can
+ * validate the whole document strictly before writing (REQ-204, REQ-206). A
+ * missing file yields an empty object with `exists: false`; unreadable or
+ * malformed content yields a diagnostic instead of silent defaults, so a
+ * `--set`/`--unset` never rewrites a file it could not parse.
+ * @param home {string | undefined} Home-directory override.
+ * @return {{ ok: true; document: Record<string, unknown>; exists: boolean } | { ok: false; error: string }} Parsed document or diagnostic.
+ * @note Complexity O(file size).
+ * @see validateConfigDocument
+ * @satisfies DES-018, DES-025, REQ-206
+ */
+export function readCliSettingsDocument(
+  home?: string
+): { readonly ok: true; readonly document: Record<string, unknown>; readonly exists: boolean } | { readonly ok: false; readonly error: string } {
+  const path = resolveCliSettingsPath(home);
+  if (!existsSync(path)) {
+    return { ok: true, document: {}, exists: false };
+  }
+  let text: string;
+  try {
+    text = readFileSync(path, "utf-8");
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: `settings file ${path} cannot be read: ${message}` };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: `settings file ${path} is not valid JSON: ${message}` };
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, error: `settings file ${path} must contain a JSON object` };
+  }
+  return { ok: true, document: parsed as Record<string, unknown>, exists: true };
+}
+
+/**
+ * @brief Initialize the settings file from schema defaults when it is missing.
+ * @details Creates the program-owned directory and writes the canonical
+ * default document only when the file does not exist, so an existing user file
+ * is never rewritten (REQ-199). Every configuration display and mutation
+ * command calls this first.
+ * @param home {string | undefined} Home-directory override.
+ * @return {string} Absolute settings file path.
+ * @throws {Error} When the default document cannot be persisted.
+ * @satisfies DES-018, REQ-199
+ */
+export function bootstrapCliSettings(home?: string): string {
+  const path = resolveCliSettingsPath(home);
+  if (existsSync(path)) {
+    return path;
+  }
+  return saveCliSettings(defaultSettings(), home);
 }
 
 /**
@@ -240,25 +268,25 @@ export function loadConfiguredApiKey(home?: string): string | undefined {
 
 /**
  * @brief Persist the program configuration to the configuration file atomically.
- * @details Creates parent directories, serializes `enabled`, `apiKey`
- * (DES-023, empty string when unset), `autoUpdate` (DES-024), and the
- * `enabledTools`/`host`/`port` fields (REQ-167, REQ-168, REQ-169) with
- * two-space indentation and a trailing newline, writes
- * `<file>.tmp`, then renames over the target so readers never observe a
- * partial file. Target path is the program-owned
- * `.config/<SETTINGS_PROGRAM_NAME>/config.json` (DES-021).
+ * @details Creates parent directories, serializes the schema fields in
+ * declaration order with two-space indentation plus a trailing newline, writes a
+ * sibling temporary file, flushes and fsyncs it, renames it over the target, and
+ * fsyncs the containing directory so the replacement is durable (DES-026). The
+ * mode of an existing target is preserved; a new file is created with `0600`
+ * because it may hold the plaintext API key. A failed write leaves the previous
+ * valid file untouched and removes the temporary file (REQ-206).
  * @param settings {CliSettings} Settings object to persist.
  * @param home {string | undefined} Home-directory override.
  * @return {string} Written settings file path.
  * @throws {Error} With descriptive message when directory creation, writing,
- * or replacement fails; the temporary file is best-effort removed.
+ * flushing, or replacement fails; the temporary file is best-effort removed.
  * @post The configuration file contains the serialized `settings` object.
- * @satisfies DES-018, DES-021, DES-023, DES-024, REQ-167, REQ-168, REQ-169
+ * @satisfies DES-018, DES-021, DES-023, DES-024, DES-026, REQ-167, REQ-168, REQ-169, REQ-206
  */
 export function saveCliSettings(settings: CliSettings, home?: string): string {
   const path = resolveCliSettingsPath(home);
   const temporary = `${path}.tmp`;
-  const payload: Record<string, unknown> = {
+  const normalized: CliSettings = {
     enabled: uniqueStrings(settings.enabled),
     apiKey: typeof settings.apiKey === "string" ? settings.apiKey : "",
     autoUpdate: settings.autoUpdate === true,
@@ -266,11 +294,46 @@ export function saveCliSettings(settings: CliSettings, home?: string): string {
     host: normalizeHost(settings.host),
     port: normalizePort(settings.port),
   };
+  const payload: Record<string, unknown> = {};
+  for (const parameter of CONFIG_SECTION.parameters) {
+    payload[parameter.token] = normalized[parameter.token];
+  }
+  const serialized = JSON.stringify(payload, null, 2) + "\n";
+  let mode = 0o600;
+  try {
+    mode = statSync(path).mode & 0o777;
+  } catch {
+    mode = 0o600;
+  }
   try {
     mkdirSync(join(path, ".."), { recursive: true });
-    writeFileSync(temporary, JSON.stringify(payload, null, 2) + "\n", "utf-8");
+    const handle = openSync(temporary, "w", mode);
+    try {
+      writeFileSync(handle, serialized, "utf-8");
+      fsyncSync(handle);
+    } finally {
+      closeSync(handle);
+    }
     renameSync(temporary, path);
+    const directory = join(path, "..");
+    let directoryHandle: number | undefined;
+    try {
+      directoryHandle = openSync(directory, "r");
+      fsyncSync(directoryHandle);
+    } catch {
+      // Directory fsync is unavailable on some platforms; the file fsync plus
+      // the atomic rename already guarantee the previous file survives failure.
+    } finally {
+      if (directoryHandle !== undefined) {
+        closeSync(directoryHandle);
+      }
+    }
   } catch (error: unknown) {
+    try {
+      unlinkSync(temporary);
+    } catch {
+      // Best-effort cleanup; the original file stays untouched.
+    }
     throw new Error(`settings write failed: ${error instanceof Error ? error.message : String(error)}`);
   }
   return path;

@@ -16,7 +16,7 @@ This document MUST follow these authoring rules (LLM-first, normative SRS):
   - Do NOT add YAML front matter or in-document revision history; use git history / CHANGELOG.md for change tracking.
 
 ### 1.2 Project Scope
-`mcp-google-api` (v0.0.0, GPL-3.0-only) is a Model Context Protocol (MCP) server exposing Google APIs to AI agents over stdio or Streamable HTTP; the currently implemented family is Google Maps with 18 tools (geocoding, Places API (New), Routes, Weather, Air Quality, Time Zone, Elevation, Static Maps), plus a standalone CLI (`doctor`, `exec`, `batch-geocode`, `snippet`, `enable`, `disable`, `auto-update <enable|disable|1|0>`, `tools <list|*>`, `host <host>`, `port <port>`, `install`, `uninstall`, `show`, `api-key`). Boundaries: read-only Google API queries only; no persistence, no caching layer, no user management, no write operations.
+`mcp-google-api` (v0.0.0, GPL-3.0-only) is a Model Context Protocol (MCP) server exposing Google APIs to AI agents over stdio or Streamable HTTP; the currently implemented family is Google Maps with 18 tools (geocoding, Places API (New), Routes, Weather, Air Quality, Time Zone, Elevation, Static Maps), plus a standalone CLI (`doctor`, `exec`, `batch-geocode`, `snippet`, `enable`, `disable`, `auto-update <enable|disable|1|0>`, `tools <list|*>`, `host <host>`, `port <port>`, `install`, `uninstall`, `show`, `api-key`) plus a schema-driven configuration interface (`--print [Path]`, `--info [Path]`, `--print-raw`, `--get Path`, `--set Path Value`, `--unset Path`). Boundaries: read-only Google API queries only; no persistence, no caching layer, no user management, no write operations.
 
 Project file/folder structure (evidence: repository tree):
 
@@ -88,6 +88,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PRJ-020**: The installed `mcp-google-api` bin MUST execute the packaged `dist/cli.js` Node entry, forwarding every argument unchanged with no implicit install or build steps.
 - **PRJ-021**: When the packaged `dist/cli.js` artifact is missing, the installed `mcp-google-api` bin MUST print JSON build-remediation guidance on stderr and exit non-zero.
 - **PRJ-022**: `scripts/mcp-google-api.sh` MUST forward every argument unchanged to the rebuilt local `dist/cli.js` entry and propagate its exit code.
+- **PRJ-023**: MUST expose the persisted configuration through the command flags `--print [Path]`, `--info [Path]`, `--print-raw`, `--get Path`, `--set Path Value`, and `--unset Path`.
 
 ### 2.2 Project Constraints
 - **CTN-001**: MUST declare all tools read-only, non-destructive, idempotent, and open-world via MCP tool annotations (evidence: `MAPS_TOOL_ANNOTATIONS`, `src/config.ts`).
@@ -190,6 +191,11 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **DES-022**: MUST implement the idle-gated version check and self-upgrade commands in a dedicated module with injectable clock, filesystem, fetch, logger, and child-process dependencies.
 - **DES-023**: MUST persist the user-configured Google Maps API key as the `apiKey` field of the DES-018 settings file, reusing atomic write and malformed-content tolerance; unset keys persist and load as the empty string.
 - **DES-024**: MUST persist the automatic-update enablement as the boolean `autoUpdate` field of the DES-018 settings file; missing or malformed content loads as enabled.
+- **DES-025**: MUST define the canonical configuration schema, path grammar, typed parsing, validation, and defaults in one module (`src/utils/configSchema.ts`) driving display, help, and persistence.
+- **DES-026**: MUST implement configuration persistence as sibling temporary-file write, file flush and fsync, atomic rename, and directory fsync, preserving the existing file mode.
+- **DES-027**: MUST implement one recursive tree renderer and one display-width-based table formatter in a module shared by `--print` and `--info` (`src/utils/configRenderer.ts`).
+- **DES-028**: MUST implement configuration CLI argument parsing, tree view building, and command handlers in dedicated modules (`src/utils/configCli.ts`, `src/utils/configView.ts`) dispatched before yargs parsing.
+- **DES-029**: MUST build every `--print` and `--info` tree from schema nodes and typed values, never from rendered strings hard-coded tree fragments, or display column widths.
 
 ### 3.2 Functions
 
@@ -403,6 +409,39 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-185**: `show` MUST render both report tables as box-drawing grids using `┌`, `┬`, `┐`, `│`, `├`, `┼`, `┤`, `└`, `┴`, `┘`, and `─` characters with `│` column separators.
 - **REQ-186**: `show` table data rows MUST render without inter-row border lines, with exactly one `├─┼┤` separator between the header row and the data block and the `└─┴┘` border as the last line.
 
+#### Configuration Interface
+- **REQ-193**: MUST expose the persisted configuration as one canonical schema section `Settings` with parameters `enabled`, `apiKey`, `autoUpdate`, `enabledTools`, `host`, and `port` in that order.
+- **REQ-194**: MUST resolve configuration CLI paths as colon-separated case-sensitive tokens against the canonical schema, excluding the virtual `Application_Configuration` root label.
+- **REQ-195**: MUST reject an unresolvable section, parameter, operation, or index token on stderr with the offending path and exit status 1.
+- **REQ-196**: MUST require `0 <= Idx < length` for array index read, replace, and delete, and `0 <= Idx <= length` for `:insert:<Idx>`.
+- **REQ-197**: MUST report an out-of-range array index naming the full path, the rejected index, the valid range, and the `:+` append alternative.
+- **REQ-198**: MUST accept `:append`, `:+`, and `:insert:<Idx>` as write-only array operations and reject them as read or delete targets.
+- **REQ-199**: MUST create the settings directory and initialize the settings file from schema defaults when missing before any configuration display or mutation command, never rewriting an existing file.
+- **REQ-200**: `--print [Path]` MUST render the complete configuration tree, or only the requested section or parameter, with current values.
+- **REQ-201**: `--info [Path]` MUST render the schema documentation tree, or only the requested section or parameter, through the same renderer as `--print`.
+- **REQ-202**: `--print-raw` MUST write the settings file bytes unchanged to stdout without tree formatting, re-serialization, headings, or appended text.
+- **REQ-203**: `--get Path` MUST write the addressed value as bare JSON on stdout without labels, tree decoration, or confirmation text.
+- **REQ-204**: `--set Path Value` MUST parse the value into the schema type, validate the resulting document, persist it atomically, and exit 0.
+- **REQ-205**: `--unset Path` MUST restore the schema default of the addressed parameter or section, and MUST delete the addressed element for an array index path.
+- **REQ-206**: MUST reject a `--set` or `--unset` request with malformed JSON, wrong type, violated constraint, or invalid existing document without mutating the settings file.
+- **REQ-207**: MUST print an English stdout confirmation naming the full canonical path after every successful `--set` and `--unset`, exiting 0.
+- **REQ-208**: MUST print an English stderr diagnostic and exit 1 without stdout output when a configuration command fails.
+- **REQ-209**: MUST render both `--print` and `--info` through one deterministic renderer emitting `├── `, `└── `, `│   `, and four-space segments derived from real configuration nodes only.
+- **REQ-210**: MUST mark only real configuration nodes with `├── ` or `└── ` and render attached metadata as detail lines carrying the owning node continuation prefix.
+- **REQ-211**: MUST display `[Path: <full canonical path>]` on every section heading emitted by `--print` and `--info`.
+- **REQ-212**: MUST render a requested section or parameter as the unconnected output root without invented ancestors or dangling continuation columns.
+- **REQ-213**: `--print` MUST render each scalar parameter with `(default)` or `(custom | default: <JSON default>)` and every string value as a JSON-quoted string.
+- **REQ-214**: `--print` MUST render the `enabled` array as a contiguous-index `Idx | Value` table, or as an empty-list hint with a complete `--set` command when empty.
+- **REQ-215**: `--info` MUST render per parameter a `Default` detail carrying its restoring `--unset` command and a `Set cmd` detail with a schema-valid shell-quoted example.
+- **REQ-216**: `--info` MUST publish for `enabled` complete overwrite, append, insert, replace, delete, and reset commands whose item arguments carry exactly one array element.
+- **REQ-217**: MUST render every table through one formatter that sizes columns by display width, aligns all borders, and pads each cell on both sides.
+- **REQ-218**: MUST omit collection tables when empty and MUST NOT mask, truncate, or obfuscate stored values in `--get`, `--print`, or `--print-raw`.
+- **REQ-219**: MUST keep every configuration identifier, description, help line, confirmation, and diagnostic in English.
+- **REQ-220**: MUST document `--print`, `--info`, `--print-raw`, `--get`, `--set`, and `--unset` with complete canonical paths in the CLI help text and `docs/CONFIGURATION.md`.
+- **REQ-221**: MUST validate `enabled` entries against the supported CLI names, persist canonical lowercase names, and reject duplicates and unsupported names.
+- **REQ-222**: MUST validate `enabledTools` as `*` or a comma-separated list of registered tool names, and `port` as an integer in 1..65535.
+- **REQ-223**: MUST preserve the existing `enable`, `disable`, `tools`, `host`, `port`, `auto-update`, and `api-key` command behavior while sharing canonical schema defaults and validation.
+
 ### 3.3 Known Limitations (True State)
 - **LIM-001**: `maps_search_nearby` may return fewer than 20 results when client-side `openNow`/`minRating` filters discard matches post-query.
 - **LIM-002**: `GoogleMapsTools.parseCoordinates` validates only numeric parsing, not geographic ranges; range rejection happens only in composite `resolveLocation` (`src/services/toolclass.ts`).
@@ -411,6 +450,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **LIM-006**: No explicit performance optimizations identified beyond bounded concurrency batching (grid scan concurrency 5 in `scanKeywordGrid`; CLI semaphore clamp 1-50).
 - **LIM-007**: `maps_search_places` `pageToken` is copied into the request but silently dropped by `@googlemaps/places` SDK protos (verified up to v3.1.0), so pagination requests have no server-side effect.
 - **LIM-008**: npm global reify over a previously corrupted same-name install tree can fail dependency lifecycle spawns (`spawn sh ENOENT` against directories removed mid-reify); `--upgrade` mitigates it with the REQ-182 clean-slate uninstall plus single retry.
+- **LIM-009**: `--set Settings:enabled` and `--set Settings:apiKey` update the settings file only; MCP registrations and packaged skills refresh only when `install` or `api-key` runs.
 
 ## 4. Test Requirements
 - **TST-001**: MUST verify REQ-073/REQ-074/REQ-075 by running `npm test` (`tests/cliExec.unit.test.ts`): injected runners assert stdout JSON on success, stderr JSON plus exit code 1 on failure responses, thrown errors, and canonical tool-name resolution; pass when all assertions hold.
@@ -436,3 +476,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-021**: MUST verify PKG-033/PKG-034/PKG-035/PKG-036/PKG-037/PKG-038/PKG-039/PKG-040 by running `npm test` (`tests/npmPublishContract.unit.test.ts`): metadata, lockfile identity, and `npm pack --dry-run` tarball-list assertions pass.
 - **TST-023**: MUST verify REQ-170/REQ-171/REQ-172/REQ-173/REQ-177/REQ-178/REQ-187/REQ-188/REQ-189/REQ-190 by running `npm test` (`tests/upgradeManager.unit.test.ts`): injected fetch and spawn stubs assert the develop channel probes only the GitHub releases endpoint, always installs the raw `tag_name` ref even when equal to the installed version, fails fast on probe error without spawning, reports the probed version in the summary, `--force` appends the npm force flag to both channel update commands while its absence runs the standard unforced command, and the management parser accepts `--force` only beside `--upgrade`.
 - **TST-024**: MUST verify PKG-058/PKG-059/PKG-060/PKG-061/PKG-062 by running `npm test` (`tests/preReleaseCheck.unit.test.ts`): static contract asserts the four release-gating stages in order, fail-fast exit wiring, repository-root execution, and no install/publish commands; pass when all assertions hold and sandbox runs prove fail-fast exit 1 at an injected failing stage, removal of run-created `dist` artifacts on failure, and preservation of pre-existing artifacts.
+- **TST-025**: MUST verify REQ-209/REQ-210/REQ-211/REQ-212 by running `npm test` (`tests/configRenderer.unit.test.ts`): golden comparisons cover one root child, two root siblings, nested first/middle/last nodes, detail prefixes, section badges, and requested subtrees byte for byte.
+- **TST-026**: MUST verify REQ-209/REQ-210/REQ-211 by running `npm test` (`tests/configRenderer.unit.test.ts`): a structural validator parses real `--print` and `--info` output and rejects orphan connectors, extra continuation segments, and misplaced markers.
+- **TST-027**: MUST verify REQ-217/REQ-218 by running `npm test` (`tests/configTableRenderer.unit.test.ts`): border alignment, wide-character widths, escaped control characters, and empty-collection table omission are asserted.
+- **TST-028**: MUST verify REQ-193-REQ-208 and REQ-213-REQ-222 by running `npm test` (`tests/configCommands.unit.test.ts`): get/set/unset/print/info/print-raw behavior, exit codes, stream separation, resets, bounds, and no mutation on rejection are asserted.

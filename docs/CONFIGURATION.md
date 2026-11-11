@@ -36,6 +36,46 @@ The persisted key is the only key source read at server startup (masked in every
 
 Invalid values (unknown tool names, non-integer or out-of-range ports, empty hosts) are rejected with a human-readable error and nothing is persisted.
 
+## Configuration interface
+
+The whole settings file is also reachable through one schema-driven interface. Paths are
+case-sensitive colon-separated tokens of the section `Settings`; the displayed
+`Application_Configuration` root label is never part of a path. A missing settings file is
+created from schema defaults before the command runs.
+
+| Command | Effect |
+| --- | --- |
+| `mcp-google-api --print [Path]` | Print current values as a tree (whole tree when `Path` is absent) |
+| `mcp-google-api --info [Path]` | Print the schema documentation tree, including reset/set commands |
+| `mcp-google-api --print-raw` | Print the raw `config.json` bytes unchanged |
+| `mcp-google-api --get Path` | Print one value as bare JSON (pipeable) |
+| `mcp-google-api --set Path Value` | Validate and persist one value atomically |
+| `mcp-google-api --unset Path` | Restore a schema default, or delete one array element |
+
+Canonical paths: `Settings`, `Settings:apiKey`, `Settings:port`, `Settings:enabled:0`,
+`Settings:enabled:+`, `Settings:enabled:append`, `Settings:enabled:insert:0`.
+
+```bash
+mcp-google-api --print Settings
+mcp-google-api --info Settings:enabled
+mcp-google-api --get Settings:port
+mcp-google-api --set Settings:port 3100
+mcp-google-api --set Settings:autoUpdate false
+mcp-google-api --set Settings:enabled:+ pi
+mcp-google-api --set Settings:enabled '["pi","claude"]'
+mcp-google-api --unset Settings:enabled:0
+mcp-google-api --unset Settings:host
+```
+
+Non-string parameters take JSON literals (`true`, `3100`, `["pi"]`); string parameters
+(`apiKey`, `enabledTools`, `host`, and single `enabled` items) take the raw argument.
+Rejected values, malformed JSON, and unresolvable paths leave the file untouched and exit 1
+with an English stderr diagnostic; successful mutations print one confirmation naming the
+full canonical path. Section or parameter resets restore declared schema defaults, so
+`--unset Settings:enabled` restores the empty list rather than "clearing" it. Array
+mutations update the settings file only; run `mcp-google-api install` to refresh MCP
+registrations and installed skills after changing `enabled` or `apiKey`.
+
 ## Transports
 
 ```bash
