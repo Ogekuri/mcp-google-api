@@ -54,8 +54,8 @@ const PACK_ALLOWED_INVARIANTS: ReadonlySet<string> = new Set([
   "LICENSE",
 ]);
 
-/** Pack allowlist: directory prefixes whose contents are runtime-shippable. */
-const PACK_ALLOWED_PREFIXES: readonly string[] = ["bin/", "dist/", "docs/", "src/resources/"]; // "bin/" ships the installed-bin launcher (PRJ-020, PRJ-021)
+/** Pack allowlist: directory prefixes whose contents are runtime-shippable (PKG-038); docs/ is non-runtime and excluded. */
+const PACK_ALLOWED_PREFIXES: readonly string[] = ["bin/", "dist/", "src/resources/"]; // "bin/" ships the installed-bin launcher (PRJ-020, PRJ-021)
 
 /** Minimal shape of one `npm pack --json` entry. */
 interface PackEntry {
@@ -206,9 +206,28 @@ test("test_files_allowlist_ships_changelog_and_runtime_assets", () => {
   // Act
   const files: string[] = Array.isArray(manifest.files) ? manifest.files.map(String) : [];
   // Assert
-  for (const required of ["CHANGELOG.md", "dist", "src/resources/skills", "docs"]) {
+  for (const required of ["CHANGELOG.md", "dist", "src/resources/skills"]) {
     assert.equal(files.includes(required), true, `files allowlist must include "${required}"`);
   }
+  assert.equal(files.includes("docs"), false, 'files allowlist must not include "docs" (PKG-038: non-runtime)');
+});
+
+/**
+ * @brief Asserts that the release bundle configuration does not emit source maps.
+ * @details Static regex inspection of `tsup.config.ts`; requires `sourcemap: false` and rejects
+ * `sourcemap: true`. Pure; no build, no network. Complexity O(n) in config length.
+ * @satisfies PKG-038
+ */
+test("test_tsup_release_build_emits_no_sourcemaps", () => {
+  // PKG-038: source maps are non-runtime artifacts; the release bundle MUST NOT emit them.
+  // Arrange
+  const config = readFileSync(join(PROJECT_ROOT, "tsup.config.ts"), "utf8");
+  // Act
+  const emitsSourcemaps = /sourcemap\s*:\s*true/.test(config);
+  const declaresNoSourcemaps = /sourcemap\s*:\s*false/.test(config);
+  // Assert
+  assert.equal(emitsSourcemaps, false, "tsup.config.ts must not set sourcemap: true (PKG-038)");
+  assert.equal(declaresNoSourcemaps, true, "tsup.config.ts must declare sourcemap: false (PKG-038)");
 });
 
 test("test_lockfile_root_identity_matches_package_json", () => {
@@ -307,7 +326,7 @@ test("test_packed_tarball_contents_follow_allowlist_policy", () => {
   // runtime prefixes); invariant metadata is present; tests, local
   // configuration, lockfile, and secret-looking files are excluded.
   // Arrange
-  const forbiddenPrefixes = ["tests/", "usereq/", "scripts/", ".github/", ".git"];
+  const forbiddenPrefixes = ["tests/", "usereq/", "scripts/", ".github/", ".git", "docs/"];
   const forbiddenFiles = new Set([
     "package-lock.json",
     ".gitignore",
@@ -335,10 +354,10 @@ test("test_packed_tarball_contents_follow_allowlist_policy", () => {
     for (const pattern of secretPatterns) {
       assert.equal(pattern.test(path), false, `packed path "${path}" looks like a secret file (PKG-038)`);
     }
+    assert.equal(path.endsWith(".map"), false, `packed path "${path}" is a source map, non-runtime (PKG-038)`);
   }
   for (const invariant of PACK_ALLOWED_INVARIANTS) {
     assert.equal(paths.includes(invariant), true, `tarball must ship invariant file "${invariant}"`);
   }
-  assert.equal(paths.some((path) => path.startsWith("docs/")), true, "tarball must ship docs/");
   assert.equal(paths.some((path) => path.startsWith("src/resources/")), true, "tarball must ship skills");
 });

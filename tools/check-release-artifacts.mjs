@@ -42,8 +42,8 @@ const CLI_SMOKE_TIMEOUT_MS = 60000;
 /** npm-invariant files always packed regardless of the `files` allowlist (PKG-038). */
 const INVARIANT_FILES = new Set(["package.json", "README.md", "CHANGELOG.md", "LICENSE", "LICENSE.md", "LICENSE.txt"]);
 
-/** Runtime directory prefixes permitted in the packed tarball (PKG-038). */
-const ALLOWED_PREFIXES = ["bin/", "dist/", "docs/", "src/resources/skills/"];
+/** Runtime directory prefixes permitted in the packed tarball (PKG-038); docs/ is non-runtime and excluded. */
+const ALLOWED_PREFIXES = ["bin/", "dist/", "src/resources/skills/"];
 
 /** Entries that MUST exist in the packed tarball (PKG-075). */
 const REQUIRED_ENTRIES = [

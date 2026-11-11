@@ -9,8 +9,9 @@
 #  * 2. Snapshot (PKG-073): a pre-existing `dist/` is copied to a private temp directory.
 #  * 3. Compile (PKG-069): `npm run build` runs tsup (ESM bundle plus declarations). The
 #  *    project tsup configuration sets `clean: true`, so tsup clears `dist/` first.
-#  * 4. Compile verification (PKG-069): `dist/cli.js`, `dist/index.js`, `dist/cli.d.ts`,
-#  *    and `dist/index.d.ts` must exist and be non-empty; `dist/cli.js` must pass `node --check`.
+#  * 4. Compile verification (PKG-069, PKG-074): `dist/cli.js`, `dist/index.js`, `dist/cli.d.ts`,
+#  *    and `dist/index.d.ts` must exist and be non-empty; `dist/cli.js` and `dist/index.js` must pass
+#  *    `node --check`; every relative import target of both entries must exist and be non-empty.
 #  * 5. Preservation (PKG-071, PKG-072): every non-generated snapshot file absent from the
 #  *    new build is copied back into `dist/`. Generated files are never restored.
 #  * 6. Pack (PKG-069, PKG-070): stale `*.tgz` removed, then
@@ -72,6 +73,45 @@ fail() {
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     fail "required command not found on PATH: $1"
+  fi
+}
+
+# /**
+#  * @brief Verifies that every relative import target of one emitted ESM entry resolves.
+#  * @details Runs an inline Node.js program (no repository file added, PKG-068) that scans the entry
+#  * source for static `from "./x"`, side-effect `import "./x"`, and dynamic `import("./x")` specifiers
+#  * beginning with `./` or `../`. Each specifier resolved against the entry directory MUST name an
+#  * existing, non-empty regular file. Unresolved specifiers are printed by the program and echoed in the
+#  * failure diagnostic. Complexity O(n) in source length plus one filesystem probe per specifier.
+#  * @param entry {string} Emitted entry path, e.g. `dist/cli.js`.
+#  * @return {void} Returns when every relative import target resolves.
+#  * @throws {exit 1} Via `fail` naming the entry and the unresolved specifiers (PKG-069, PKG-074).
+#  * @side_effect None; read-only inspection of the entry and its import targets.
+#  */
+verify_relative_imports() {
+  local entry="$1"
+  local program
+  local unresolved=""
+  program="$(cat <<'NODE_IMPORT_CHECK'
+const { existsSync, readFileSync, statSync } = require("node:fs");
+const { dirname, resolve } = require("node:path");
+const entry = process.argv[1];
+const pattern = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)["'](\.{1,2}\/[^"']+)["']/g;
+const unresolved = [];
+for (const match of readFileSync(entry, "utf8").matchAll(pattern)) {
+  const target = resolve(dirname(entry), match[1]);
+  if (!existsSync(target) || !statSync(target).isFile() || statSync(target).size === 0) {
+    unresolved.push(match[1]);
+  }
+}
+if (unresolved.length > 0) {
+  process.stdout.write(unresolved.join(" "));
+  process.exit(1);
+}
+NODE_IMPORT_CHECK
+)"
+  if ! unresolved="$(node -e "$program" "$entry")"; then
+    fail "unresolved relative import(s) in $entry: ${unresolved:-none reported}"
   fi
 }
 
@@ -231,7 +271,10 @@ for artifact in cli.js index.js cli.d.ts index.d.ts; do
   fi
 done
 node --check "$DIST_DIR/cli.js"
-log "compile verified: $DIST_DIR/cli.js, $DIST_DIR/index.js, declaration files present"
+node --check "$DIST_DIR/index.js"
+verify_relative_imports "$DIST_DIR/cli.js"
+verify_relative_imports "$DIST_DIR/index.js"
+log "compile verified: $DIST_DIR/cli.js, $DIST_DIR/index.js, declaration files present, relative imports resolved"
 
 # Preservation of non-generated dist/ entries (PKG-071, PKG-072).
 preserve_non_generated_entries
