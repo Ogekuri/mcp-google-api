@@ -206,10 +206,12 @@ on_exit() {
 }
 
 # /**
-#  * @brief Copies non-generated snapshot entries back into the freshly built `dist/`.
-#  * @details Enumerates snapshot files (NUL-delimited list file, no pipeline status masking),
-#  * skips generated patterns (PKG-072), and copies any other file whose path is absent from
-#  * the new build (PKG-071). Complexity O(n) in snapshot file count.
+#  * @brief Restores every non-generated snapshot entry missing from the freshly built `dist/`.
+#  * @details Enumerates all snapshot entries (NUL-delimited list, no pipeline status masking).
+#  * Skips only regular files matching generated patterns (PKG-072); recreates directories, copies
+#  * symlinks and other non-generated entries, and aborts on destination-type collisions so the
+#  * EXIT trap restores the original snapshot rather than discarding user content (PKG-071, PKG-073).
+#  * Complexity O(n) in snapshot entry count.
 #  * @return {void}
 #  * @side_effect Creates files and directories under `dist/`.
 #  * @throws {exit 1} Via `fail` when enumeration or copy fails.
@@ -219,24 +221,36 @@ preserve_non_generated_entries() {
   local file_list="$WORKDIR/previous-files.lst"
   local source
   local relative
+  local destination
   if [ "$PREVIOUS_STATE" != "snapshot" ]; then
     return 0
   fi
-  if ! find "$snapshot_root" -type f -print0 >"$file_list"; then
+  if ! find "$snapshot_root" -mindepth 1 -print0 >"$file_list"; then
     fail "could not enumerate the previous $DIST_DIR/ snapshot"
   fi
   while IFS= read -r -d '' source; do
     relative="${source#"$snapshot_root"/}"
-    if is_generated_output "$relative"; then
+    destination="$DIST_DIR/$relative"
+    if [ -f "$source" ] && [ ! -L "$source" ] && is_generated_output "$relative"; then
       continue
     fi
-    if [ -e "$DIST_DIR/$relative" ]; then
+    if [ -d "$source" ] && [ ! -L "$source" ]; then
+      if [ -L "$destination" ] || { [ -e "$destination" ] && [ ! -d "$destination" ]; }; then
+        fail "non-generated directory conflicts with build output: $destination"
+      fi
+      if [ ! -d "$destination" ] && ! mkdir -p "$destination"; then
+        fail "could not preserve non-generated directory $destination"
+      fi
+      log "preserved non-generated directory: $destination"
       continue
     fi
-    if ! mkdir -p "$(dirname "$DIST_DIR/$relative")" || ! cp -a "$source" "$DIST_DIR/$relative"; then
-      fail "could not preserve non-generated entry $DIST_DIR/$relative"
+    if [ -e "$destination" ] || [ -L "$destination" ]; then
+      fail "non-generated entry conflicts with build output: $destination"
     fi
-    log "preserved non-generated entry: $DIST_DIR/$relative"
+    if ! mkdir -p "$(dirname "$destination")" || ! cp -a "$source" "$destination"; then
+      fail "could not preserve non-generated entry $destination"
+    fi
+    log "preserved non-generated entry: $destination"
   done <"$file_list"
 }
 

@@ -20,7 +20,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -175,9 +186,105 @@ test("test_build_fails_when_relative_chunk_import_is_missing", () => {
 });
 
 /**
+ * @brief Regression case: successful builds preserve pre-existing empty directories.
+ * @details Seeds an empty non-generated directory before the sandbox build; asserts exit 0 and
+ * path existence afterward. The npm/tsup stubs isolate the build and no repository path is written.
+ * Complexity O(build) plus one bash child.
+ * @return {void} No value; assertions throw on a failed preservation condition.
+ * @throws {AssertionError} When the build fails or the directory is absent after completion.
+ * @satisfies PKG-071, PKG-072
+ */
+test("test_build_preserves_preexisting_empty_directory", () => {
+  // Arrange
+  const sandbox = createSandbox();
+  const emptyDirectory = join(sandbox.root, "dist", "preserve-empty");
+  try {
+    mkdirSync(emptyDirectory, { recursive: true });
+    // Act
+    const result = runBuild(sandbox, true);
+    // Assert
+    const expected_output = { exitCode: 0, directoryPreserved: true };
+    assert.equal(result.status, expected_output.exitCode, result.stderr);
+    assert.equal(existsSync(emptyDirectory), expected_output.directoryPreserved);
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * @brief Regression case: successful builds preserve pre-existing symbolic links.
+ * @details Seeds a non-generated symlink in `dist/` pointing to a sandbox file; asserts exit 0,
+ * symlink type, and identical link target afterward. The build toolchain is stubbed and isolated.
+ * Complexity O(build) plus one bash child.
+ * @return {void} No value; assertions throw on a failed preservation condition.
+ * @throws {AssertionError} When the build fails or the link type/target changes.
+ * @satisfies PKG-071, PKG-072
+ */
+test("test_build_preserves_preexisting_symlink", () => {
+  // Arrange
+  const sandbox = createSandbox();
+  const linkTarget = join(sandbox.root, "symlink-target.txt");
+  const linkPath = join(sandbox.root, "dist", "preserve-link");
+  try {
+    writeFileSync(linkTarget, "symlink target\n");
+    mkdirSync(join(sandbox.root, "dist"), { recursive: true });
+    symlinkSync(linkTarget, linkPath);
+    // Act
+    const result = runBuild(sandbox, true);
+    // Assert
+    const expected_output = { exitCode: 0, linkExists: true, isSymlink: true, target: linkTarget };
+    assert.equal(result.status, expected_output.exitCode, result.stderr);
+    assert.equal(existsSync(linkPath), expected_output.linkExists);
+    assert.equal(lstatSync(linkPath).isSymbolicLink(), expected_output.isSymlink);
+    assert.equal(readlinkSync(linkPath), expected_output.target);
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * @brief Regression case: output-path collisions fail and restore the complete pre-run directory.
+ * @details Seeds a non-generated symlink at the generated `dist/cli.js` path and an empty directory.
+ * The build MUST fail rather than overwrite the symlink; the EXIT trap MUST restore both entries.
+ * The npm/tsup stubs isolate the child process. Complexity O(build) plus one bash child.
+ * @return {void} No value; assertions throw when failure or rollback behavior differs.
+ * @throws {AssertionError} When the build succeeds or the original entries are not restored.
+ * @satisfies PKG-071, PKG-072, PKG-073
+ */
+test("test_build_restores_snapshot_on_non_generated_path_collision", () => {
+  // Arrange
+  const sandbox = createSandbox();
+  const linkTarget = join(sandbox.root, "original-cli-target.txt");
+  const cliEntryPath = join(sandbox.root, "dist", "cli.js");
+  const emptyDirectory = join(sandbox.root, "dist", "preserve-empty");
+  try {
+    writeFileSync(linkTarget, "original cli target\n");
+    mkdirSync(emptyDirectory, { recursive: true });
+    symlinkSync(linkTarget, cliEntryPath);
+    // Act
+    const result = runBuild(sandbox, true);
+    // Assert
+    const expected_output = {
+      exitCode: 1,
+      linkRestored: true,
+      directoryRestored: true,
+      target: linkTarget,
+    };
+    assert.equal(result.status, expected_output.exitCode, "conflicting output path must abort the build");
+    assert.equal(lstatSync(cliEntryPath).isSymbolicLink(), expected_output.linkRestored);
+    assert.equal(readlinkSync(cliEntryPath), expected_output.target);
+    assert.equal(existsSync(emptyDirectory), expected_output.directoryRestored);
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+/**
  * @brief Positive control: every relative import resolved must yield a successful release build.
  * @details Sandbox run with the tsup stub emitting `./chunk-ABC.js`. Expects exit 0, the chunk, and
  * the tarball `<name>-<version>.tgz`. Complexity O(build) plus one bash child.
+ * @return {void} No value; assertions throw on a failed build condition.
+ * @throws {AssertionError} When the build fails or expected artifacts are absent.
  * @satisfies PKG-069, PKG-070, PKG-074
  */
 test("test_build_succeeds_when_every_relative_import_resolves", () => {
