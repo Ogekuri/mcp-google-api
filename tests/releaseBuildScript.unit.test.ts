@@ -10,12 +10,15 @@
  * `npm` stub resolves `run build` to the tsup stub and `pack` to a tar-readable tarball. Enforced
  * contract: the build exits non-zero and names the dangling import when `./chunk-ABC.js` is absent,
  * and leaves no partial `dist/` behind (PKG-073); with every relative import resolved the build
- * exits 0, writes no tarball or declaration file into `dist/` (PKG-069, PKG-102), and packs `<name>-<version>.tgz` only into its private work directory (PKG-070, PKG-074). Isolation: `PATH` is prefixed with
+ * exits 0, writes no declaration file into `dist/` (PKG-069), persists the verified archive at
+ * `dist/<name>-<version>.tgz` as the only tarball there (PKG-070, PKG-102), preserves it through the
+ * final cleanup while removing stale tarballs and build state files (PKG-108, PKG-109), and removes
+ * its private work directory (PKG-074). Isolation: `PATH` is prefixed with
  * the stub directory only for the child process; the sandbox is removed in `finally`; no network,
  * no dependency installation, no write into the repository tree.
  * @note HDT level 1 (composed): depends on the shell runtime (`bash`, `tar`, `node`) as isolated
  * external boundaries. Test cases are independent and each owns its sandbox.
- * @satisfies PKG-069, PKG-070, PKG-073, PKG-074, PKG-102, TST-024
+ * @satisfies PKG-069, PKG-070, PKG-073, PKG-074, PKG-102, PKG-108, PKG-109, TST-031
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -27,6 +30,7 @@ import {
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readlinkSync,
   rmSync,
   symlinkSync,
@@ -279,16 +283,17 @@ test("test_build_restores_snapshot_on_non_generated_path_collision", () => {
 
 /**
  * @brief Positive control: every relative import resolved must yield a successful release build.
- * @details Sandbox run with the tsup stub emitting `./chunk-ABC.js`. Expects exit 0, the chunk, and
- * no tarball or declaration file in `dist/`. Complexity O(build) plus one bash child.
+ * @details Sandbox run with the tsup stub emitting `./chunk-ABC.js`. Expects exit 0, the chunk, the
+ * release archive at `dist/<name>-<version>.tgz`, and no declaration file in `dist/`. Complexity
+ * O(build) plus one bash child.
  * @return {void} No value; assertions throw on a failed build condition.
  * @throws {AssertionError} When the build fails or expected artifacts are absent.
  * @satisfies PKG-069, PKG-070, PKG-074, PKG-102
  */
 test("test_build_succeeds_when_every_relative_import_resolves", () => {
   // PKG-069/PKG-070/PKG-102/PKG-074: every relative import resolves; the build exits 0, keeps the
-  // chunk in dist/, and leaves no tarball or declaration file in dist/. Positive control for the
-  // failing scenario above.
+  // chunk in dist/, persists the release archive there, and writes no declaration file. Positive
+  // control for the failing scenario above.
   // Arrange
   const sandbox = createSandbox();
   try {
@@ -297,8 +302,50 @@ test("test_build_succeeds_when_every_relative_import_resolves", () => {
     // Assert
     assert.equal(result.status, 0, `build must succeed when imports resolve; stderr: ${result.stderr}`);
     assert.equal(existsSync(join(sandbox.root, "dist", FIXTURE_CHUNK)), true, "chunk must remain in dist/");
-    assert.equal(existsSync(join(sandbox.root, "dist", FIXTURE_TARBALL)), false, "tarball must not be written into dist/ (PKG-102)");
+    assert.equal(existsSync(join(sandbox.root, "dist", FIXTURE_TARBALL)), true, "release archive must persist in dist/ (PKG-102)");
     assert.equal(existsSync(join(sandbox.root, "dist", "cli.d.ts")), false, "declaration files must not be written into dist/ (PKG-069)");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * @brief Archive contract: the release archive survives as the only tarball in `dist/`.
+ * @details Seeds a stale archive of another version plus a stale build state file, then runs the
+ * sandboxed build. Expects exit 0, `dist/<name>-<version>.tgz` present and readable by `tar` with
+ * the packed payload inside, exactly one `*.tgz` entry, the stale tarball and state file removed,
+ * the preserved-archive diagnostic emitted, and the private work directory removed (PKG-102,
+ * PKG-108, PKG-109). Complexity O(build) plus one bash child and one `tar` child.
+ * @return {void} No value; assertions throw when the archive contract is violated.
+ * @throws {AssertionError} When the archive is missing, duplicated, unreadable, or the stale
+ * intermediate artifacts survive.
+ * @satisfies PKG-070, PKG-102, PKG-108, PKG-109
+ */
+test("test_build_persists_release_archive_and_removes_intermediate_artifacts", () => {
+  // Arrange
+  const sandbox = createSandbox();
+  const distDir = join(sandbox.root, "dist");
+  const archivePath = join(distDir, FIXTURE_TARBALL);
+  const staleArchivePath = join(distDir, `${FIXTURE_NAME}-0.9.0.tgz`);
+  const staleStatePath = join(distDir, "release.tsbuildinfo");
+  try {
+    mkdirSync(distDir, { recursive: true });
+    writeFileSync(staleArchivePath, "stale archive of an earlier version\n");
+    writeFileSync(staleStatePath, "stale build state\n");
+    // Act
+    const result = runBuild(sandbox, true);
+    // Assert
+    assert.equal(result.status, 0, `build must succeed; stderr: ${result.stderr}`);
+    assert.equal(existsSync(archivePath), true, `release archive must persist at dist/${FIXTURE_TARBALL} (PKG-102)`);
+    const tarballs = readdirSync(distDir).filter((entry) => entry.endsWith(".tgz"));
+    assert.deepEqual(tarballs, [FIXTURE_TARBALL], "dist/ must hold exactly the current release archive (PKG-108)");
+    assert.equal(existsSync(staleArchivePath), false, "stale archive of an earlier version must be removed (PKG-108)");
+    assert.equal(existsSync(staleStatePath), false, "stale build state file must be removed (PKG-108)");
+    const listing = spawnSync("tar", ["-tzf", archivePath], { encoding: "utf8" });
+    assert.equal(listing.status, 0, `release archive must stay readable by tar (PKG-070): ${listing.stderr}`);
+    assert.equal(listing.stdout.includes("package/package.json"), true, "release archive must contain the packed payload");
+    assert.equal(result.stdout.includes("preserved release archive"), true, "final cleanup must report the preserved archive");
+    assert.equal(result.stdout.includes("temporary work directory removed"), true, "private work directory must be removed (PKG-109)");
   } finally {
     rmSync(sandbox.root, { recursive: true, force: true });
   }

@@ -20,13 +20,13 @@
 #  * 6. Preservation (PKG-071, PKG-072): every non-generated snapshot file absent from the
 #  *    new build is copied back into `dist/`. Generated files are never restored.
 #  * 7. Pack (PKG-070, PKG-102): `npm pack --ignore-scripts --json --pack-destination <private work
-#  *    directory>`; the tarball is never written into `dist/`. The tarball name MUST equal
-#  *    `<name>-<version>.tgz` from `package.json`; the tarball MUST be non-empty and readable by
-#  *    `tar`, then is removed before exit (PKG-102).
-#  * 8. Final cleanup (PKG-108, PKG-109): every intermediate artifact in `dist/` matching `*.tgz`,
-#  *    `*.tsbuildinfo`, or `*.tmp` of any version is removed and its emptied directories are pruned,
-#  *    then the private work directory is removed; the run fails when any intermediate artifact or the
-#  *    work directory survives.
+#  *    directory>` (outside `dist/`, so the archive never contains itself). The tarball name MUST equal
+#  *    `<name>-<version>.tgz` from `package.json`; the tarball MUST be non-empty and readable by `tar`,
+#  *    then is moved to `dist/<name>-<version>.tgz` as a persistent release artifact (PKG-102).
+#  * 8. Final cleanup (PKG-108, PKG-109): every intermediate artifact in `dist/` matching `*.tgz` of a
+#  *    different version, `*.tsbuildinfo`, or `*.tmp` is removed and its emptied directories are pruned;
+#  *    the current `dist/<name>-<version>.tgz` archive is preserved, then the private work directory is
+#  *    removed; the run fails when any other intermediate artifact or the work directory survives.
 #  * 9. Summary (PKG-074): path and byte size of every file in `dist/`.
 #  * Failure semantics (PKG-073): any failing phase exits non-zero. The EXIT trap then
 #  * restores the pre-run `dist/` snapshot, or removes `dist/` when none pre-existed, so a
@@ -34,9 +34,9 @@
 #  * @return Exit code 0 when every artifact is generated, verified, and the repository is left free of
 #  *         intermediate artifacts; 1 on failure; 129, 130, 143 on HUP, INT, TERM.
 #  * @pre Dependencies installed beforehand by the project package manager.
-#  * @post On success `dist/` contains the verified release artifacts only, no earlier-build artifact and
-#  *       no intermediate file survives, and the private work directory is removed; on failure `dist/`
-#  *       equals its pre-run state.
+#  * @post On success `dist/` contains the verified release artifacts, including the release archive
+#  *       `dist/<name>-<version>.tgz`, no other earlier-build artifact and no intermediate file survives,
+#  *       and the private work directory is removed; on failure `dist/` equals its pre-run state.
 #  * @note Runnable from any working directory (PKG-066); writes only under `dist/` and the OS temp directory.
 #  * @satisfies PKG-065, PKG-066, PKG-067, PKG-068, PKG-069, PKG-070, PKG-071, PKG-072, PKG-073, PKG-074,
 #  *            PKG-102, PKG-104, PKG-105, PKG-106, PKG-107, PKG-108, PKG-109
@@ -144,8 +144,9 @@ is_generated_output() {
 # /**
 #  * @brief Classifies one dist-relative path as an intermediate build artifact.
 #  * @details Intermediate subset of the PKG-072 generated set: `*.tgz`, `*.tsbuildinfo`, `*.tmp`.
-#  * These files never belong to the released artifact set, so the final cleanup (PKG-108) removes
-#  * them for every package version. Pure, O(1).
+#  * Callers MUST exempt the current release archive `dist/<name>-<version>.tgz` before applying this
+#  * classifier: every other tarball version, build state file, and temporary file never belongs to the
+#  * released artifact set and is removed by the final cleanup (PKG-108). Pure, O(1).
 #  * @param relative {string} Path relative to `dist/`.
 #  * @return {number} 0 when intermediate; 1 otherwise.
 #  */
@@ -317,10 +318,11 @@ clean_obsolete_build_artifacts() {
 
 # /**
 #  * @brief Final cleanup: removes every intermediate artifact left by this build from `dist/`.
-#  * @details Runs after every generation and verification step (PKG-108). Removes each `dist/` regular
-#  * file matching the intermediate subset `*.tgz`, `*.tsbuildinfo`, `*.tmp` for every package version
-#  * number, prunes emptied ancestor directories and `dist/` itself when empty (PKG-106), and keeps
-#  * every released artifact (`*.js` and its declaration/map siblings) plus every non-generated entry.
+#  * @details Runs after every generation and verification step (PKG-108). Preserves the current release
+#  * archive `dist/$TARBALL_NAME` (PKG-102), removes every other `dist/` regular file matching the
+#  * intermediate subset `*.tgz`, `*.tsbuildinfo`, `*.tmp` for every package version number, prunes
+#  * emptied ancestor directories and `dist/` itself when empty (PKG-106), and keeps every released
+#  * artifact (`*.js` and its declaration/map siblings) plus every non-generated entry.
 #  * Aborts with a FAILED diagnostic naming the failed entry when enumeration or removal fails
 #  * (PKG-107). Complexity O(n) in `dist/` entry count.
 #  * @return {void}
@@ -346,6 +348,10 @@ clean_intermediate_artifacts() {
   local removed_dirs=()
   while IFS= read -r -d '' path; do
     relative="${path#"$DIST_DIR"/}"
+    if [ -n "${TARBALL_NAME:-}" ] && [ "$relative" = "$TARBALL_NAME" ]; then
+      log "final cleanup: preserved release archive: $path"
+      continue
+    fi
     if ! is_intermediate_output "$relative"; then
       continue
     fi
@@ -372,7 +378,9 @@ clean_intermediate_artifacts() {
 # /**
 #  * @brief Verifies that no intermediate artifact survives in `dist/`.
 #  * @details Re-enumerates `dist/` after the final cleanup and aborts listing every path still
-#  * matching the intermediate subset (PKG-109). Read-only. Complexity O(n) in entry count.
+#  * matching the intermediate subset (PKG-109), ignoring the current release archive
+#  * `dist/$TARBALL_NAME` which is a legitimate release artifact (PKG-102). Read-only. Complexity O(n)
+#  * in entry count.
 #  * @return {void}
 #  * @throws {exit 1} Via `fail` naming the surviving paths.
 #  * @side_effect Writes the verification list inside the private work directory.
@@ -387,6 +395,9 @@ verify_no_intermediate_artifacts() {
   fi
   while IFS= read -r -d '' path; do
     relative="${path#"$DIST_DIR"/}"
+    if [ -n "${TARBALL_NAME:-}" ] && [ "$relative" = "$TARBALL_NAME" ]; then
+      continue
+    fi
     if is_intermediate_output "$relative"; then
       remaining="$remaining $path"
     fi
@@ -511,7 +522,7 @@ log "compile verified: $DIST_DIR/cli.js, $DIST_DIR/index.js, relative imports re
 # Preservation of non-generated dist/ entries (PKG-071, PKG-072).
 preserve_non_generated_entries
 
-# Pack (PKG-070, PKG-102): the tarball is packed into a private work directory outside dist/.
+# Pack (PKG-070, PKG-102): pack into a private work directory, verify, then publish into dist/.
 rm -f -- "$DIST_DIR"/*.tgz
 PACK_DIR="$WORKDIR/pack"
 mkdir -p "$PACK_DIR"
@@ -528,8 +539,13 @@ fi
 if ! tar -tzf "$PACK_DIR/$TARBALL_NAME" >/dev/null; then
   fail "tarball not readable by tar: $PACK_DIR/$TARBALL_NAME"
 fi
-rm -f -- "$PACK_DIR/$TARBALL_NAME"
-log "pack verified: $TARBALL_NAME (private work directory)"
+if ! mv -f -- "$PACK_DIR/$TARBALL_NAME" "$DIST_DIR/$TARBALL_NAME"; then
+  fail "could not place the release archive in $DIST_DIR/: $TARBALL_NAME"
+fi
+if [ ! -s "$DIST_DIR/$TARBALL_NAME" ]; then
+  fail "release archive missing or empty: $DIST_DIR/$TARBALL_NAME"
+fi
+log "pack verified: $DIST_DIR/$TARBALL_NAME (release artifact)"
 
 # Final cleanup (PKG-108, PKG-109): no intermediate artifact and no work directory may survive.
 clean_intermediate_artifacts

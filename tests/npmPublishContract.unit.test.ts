@@ -15,7 +15,9 @@
  * guard); packed paths restricted to allowlisted runtime prefixes plus npm-invariant
  * metadata files while excluding tests, local configuration, secret files, and skills
  * authoring documentation, with every `src/resources/skills/` entry limited to
- * `manifest.json` or a `<skill-id>/` file (PKG-038, PKG-075);
+ * `manifest.json` or a `<skill-id>/` file (PKG-038, PKG-075); the `files` negation
+ * `!dist/*.tgz` excluding the repository-tracked release archive from the packed payload
+ * and no packed `dist/*.tgz` entry in the dry-run listing (PKG-116);
  * no `private: true` publication blocker (PKG-039); registry-valid package name shared by
  * both manifests (PKG-040); the npm `prepare` lifecycle hook declared so git-source
  * installs (develop channel `npm install -g github:...#<tag>`, REQ-171) build `dist/`
@@ -25,7 +27,7 @@
  * variability (built `dist/**` presence) stays inside the allowlisted `dist/` prefix.
  * @note HDT level 0 (atomic): no internal call-graph dependencies; external npm child
  * invocation is isolated (offline `--dry-run`, bounded by an explicit timeout).
- * @satisfies PKG-033, PKG-034, PKG-035, PKG-036, PKG-037, PKG-038, PKG-039, PKG-040, PKG-075, PRJ-020, PRJ-021, REQ-171, TST-021
+ * @satisfies PKG-033, PKG-034, PKG-035, PKG-036, PKG-037, PKG-038, PKG-039, PKG-040, PKG-075, PKG-116, PRJ-020, PRJ-021, REQ-171, TST-021
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -232,8 +234,8 @@ test("test_exports_map_targets_built_esm_entry", () => {
 });
 
 test("test_files_allowlist_ships_changelog_and_runtime_assets", () => {
-  // PKG-036: the files allowlist declares CHANGELOG.md plus every runtime
-  // asset prefix required by the published package.
+  // PKG-036/PKG-116: the files allowlist declares CHANGELOG.md plus every runtime
+  // asset prefix required by the published package, and negates the tracked release archive.
   // Arrange
   const manifest = loadPackageManifest();
   // Act
@@ -243,6 +245,11 @@ test("test_files_allowlist_ships_changelog_and_runtime_assets", () => {
     assert.equal(files.includes(required), true, `files allowlist must include "${required}"`);
   }
   assert.equal(files.includes("docs"), false, 'files allowlist must not include "docs" (PKG-038: non-runtime)');
+  assert.equal(
+    files.includes("!dist/*.tgz"),
+    true,
+    'files allowlist must negate the tracked release archive with "!dist/*.tgz" (PKG-116, PKG-093)'
+  );
 });
 
 /**
@@ -355,9 +362,9 @@ test("test_prepare_lifecycle_script_builds_dist_for_git_source_packs", () => {
 });
 
 test("test_packed_tarball_contents_follow_allowlist_policy", () => {
-  // PKG-038: every packed path stays inside the allowlist (invariants plus
+  // PKG-038/PKG-116: every packed path stays inside the allowlist (invariants plus
   // runtime prefixes); invariant metadata is present; tests, local
-  // configuration, lockfile, and secret-looking files are excluded.
+  // configuration, lockfile, secret-looking files, and the tracked release archive are excluded.
   // Arrange
   const forbiddenPrefixes = ["tests/", "usereq/", "scripts/", ".github/", ".git", "docs/"];
   const forbiddenFiles = new Set([
@@ -387,6 +394,11 @@ test("test_packed_tarball_contents_follow_allowlist_policy", () => {
     for (const pattern of secretPatterns) {
       assert.equal(pattern.test(path), false, `packed path "${path}" looks like a secret file (PKG-038)`);
     }
+    assert.equal(
+      path.endsWith(".tgz"),
+      false,
+      `packed path "${path}" is a package archive nested in its own payload (PKG-093, PKG-116)`
+    );
     assert.equal(path.endsWith(".map"), false, `packed path "${path}" is a source map, non-runtime (PKG-038)`);
     if (path.startsWith(SKILLS_ROOT_PREFIX)) {
       assert.equal(

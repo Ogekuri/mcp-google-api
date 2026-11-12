@@ -14,12 +14,13 @@
  *          (3) every `bin`, `main`, and `exports` target present in the tarball (PKG-076); (4) every
  *          skill `path` and `debug` entry of the packed `src/resources/skills/manifest.json` present
  *          (PKG-077); (5) byte equality between every packed `dist/` file and the repository `dist/`
- *          tree, in both directions so stale or missing files are reported (PKG-078); (6) `node --check`
+ *          tree, with the reverse pass reporting stale or missing files while exempting the
+ *          repository release archive `dist/*.tgz` excluded from the payload by PKG-116 (PKG-078); (6) `node --check`
  *          on the packed `dist/cli.js` and `dist/index.js` (PKG-079); (7) execution of the repository
  *          `dist/cli.js --help` with exit 0 and `mcp-google-api` on stdout (PKG-079). Every failed check
  *          is collected and reported; the process exits 1 when any check fails.
  *          Complexity: O(E + F) where E is the tarball entry count and F the packed file byte total.
- * @satisfies PKG-038, PKG-075, PKG-076, PKG-077, PKG-078, PKG-079, PKG-093, PKG-103
+ * @satisfies PKG-038, PKG-075, PKG-076, PKG-077, PKG-078, PKG-079, PKG-093, PKG-103, PKG-116
  * @note Writes only under the OS temp directory (packed tarball and extraction, removed in `finally`). No network access,
  *       no dependency installation, no publication. stdout carries per-check `ok:` lines; stderr carries
  *       `FAILED:` diagnostics.
@@ -336,7 +337,9 @@ function listDirectoryFiles(root) {
  * @brief Verifies that the packed `dist/` tree and the repository `dist/` tree are byte-identical.
  * @details Forward pass: every packed `dist/` file MUST exist in the repository and match byte for
  * byte (PKG-078). Reverse pass: every repository `dist/` file MUST
- * be packed, so stale or unpacked outputs are reported (PKG-078). Complexity O(F) in packed bytes.
+ * be packed, so stale or unpacked outputs are reported (PKG-078), except the release archive
+ * `dist/*.tgz` which PKG-116 deliberately excludes from the packed payload (PKG-093 keeps
+ * rejecting any packed tarball). Complexity O(F) in packed bytes.
  * @param packageDir {string} Extracted `package/` directory.
  * @param files {string[]} Relative packed file paths.
  * @return {void}
@@ -357,6 +360,9 @@ function checkDistIdentity(packageDir, files) {
     }
   }
   for (const file of listDirectoryFiles(repoDist).map((name) => `dist/${name}`)) {
+    if (file.endsWith(".tgz")) {
+      continue;
+    }
     if (!packedDist.includes(file)) {
       recordFailure(`repository dist/ file not packed (stale or unpacked output, PKG-078): ${file}`);
     }
