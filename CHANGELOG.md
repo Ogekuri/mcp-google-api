@@ -1,12 +1,17 @@
 # Changelog
 
-## [0.26.3](https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.3) - 2026-11-12
+## [0.26.4](https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.4) - 2026-11-12
 ### ⛰️  Features
 - Update gitalias config.
 - add scripts/clean.sh build-artifact cleaner [useReq] *(clean)*
   PKG-094..PKG-101 new: standalone cwd-independent cleaner removing exactly the PKG-072 generated dist/ files, pruning emptied ancestor directories including dist/ itself, preserving non-generated entries and symlinks, idempotent absent-dist no-op, PASS/FAILED reporting, no install/publish/destructive-git; scripts/clean.sh new: EXIT-trapped temp list, NUL-delimited sweep, deepest-first rmdir pruning; TST-030 new: tests/cleanScript.unit.test.ts, 2 static + 6 sandbox tests (8 total); SRS 1.2 tree line updated for scripts/clean.sh
 
 ### 🐛  Bug Fixes
+- restore dist bundle without a compiler toolchain [useReq] *(prepare-lifecycle)*
+  Defect: develop-channel 'npm install -g github:...#<tag>' aborts during git-dep preparation with 'sh: 1: tsup: not found' (exit 127), because npm runs the root prepare hook before node_modules/.bin links exist.
+  Fix: package.json prepare now runs tools/prepare-dist.mjs, which no-ops on an existing dist/cli.js, otherwise unpacks package/dist/cli.js from the committed release tarball, and falls back to the build lifecycle only when no tarball exists; missing sources abort with remediation.
+  Tests: new prepareDist suite (4 sandboxed/static cases) reproduces the compiler-less prepare and pins tarball precedence; npmPublishContract prepare assertion updated.
+  Docs: usereq/docs/WORKFLOW.md EDGE-09 prepare path. Requirements unchanged.
 - Remove dist/ files.
 - Remove build artifacts.
 - Preserve non-generated dist entries [useReq] *(build)*
@@ -666,7 +671,7 @@
 - \[0.24.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.24.0
 - \[0.25.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.25.0
 - \[0.26.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.26.0
-- \[0.26.3\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.26.3
+- \[0.26.4\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.26.4
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.2.0..v0.3.0
@@ -692,4 +697,4 @@
 [0.24.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.23.0..v0.24.0
 [0.25.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.24.0..v0.25.0
 [0.26.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.25.0..v0.26.0
-[0.26.3]: https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.3
+[0.26.4]: https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.4
