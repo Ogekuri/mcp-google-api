@@ -4,7 +4,9 @@
  * @brief Release artifact validator for the npm tarball packed from the repository (PKG-075..PKG-079).
  * @details Packs the repository into a private temp directory outside `dist/` (PKG-103), then validates the packed tarball and the repository `dist/` tree offline, in this
  *          order: (1) tarball listing against the npm-invariant plus runtime-prefix allowlist, the
- *          required entry set (PKG-075), the rejection of every packed `dist/*.tgz` entry so a
+ *          required entry set (PKG-075), the rejection of every packed `src/` entry outside the
+ *          packaged skills payload so repository sources never become release artifacts (PKG-125,
+ *          PKG-127), the rejection of every packed `dist/*.tgz` entry so a
  *          repository-tracked release tarball is never nested inside a newly packed package (PKG-093),
  *          and the rejection of every `src/resources/skills/` entry that is not `manifest.json` or a
  *          file inside a `<skill-id>/` directory, so skills authoring documentation never ships
@@ -20,7 +22,7 @@
  *          `dist/cli.js --help` with exit 0 and `mcp-google-api` on stdout (PKG-079). Every failed check
  *          is collected and reported; the process exits 1 when any check fails.
  *          Complexity: O(E + F) where E is the tarball entry count and F the packed file byte total.
- * @satisfies PKG-038, PKG-075, PKG-076, PKG-077, PKG-078, PKG-079, PKG-093, PKG-103, PKG-116
+ * @satisfies PKG-038, PKG-075, PKG-076, PKG-077, PKG-078, PKG-079, PKG-093, PKG-103, PKG-116, PKG-125, PKG-127
  * @note Writes only under the OS temp directory (packed tarball and extraction, removed in `finally`). No network access,
  *       no dependency installation, no publication. stdout carries per-check `ok:` lines; stderr carries
  *       `FAILED:` diagnostics.
@@ -53,6 +55,9 @@ const ALLOWED_PREFIXES = ["bin/", "dist/", "src/resources/skills/"];
 
 /** Skills-root payload prefix; only the manifest and `<skill-id>/` files may live here (PKG-038, PKG-075). */
 const SKILLS_ROOT_PREFIX = "src/resources/skills/";
+
+/** Repository source prefix whose entries are build inputs, never release artifacts (PKG-125, PKG-127). */
+const SOURCES_PREFIX = "src/";
 
 /** Sole file permitted directly under the skills root; every other skills-root entry is a skill directory (PKG-075). */
 const SKILLS_ROOT_MANIFEST = `${SKILLS_ROOT_PREFIX}manifest.json`;
@@ -188,9 +193,26 @@ function isPackagedSkillPayload(file) {
 }
 
 /**
- * @brief Verifies the packed file set against the invariant, prefix allowlist, required entries, and the nested-tarball guard.
+ * @brief Classifies one packed path as a repository source file outside the packaged skills payload.
+ * @details True for every packed entry under `src/` that does not live under `src/resources/skills/`.
+ * The release artifact is the npm tarball built from the `dist/` artifacts (PKG-125), so repository
+ * sources MUST never enter the payload; only the packaged skills subtree is a runtime asset
+ * (PKG-024, PKG-127). Pure; complexity O(n) in path length.
+ * @param file {string} Relative packed file path.
+ * @return {boolean} True when the entry ships a repository source file.
+ * @satisfies PKG-125, PKG-127
+ */
+function isUnpackagedSource(file) {
+  return file.startsWith(SOURCES_PREFIX) && !file.startsWith(SKILLS_ROOT_PREFIX);
+}
+
+/**
+ * @brief Verifies the packed file set against the invariant, prefix allowlist, required entries, source exclusion, and the nested-tarball guard.
  * @details Each packed path MUST equal an invariant file or start with an allowed prefix (PKG-075).
- * Each required entry MUST be present (PKG-075). Every packed `src/resources/skills/` entry MUST be
+ * Each required entry MUST be present (PKG-075). Every packed `src/` entry outside
+ * `src/resources/skills/` MUST be rejected with a diagnostic naming the entry, because the release
+ * artifact is the npm tarball built from `dist/` and repository sources are inputs only (PKG-125,
+ * PKG-127). Every packed `src/resources/skills/` entry MUST be
  * the manifest or a file inside a `<skill-id>/` directory, so skills authoring documentation resident in
  * the repository is never published (PKG-038, PKG-075). Every packed `dist/` entry matching `*.tgz` MUST be
  * rejected: with `dist/` version-controlled (PKG-091), a stale repository-tracked release tarball could
@@ -199,13 +221,16 @@ function isPackagedSkillPayload(file) {
  * @param files {string[]} Relative packed file paths.
  * @return {void}
  * @side_effect Calls `recordFailure` per violation.
+ * @satisfies PKG-038, PKG-075, PKG-093, PKG-125, PKG-127
  */
 function checkStructure(files) {
   const failuresBefore = failures.length;
   const fileSet = new Set(files);
   for (const file of files) {
-    const allowed = INVARIANT_FILES.has(file) || ALLOWED_PREFIXES.some((prefix) => file.startsWith(prefix));
-    if (!allowed) {
+    const unpackagedSource = isUnpackagedSource(file);
+    if (unpackagedSource) {
+      recordFailure(`repository source packed as a release artifact (PKG-127): ${file}`);
+    } else if (!INVARIANT_FILES.has(file) && !ALLOWED_PREFIXES.some((prefix) => file.startsWith(prefix))) {
       recordFailure(`packed path outside publication allowlist (PKG-038, PKG-075): ${file}`);
     }
     if (file.startsWith("dist/") && file.endsWith(".tgz")) {
@@ -221,7 +246,7 @@ function checkStructure(files) {
     }
   }
   if (failures.length === failuresBefore) {
-    recordOk(`tarball structure: ${files.length} files, allowlist and required entries satisfied`);
+    recordOk(`tarball structure: ${files.length} files, allowlist, required entries, and source exclusion satisfied`);
   }
 }
 

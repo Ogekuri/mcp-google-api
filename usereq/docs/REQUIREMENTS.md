@@ -214,6 +214,10 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-120**: The `build` and `prepare` lifecycles MUST abort non-zero before removing any `dist/` entry when `node_modules/.bin/tsup` is absent.
 - **PKG-121**: The `build` and `prepare` lifecycles MUST restore the pre-run generated `dist/` outputs and exit non-zero when the compile step fails.
 - **PKG-122**: The `build` and `prepare` lifecycles MUST NOT leave the tracked `dist/` runtime bundle absent after any run.
+- **PKG-125**: The release pipeline MUST execute the ordered chain repository sources, `scripts/build.sh`, verified `dist/` artifacts, `npm pack` tarball, then published package.
+- **PKG-126**: The GitHub Release MUST attach exactly one asset, the packed npm tarball `dist/<name>-<version>.tgz` built from the repository sources.
+- **PKG-127**: `tools/check-release-artifacts.mjs` MUST report a release failure naming every packed `src/` entry outside `src/resources/skills/`, because repository sources are not release artifacts.
+- **PKG-128**: The release workflow MUST verify exactly one packed `*.tgz` artifact and zero source-archive artifacts before creating the GitHub Release.
 
 ## 3. Requirements
 

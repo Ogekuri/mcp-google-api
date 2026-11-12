@@ -122,6 +122,25 @@ jobs:
       - name: Validate release artifacts
         run: node tools/check-release-artifacts.mjs
 
+      # Release asset set (PKG-126, PKG-128): the release publishes exactly the
+      # one npm tarball packed from the built `dist/` artifacts committed in
+      # the tagged release commit. Repository sources are build inputs, never
+      # release artifacts, so no source archive may accompany the tarball.
+      - name: Verify release asset set
+        run: |
+          tarballs="$(find . -maxdepth 1 -type f -name '*.tgz' -print)"
+          tarball_count="$(printf '%s' "${tarballs}" | grep -c . || true)"
+          if [ "${tarball_count}" -ne 1 ]; then
+            echo "::error::Expected exactly one packed npm tarball (*.tgz) as the release asset, found ${tarball_count} (PKG-126, PKG-128)."
+            exit 1
+          fi
+          source_archives="$(find . -maxdepth 1 -type f \( -name '*.zip' -o -name '*.tar' -o -name '*.tar.gz' \) -print)"
+          if [ -n "${source_archives}" ]; then
+            echo "::error::Repository sources are not release artifacts; release asset set must hold only the npm tarball (PKG-126, PKG-128): ${source_archives}"
+            exit 1
+          fi
+          echo "Release asset set verified: ${tarballs}"
+
       # npm publish runs only when the branch gate resolved the tag as
       # reachable from origin/master (PKG-042); develop-only tags skip this
       # step and complete the release without npm publication (PKG-043).
