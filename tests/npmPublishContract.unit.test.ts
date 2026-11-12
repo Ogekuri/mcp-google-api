@@ -20,8 +20,9 @@
  * single runtime bundle `dist/cli.js` (PKG-078); no `private: true` publication blocker
  * (PKG-039); registry-valid package name shared by both manifests (PKG-040); the npm `prepare`
  * lifecycle hook declared so git-source installs (develop channel
- * `npm install -g github:...#<tag>`, REQ-171) build `dist/` into the packed tarball, keeping the
- * installed bin executable per PRJ-020/PRJ-021 without chained dependency installs (PKG-019).
+ * `npm install -g github:...#<tag>`, REQ-171) materialize `dist/` into the packed tarball without a
+ * compiler toolchain, keeping the installed bin executable per PRJ-020/PRJ-021 without chained
+ * dependency installs (PKG-019).
  * Deterministic by construction: every input is a tracked, immutable-at-test-time repository file
  * or a local child-process listing whose only variability (built `dist/**` presence) stays inside
  * the allowlisted `dist/` prefix.
@@ -334,12 +335,13 @@ test("test_package_name_is_registry_valid", () => {
   assert.equal(lockfile.name, name);
 });
 
-test("test_prepare_lifecycle_script_builds_dist_for_git_source_packs", () => {
+test("test_prepare_lifecycle_script_provides_dist_for_git_source_packs", () => {
   // PRJ-020/PRJ-021/REQ-171: develop-channel installs pack the fetched git tree via
-  // `npm install -g github:Ogekuri/mcp-google-api#<tag>`; npm builds the package only
-  // through the `prepare` lifecycle hook during git-dep preparation. Without it the
-  // packed tarball ships no `dist/` subtree (evidence: v0.22.4 pack listing) and the
-  // installed bin fails with the PRJ-021 remediation error.
+  // `npm install -g github:Ogekuri/mcp-google-api#<tag>`; npm runs the package `prepare`
+  // lifecycle during git-dep preparation, before `node_modules/.bin` links exist. Without
+  // a dist-providing prepare the packed tarball ships no `dist/` subtree (evidence: v0.22.4
+  // pack listing) and the installed bin fails with the PRJ-021 remediation error; a
+  // compiler-backed prepare fails harder with `tsup: not found` (exit 127).
   // Arrange
   const manifest = loadPackageManifest();
   const scripts: Record<string, unknown> =
@@ -348,11 +350,11 @@ test("test_prepare_lifecycle_script_builds_dist_for_git_source_packs", () => {
   const raw = scripts.prepare;
   const prepare = typeof raw === "string" ? raw.trim() : "";
   // Assert
-  const expected_output = "npm run build";
+  const expected_output = "node tools/prepare-dist.mjs";
   assert.equal(
     prepare,
     expected_output,
-    "package.json must define scripts.prepare building dist/ so git-source installs pack a runnable artifact (PRJ-020, REQ-171)",
+    "package.json must define scripts.prepare providing dist/ so git-source installs pack a runnable artifact without a compiler toolchain (PRJ-020, REQ-171)",
   );
   assert.equal(
     /\bnpm\s+(ci|install)\b/.test(prepare),
