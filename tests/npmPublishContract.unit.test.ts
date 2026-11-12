@@ -13,7 +13,9 @@
  * allowlist (PKG-036); package-lock.json root `name`/`version` identity with package.json
  * (PKG-037) plus root `bin` launcher-map identity with package.json (PRJ-020 regression
  * guard); packed paths restricted to allowlisted runtime prefixes plus npm-invariant
- * metadata files while excluding tests, local configuration, and secret files (PKG-038);
+ * metadata files while excluding tests, local configuration, secret files, and skills
+ * authoring documentation, with every `src/resources/skills/` entry limited to
+ * `manifest.json` or a `<skill-id>/` file (PKG-038, PKG-075);
  * no `private: true` publication blocker (PKG-039); registry-valid package name shared by
  * both manifests (PKG-040); the npm `prepare` lifecycle hook declared so git-source
  * installs (develop channel `npm install -g github:...#<tag>`, REQ-171) build `dist/`
@@ -23,7 +25,7 @@
  * variability (built `dist/**` presence) stays inside the allowlisted `dist/` prefix.
  * @note HDT level 0 (atomic): no internal call-graph dependencies; external npm child
  * invocation is isolated (offline `--dry-run`, bounded by an explicit timeout).
- * @satisfies PKG-033, PKG-034, PKG-035, PKG-036, PKG-037, PKG-038, PKG-039, PKG-040, PRJ-020, PRJ-021, REQ-171, TST-021
+ * @satisfies PKG-033, PKG-034, PKG-035, PKG-036, PKG-037, PKG-038, PKG-039, PKG-040, PKG-075, PRJ-020, PRJ-021, REQ-171, TST-021
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -56,6 +58,12 @@ const PACK_ALLOWED_INVARIANTS: ReadonlySet<string> = new Set([
 
 /** Pack allowlist: directory prefixes whose contents are runtime-shippable (PKG-038); docs/ is non-runtime and excluded. */
 const PACK_ALLOWED_PREFIXES: readonly string[] = ["bin/", "dist/", "src/resources/"]; // "bin/" ships the installed-bin launcher (PRJ-020, PRJ-021)
+
+/** Skills-root payload prefix: only the manifest and `<skill-id>/` files are runtime payload (PKG-024, PKG-075). */
+const SKILLS_ROOT_PREFIX = "src/resources/skills/";
+
+/** Sole file permitted directly under the skills root; every other root entry is authoring documentation. */
+const SKILLS_ROOT_MANIFEST = `${SKILLS_ROOT_PREFIX}manifest.json`;
 
 /** Minimal shape of one `npm pack --json` entry. */
 interface PackEntry {
@@ -151,6 +159,22 @@ function packDryRunPaths(): string[] {
  */
 function isAllowedPackPath(path: string): boolean {
   return PACK_ALLOWED_INVARIANTS.has(path) || PACK_ALLOWED_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+/**
+ * @brief Classifies one packed skills-root path as runtime payload.
+ * @details True for the skills manifest and for any file inside a `<skill-id>/` directory; root-level
+ * authoring documents are not runtime payload and MUST NOT be published (PKG-038, PKG-075). Pure;
+ * complexity O(n) in path length.
+ * @param path {string} Packed tarball path.
+ * @return {boolean} True when the entry is skills runtime payload.
+ */
+function isSkillsRuntimePayload(path: string): boolean {
+  if (path === SKILLS_ROOT_MANIFEST) {
+    return true;
+  }
+  const segments = path.slice(SKILLS_ROOT_PREFIX.length).split("/");
+  return segments.length >= 2 && segments.every((segment) => segment.length > 0);
 }
 
 test("test_package_json_declares_current_spdx_license_id", () => {
@@ -355,9 +379,21 @@ test("test_packed_tarball_contents_follow_allowlist_policy", () => {
       assert.equal(pattern.test(path), false, `packed path "${path}" looks like a secret file (PKG-038)`);
     }
     assert.equal(path.endsWith(".map"), false, `packed path "${path}" is a source map, non-runtime (PKG-038)`);
+    if (path.startsWith(SKILLS_ROOT_PREFIX)) {
+      assert.equal(
+        isSkillsRuntimePayload(path),
+        true,
+        `packed skills entry "${path}" must be manifest.json or a <skill-id>/ file (PKG-038, PKG-075)`
+      );
+    }
   }
   for (const invariant of PACK_ALLOWED_INVARIANTS) {
     assert.equal(paths.includes(invariant), true, `tarball must ship invariant file "${invariant}"`);
   }
   assert.equal(paths.some((path) => path.startsWith("src/resources/")), true, "tarball must ship skills");
+  assert.equal(
+    paths.includes(`${SKILLS_ROOT_PREFIX}README.md`),
+    false,
+    "skills authoring guide must not be packed (PKG-038, PKG-075)"
+  );
 });

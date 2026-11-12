@@ -30,7 +30,7 @@
   - Server modes: HTTP mode persists via `app.listen(port, host)`; stdio mode persists via `StdioServerTransport` holding the stdin stream open. No signal handlers are registered in `src/`; server modes stop only when the transport closes or the process is killed. `BaseMcpServer.stopHttpServer()` is the internal HTTP stop path but is not wired to any entrypoint in `src/`.
   - CLI modes: run handler to completion; exit code set via `process.exitCode` (exec, doctor) or `process.exit(...)` (batch-geocode).
   - Loops/blocks: event loop blocks on stdin (stdio mode) or on the listening HTTP socket (HTTP mode); tool calls await outbound HTTPS requests; per-session state kept in `BaseMcpServer.sessions` (in-memory).
-  - Resources: `src/resources/skills/**` (`manifest.json`, `README.md`, `<skill-id>/SKILL.md`, `<skill-id>/DEBUG.md`) are inert LLM-agent instruction assets; no runtime module under `src/` imports them; they introduce no execution units, call-trace nodes, or communication edges. Debug overlays are install-time content only.
+  - Resources: `src/resources/skills/**` (`manifest.json`, `<skill-id>/SKILL.md`, `<skill-id>/DEBUG.md`) are inert LLM-agent instruction assets; the authoring guide lives in `docs/SKILLS_AUTHORING.md` and is never packed; no runtime module under `src/` imports these resources; they introduce no execution units, call-trace nodes, or communication edges. Debug overlays are install-time content only.
 
 - Internal Call-Trace Tree:
 

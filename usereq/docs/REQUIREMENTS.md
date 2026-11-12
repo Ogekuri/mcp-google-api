@@ -24,7 +24,7 @@ Project file/folder structure (evidence: repository tree):
 mcp-google-api/
 ├── .github/workflows/           # GitHub Actions: release-npm.yml (tag release from committed dist/ artifacts)
 ├── bin/                         # mcp-google-api.mjs installed-bin launcher
-├── docs/                        # Usage docs (CONFIGURATION.md, TOOLS.md)
+├── docs/                        # Usage docs (CONFIGURATION.md, TOOLS.md, SKILLS_AUTHORING.md)
 ├── scripts/                     # mcp-google-api.sh launcher + build.sh release artifacts and obsolete-build cleaner + pre-release-check.sh release gate
 ├── tools/                       # check-publish-version.mjs publish guard + check-release-artifacts.mjs artifact validator
 ├── src/
@@ -41,7 +41,7 @@ mcp-google-api/
 │   ├── tools/
 │   │   └── maps/                # 18 MCP tool modules (NAME/DESCRIPTION/SCHEMA/ACTION)
 │   ├── resources/
-│   │   └── skills/              # LLM agent skills: manifest.json, README.md, <skill-id>/SKILL.md, <skill-id>/DEBUG.md
+│   │   └── skills/              # LLM agent skills: manifest.json, <skill-id>/SKILL.md, <skill-id>/DEBUG.md
 │   └── utils/
 │       ├── apiKeyManager.ts     # ApiKeyManager singleton (key resolution priority)
 │       ├── autoUpdate.ts        # npm registry update check (stderr-only)
@@ -79,7 +79,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PRJ-009**: MUST provide machine-readable tool/API dependency profiles covering all 18 tools, including the tool dependencies of composite tools.
 - **PRJ-010**: MUST provide a `snippet` CLI command that prints valid MCP-client registration snippets without modifying any client configuration file.
 - **PRJ-012**: MUST ship LLM agent skills as self-contained English `SKILL.md` resources under `src/resources/skills/<skill-id>/`, exactly one skill per directory, plus an optional `<skill-id>/DEBUG.md` debug overlay.
-- **PRJ-013**: MUST maintain `src/resources/skills/manifest.json` indexing every skill (id, name, version, language, path, description, optional `debug` overlay path) plus `src/resources/skills/README.md` authoring conventions enabling new skills without source-code changes.
+- **PRJ-013**: MUST maintain `src/resources/skills/manifest.json` indexing every skill (id, name, version, language, path, description, optional `debug` overlay path) plus `docs/SKILLS_AUTHORING.md` authoring conventions enabling new skills without source-code changes.
 - **PRJ-014**: MUST ship the `eatspot-discovery` skill dedicated to discovering bars, pastry shops, restaurants, cafes, and bakeries.
 - **PRJ-016**: MUST identify the distribution package, bin, CLI script name, and user-facing messages as `mcp-google-api` with no references to the superseded `mcp-google-map` name.
 - **PRJ-017**: MUST scope the server to Google APIs at large, with Google Maps as the currently implemented API family (PRJ-001).
@@ -122,7 +122,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-019**: MUST provide a single `npm run verify` pipeline (typecheck, unit tests, build) and keep helper scripts other than the PRJ-018 development launcher free of implicit chained install/build steps.
 - **PKG-022**: MUST keep every documented example consistent with supported CLI flags, headers, and transports.
 - **PKG-023**: MUST document `enable`, `disable`, `install`, `uninstall`, and `show` commands with supported CLI targets in README.md.
-- **PKG-024**: MUST ship `src/resources/skills` inside the published npm package so `install` and `show` resolve manifest skills from installed packages.
+- **PKG-024**: MUST ship the packaged skills payload, `src/resources/skills/manifest.json` plus every `<skill-id>/` content file and declared debug overlay, inside the published npm package so `install` and `show` resolve manifest skills from installed packages.
 - **PKG-025**: MUST document the `api-key` command as the only API-key configuration path and the stdio startup key guard in README.md.
 - **PKG-026**: MUST restrict GitHub Actions to packing and publishing the release artifacts committed in the tagged commit, triggered by a version tag passing the branch gate (PKG-008, PKG-009).
 - **PKG-027**: MUST run the release pipeline (branch gate, artifact packing, publish, changelog, GitHub Release) in exactly one workflow job with no parallel or separate release jobs.
@@ -136,7 +136,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-035**: MUST define a `package.json` `exports` map with `.` targeting `./dist/index.js` and `./package.json` targeting `./package.json`, keeping `main` consistent with the `.` target.
 - **PKG-036**: MUST include `CHANGELOG.md` in the published tarball via the `package.json` `files` allowlist.
 - **PKG-037**: MUST keep the `package-lock.json` root `name` and `version` fields identical to the `package.json` values.
-- **PKG-038**: MUST restrict packed tarball contents to allowlisted runtime paths plus npm-invariant metadata files, excluding tests, local configuration, and secret files.
+- **PKG-038**: MUST restrict packed tarball contents to allowlisted runtime paths plus npm-invariant metadata files, excluding tests, local configuration, secret files, and skills authoring documentation.
 - **PKG-039**: MUST NOT declare `"private": true` in `package.json`, keeping the package publishable under npm registry policy.
 - **PKG-040**: MUST declare one registry-valid package name (lowercase, URL-safe, max 214 characters) in `package.json` and `package-lock.json`.
 - **PKG-041**: MUST run GitHub Actions workflow steps on the Node.js 24 runner runtime using action versions built for Node.js 24.
@@ -172,7 +172,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-072**: `scripts/build.sh` MUST classify as generated every file in `dist/` matching `*.js`, `*.js.map`, `*.d.ts`, `*.d.ts.map`, `*.tgz`, `*.tsbuildinfo`, or `*.tmp`; every other entry is non-generated.
 - **PKG-073**: `scripts/build.sh` MUST restore the pre-run content of `dist/` and exit non-zero when any build phase fails, so a failed build never leaves a partial output set.
 - **PKG-074**: `scripts/build.sh` MUST print the path and byte size of every artifact in `dist/` on success, and MUST exit 0 only after every generation and verification step passes.
-- **PKG-075**: `tools/check-release-artifacts.mjs` MUST validate the packed tarball contents: every entry MUST be an npm invariant file or lie under an allowlisted runtime prefix (PKG-038); required entries MUST exist.
+- **PKG-075**: `tools/check-release-artifacts.mjs` MUST validate the packed tarball contents: every entry MUST be an npm invariant file or lie under an allowlisted runtime prefix (PKG-038), and `src/resources/skills/` entries MUST be `manifest.json` or files inside a `<skill-id>/` directory; required entries MUST exist.
 - **PKG-076**: `tools/check-release-artifacts.mjs` MUST verify that the tarball `package/package.json` `name` and `version` equal the repository `package.json` values and that every `bin`, `main`, and `exports` target exists in the tarball.
 - **PKG-077**: `tools/check-release-artifacts.mjs` MUST verify that every skill `path` and `debug` entry of the packed `src/resources/skills/manifest.json` resolves to an existing packed file.
 - **PKG-078**: `tools/check-release-artifacts.mjs` MUST verify that every packed `dist/` file is byte-identical to its counterpart in the repository `dist/` directory.
@@ -513,7 +513,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-018**: MUST verify REQ-152/REQ-154/REQ-155/REQ-156/REQ-157/REQ-158 by running `npm test` (`tests/skillDebugInstall.unit.test.ts`): temp-directory installs assert plain mode excludes the debug file, debug mode appends it once across reruns, and `show` reports OK for both modes.
 - **TST-019**: MUST verify REQ-153/REQ-160 by running `npm test` (`tests/eatspotSkillContract.unit.test.ts`): the packaged `SKILL.md` carries no debug section while the packaged debug file carries the register, capture, and provenance rules.
 - **TST-020**: MUST verify PKG-008/PKG-009/PKG-010/PKG-012/PKG-026/PKG-027/PKG-028/PKG-029/PKG-030/PKG-031/PKG-032/PKG-042/PKG-043/PKG-110/PKG-111/PKG-112/PKG-113 by running `npm test` (`tests/ciContract.unit.test.ts`): `.github/workflows/ci.yml` is absent, the single release job resolves master and develop reachability before any pack or publish step, fails on neither-branch tags, executes no dependency install, no build command, no build script, no pre-release gate, and no typecheck or test stage, packs the committed `dist/` artifacts with lifecycle scripts disabled, validates them before publish and release creation, gates `npm publish` on master reachability while develop-only tags pack and release without publishing, and publish authenticates via OIDC Trusted Publishing with `id-token: write`, no `NPM_TOKEN`/`NODE_AUTH_TOKEN`, and npm >= 11.5.1 on the pinned Node runtime.
-- **TST-021**: MUST verify PKG-033/PKG-034/PKG-035/PKG-036/PKG-037/PKG-038/PKG-039/PKG-040 by running `npm test` (`tests/npmPublishContract.unit.test.ts`): metadata, lockfile identity, and `npm pack --dry-run` tarball-list assertions pass.
+- **TST-021**: MUST verify PKG-033/PKG-034/PKG-035/PKG-036/PKG-037/PKG-038/PKG-039/PKG-040/PKG-075 by running `npm test` (`tests/npmPublishContract.unit.test.ts`): metadata, lockfile identity, and `npm pack --dry-run` tarball-list assertions pass, including rejection of any skills-root file other than `manifest.json` and of every skills authoring document; pass when all assertions hold.
 - **TST-023**: MUST verify REQ-170/REQ-171/REQ-172/REQ-173/REQ-177/REQ-178/REQ-187/REQ-188/REQ-189/REQ-190 by running `npm test` (`tests/upgradeManager.unit.test.ts`): injected fetch and spawn stubs assert the develop channel probes only the GitHub releases endpoint, always installs the raw `tag_name` ref even when equal to the installed version, fails fast on probe error without spawning, reports the probed version in the summary, `--force` appends the npm force flag to both channel update commands while its absence runs the standard unforced command, and the management parser accepts `--force` only beside `--upgrade`.
 - **TST-024**: MUST verify PKG-058/PKG-059/PKG-060/PKG-061/PKG-062 by running `npm test` (`tests/preReleaseCheck.unit.test.ts`): static contract asserts the four release-gating stages in order, fail-fast exit wiring, repository-root execution, and no install/publish commands; pass when all assertions hold and sandbox runs prove fail-fast exit 1 at an injected failing stage, removal of run-created `dist` artifacts on failure, and preservation of pre-existing artifacts.
 - **TST-025**: MUST verify REQ-209/REQ-210/REQ-211/REQ-212 by running `npm test` (`tests/configRenderer.unit.test.ts`): golden comparisons cover one root child, two root siblings, nested first/middle/last nodes, detail prefixes, section badges, and requested subtrees byte for byte.
