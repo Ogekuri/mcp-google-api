@@ -14,20 +14,23 @@
  * - The release workflow is the only GitHub Actions workflow: triggered by a canonical
  *   version tag (PKG-008, PKG-029), one integrated job (PKG-027) whose first step resolves
  *   the tagged commit's reachability from origin/master and origin/develop into step
- *   outputs (PKG-009), failing before any install/build/pack/publish step when neither
- *   branch contains the tag (PKG-028). Build and pack run exclusively here (PKG-026); the
- *   pipeline defines no direct typecheck, unit-test, verify, or smoke-check command — all
- *   test stages live inside the PKG-063 pre-release gate step running
- *   `scripts/pre-release-check.sh` (publish-version guard + typecheck + unit tests +
- *   build, fail-fast per PKG-059), placed after the branch gate and `npm ci` and before
- *   every build, pack, publish, and release-creation step, so failing stages block
- *   artifact creation and publication. The npm release
- *   pipeline is defined in `.github/workflows/release-npm.yml` (PKG-029). npm publish runs
- *   only for master-reachable tags (PKG-042); develop-only tags build, pack, and create
- *   the GitHub Release with the tarball asset without publishing (PKG-043). Publishing
- *   authenticates via npm OIDC Trusted Publishing (PKG-010): `id-token: write` granted
- *   (PKG-030), no NPM_TOKEN secret or NODE_AUTH_TOKEN variable referenced (PKG-031),
- *   publish step runs on the pinned Node.js runtime bundling npm >= 11.5.1 (PKG-032).
+ *   outputs (PKG-009), failing before any pack, publish, or release-creation step when
+ *   neither branch contains the tag (PKG-028).
+ * - The automation NEVER builds (PKG-110): it consumes the `dist/` artifacts committed in
+ *   the tagged release commit (PKG-026, PKG-091), performs no dependency installation and no
+ *   build-preparatory check (PKG-111), packs with `npm pack --ignore-scripts` (PKG-111), and
+ *   publishes with lifecycle scripts disabled so `prepublishOnly`/`prepare` never compile
+ *   during publication (PKG-112). No build script, no pre-release gate script, no
+ *   typecheck, and no unit-test stage may appear in the workflow.
+ * - The packed tarball is validated offline against the committed `dist/` tree through
+ *   `tools/check-release-artifacts.mjs` before publication and release creation (PKG-113),
+ *   and is attached as the GitHub Release asset (PKG-012).
+ * - npm publish runs only for master-reachable tags (PKG-042); develop-only tags pack,
+ *   validate, and create the GitHub Release with the tarball asset without publishing
+ *   (PKG-043). Publishing authenticates via npm OIDC Trusted Publishing (PKG-010):
+ *   `id-token: write` granted (PKG-030), no NPM_TOKEN secret or NODE_AUTH_TOKEN variable
+ *   referenced (PKG-031), publish step runs on the pinned Node.js runtime bundling
+ *   npm >= 11.5.1 (PKG-032).
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -38,6 +41,21 @@ import { fileURLToPath } from "node:url";
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CI_WORKFLOW_PATH = join(PROJECT_ROOT, ".github", "workflows", "ci.yml");
 const RELEASE_WORKFLOW_PATH = join(PROJECT_ROOT, ".github", "workflows", "release-npm.yml");
+
+/** Commands that would install dependencies or prepare/execute a build inside automation (PKG-110, PKG-111). */
+const FORBIDDEN_BUILD_PREPARATION_TOKENS = [
+  "run: npm ci",
+  "run: npm install",
+  "run: npm run build",
+  "run: npm run check:publish-version",
+  "run: npm run typecheck",
+  "run: npm test",
+  "run: npm run verify",
+  "run: npm run test:e2e",
+  "run: mcp-google-api doctor",
+  "scripts/build.sh",
+  "scripts/pre-release-check.sh",
+];
 
 /**
  * @brief Loads a GitHub Actions workflow definition as text for contract assertions.
@@ -69,11 +87,11 @@ test("Release workflow is triggered only by a canonical version tag push", () =>
 
 test("Release workflow gates the single integrated job on master and develop tag reachability", () => {
   // PKG-009/PKG-027/PKG-028: exactly one release job hosts the branch gate,
-  // build, pack, and publish. No separate or parallel release jobs exist.
+  // artifact packing, and publish. No separate or parallel release jobs exist.
   // The gate fetches both branches, resolves the tagged commit's
   // reachability from origin/master and origin/develop, exports both
-  // outcomes, and fails before any dependency install, build, pack, or
-  // publish step when neither branch contains the tag.
+  // outcomes, and fails before any pack, publish, or release-creation step
+  // when neither branch contains the tag.
   const workflow = readWorkflow(RELEASE_WORKFLOW_PATH);
   assert.equal(workflow.includes("check-branch:"), false);
   assert.equal(workflow.includes("needs: check-branch"), false);
@@ -84,30 +102,31 @@ test("Release workflow gates the single integrated job on master and develop tag
   assert.equal(workflow.includes("on_master=${on_master}"), true);
   assert.equal(workflow.includes("on_develop=${on_develop}"), true);
   const gateIdx = workflow.indexOf("git branch -r --contains");
-  const installIdx = workflow.indexOf("run: npm ci");
-  const buildIdx = workflow.indexOf("run: npm run build");
-  const packIdx = workflow.indexOf("run: npm pack");
-  const publishIdx = workflow.indexOf("run: npm publish --provenance --access public");
-  assert.notEqual(installIdx, -1);
-  assert.notEqual(buildIdx, -1);
+  const packIdx = workflow.indexOf("run: npm pack --ignore-scripts");
+  const validateIdx = workflow.indexOf("run: node tools/check-release-artifacts.mjs");
+  const publishIdx = workflow.indexOf("run: npm publish --ignore-scripts --provenance --access public");
+  const releaseAssetIdx = workflow.indexOf("files: mcp-google-api-*.tgz");
+  assert.notEqual(gateIdx, -1);
   assert.notEqual(packIdx, -1);
+  assert.notEqual(validateIdx, -1);
   assert.notEqual(publishIdx, -1);
-  assert.equal(gateIdx < installIdx, true);
-  assert.equal(gateIdx < buildIdx, true);
+  assert.notEqual(releaseAssetIdx, -1);
   assert.equal(gateIdx < packIdx, true);
+  assert.equal(gateIdx < validateIdx, true);
   assert.equal(gateIdx < publishIdx, true);
+  assert.equal(gateIdx < releaseAssetIdx, true);
 });
 
 test("Release workflow publishes to npm only for master-reachable tags", () => {
   // PKG-042/PKG-043: the publish step is the only step conditioned on the
   // branch-gate master output, so develop-only tags skip exactly npm
-  // publication while build, pack, changelog, and the GitHub Release with
-  // the tarball asset still run.
+  // publication while artifact packing, validation, changelog, and the
+  // GitHub Release with the tarball asset still run.
   const workflow = readWorkflow(RELEASE_WORKFLOW_PATH);
   const condition = "steps.branch_gate.outputs.on_master == 'true'";
   const gateOutputIdx = workflow.indexOf("on_master=${on_master}");
   const publishIfIdx = workflow.indexOf(`if: ${condition}`);
-  const publishRunIdx = workflow.indexOf("run: npm publish --provenance --access public");
+  const publishRunIdx = workflow.indexOf("run: npm publish --ignore-scripts --provenance --access public");
   const releaseAssetIdx = workflow.indexOf("files: mcp-google-api-*.tgz");
   const conditionCount = workflow.split(`if: ${condition}`).length - 1;
   const expected_output = {
@@ -126,61 +145,72 @@ test("Release workflow publishes to npm only for master-reachable tags", () => {
   assert.equal(releaseAssetIdx !== -1, expected_output.releaseAssetStepPresent);
 });
 
-test("Release workflow gates build, pack, publish, and release on the pre-release check", () => {
-  // PKG-063: the pipeline defines no direct typecheck/unit-test/verify/smoke
-  // commands — all test stages live inside the gate script — and the gate step
-  // runs scripts/pre-release-check.sh after the branch gate and dependency
-  // installation, before every build, pack, publish, and release-creation
-  // step, so failing stages block artifact creation and publication.
+test("Release workflow performs no build and no build-preparatory check", () => {
+  // PKG-110/PKG-111/PKG-112: the automation never builds — the release
+  // artifacts are the `dist/` tree committed in the tagged release commit.
+  // Therefore no dependency installation, no build command, no build or
+  // pre-release gate script, and no typecheck/unit-test/verify/smoke/doctor
+  // stage may appear anywhere in the workflow definition.
   const workflow = readWorkflow(RELEASE_WORKFLOW_PATH);
-  const gateIdx = workflow.indexOf("run: bash scripts/pre-release-check.sh");
-  const installIdx = workflow.indexOf("run: npm ci");
-  const buildIdx = workflow.indexOf("run: npm run build");
-  const packIdx = workflow.indexOf("run: npm pack");
-  const publishIdx = workflow.indexOf("run: npm publish --provenance --access public");
+  const forbiddenTokens = FORBIDDEN_BUILD_PREPARATION_TOKENS;
+  const leftovers = forbiddenTokens.filter((token) => workflow.includes(token));
+  const expected_output = { leftovers: [] as string[], present: true };
+  assert.deepEqual(leftovers, expected_output.leftovers);
+  assert.equal(workflow.includes("run: npm pack --ignore-scripts"), expected_output.present);
+  assert.equal(workflow.includes("run: npm publish --ignore-scripts --provenance --access public"), expected_output.present);
+});
+
+test("Release workflow packs and validates the committed dist/ artifacts before publish and release", () => {
+  // PKG-012/PKG-026/PKG-110/PKG-112/PKG-113: the tarball is packed from the
+  // committed `dist/` tree with `--ignore-scripts` so the `prepare` lifecycle
+  // never compiles, the packed payload is validated against that committed
+  // tree, and publication disables lifecycle scripts so `prepublishOnly`
+  // never rebuilds. Validation precedes both publication and release
+  // creation, and the release asset is the packed tarball.
+  const workflow = readWorkflow(RELEASE_WORKFLOW_PATH);
+  const verifyIdx = workflow.indexOf("run: |");
+  const cliArtifactIdx = workflow.indexOf("dist/cli.js");
+  const indexArtifactIdx = workflow.indexOf("dist/index.js");
+  const packIdx = workflow.indexOf("run: npm pack --ignore-scripts");
+  const validateIdx = workflow.indexOf("run: node tools/check-release-artifacts.mjs");
+  const publishIdx = workflow.indexOf("run: npm publish --ignore-scripts --provenance --access public");
   const releaseAssetIdx = workflow.indexOf("files: mcp-google-api-*.tgz");
   const expected_output = {
-    gateStepPresent: true,
-    gateAfterInstall: true,
-    gateBeforeBuild: true,
-    gateBeforePack: true,
-    gateBeforePublish: true,
-    gateBeforeReleaseAsset: true,
-    directTypecheckCommandAbsent: false,
-    directTestCommandAbsent: false,
-    directVerifyCommandAbsent: false,
-    directE2eCommandAbsent: false,
-    directDoctorCommandAbsent: false,
+    artifactVerificationPresent: true,
+    packWithoutLifecycleScripts: true,
+    plainPackAbsent: false,
+    validateBeforePublish: true,
+    validateBeforeRelease: true,
+    releaseAssetPresent: true,
   };
-  assert.notEqual(gateIdx, -1);
-  assert.notEqual(installIdx, -1);
-  assert.notEqual(buildIdx, -1);
+  assert.notEqual(verifyIdx, -1);
+  assert.notEqual(cliArtifactIdx, -1);
+  assert.notEqual(indexArtifactIdx, -1);
   assert.notEqual(packIdx, -1);
+  assert.notEqual(validateIdx, -1);
   assert.notEqual(publishIdx, -1);
   assert.notEqual(releaseAssetIdx, -1);
-  assert.equal(gateIdx > installIdx, expected_output.gateAfterInstall);
-  assert.equal(gateIdx < buildIdx, expected_output.gateBeforeBuild);
-  assert.equal(gateIdx < packIdx, expected_output.gateBeforePack);
-  assert.equal(gateIdx < publishIdx, expected_output.gateBeforePublish);
-  assert.equal(gateIdx < releaseAssetIdx, expected_output.gateBeforeReleaseAsset);
-  assert.equal(workflow.includes("run: npm run typecheck"), expected_output.directTypecheckCommandAbsent);
-  assert.equal(workflow.includes("run: npm test"), expected_output.directTestCommandAbsent);
-  assert.equal(workflow.includes("run: npm run verify"), expected_output.directVerifyCommandAbsent);
-  assert.equal(workflow.includes("run: npm run test:e2e"), expected_output.directE2eCommandAbsent);
-  assert.equal(workflow.includes("run: mcp-google-api doctor"), expected_output.directDoctorCommandAbsent);
+  assert.equal(workflow.includes("Verify committed release artifacts in dist/"), expected_output.artifactVerificationPresent);
+  assert.equal(workflow.includes("npm pack --ignore-scripts"), expected_output.packWithoutLifecycleScripts);
+  assert.equal(workflow.includes("run: npm pack\n"), expected_output.plainPackAbsent);
+  assert.equal(packIdx < validateIdx, true);
+  assert.equal(validateIdx < publishIdx, expected_output.validateBeforePublish);
+  assert.equal(validateIdx < releaseAssetIdx, expected_output.validateBeforeRelease);
+  assert.equal(releaseAssetIdx !== -1, expected_output.releaseAssetPresent);
 });
 
 test("Release workflow publishes via npm OIDC Trusted Publishing and attaches the packed tarball", () => {
   // PKG-010/PKG-012: publish uses OIDC Trusted Publishing with provenance
   // attestation and public access; the release asset is the packed npm
-  // tarball, failing on unmatched files; the tarball is packed before the
-  // release step attaches it.
+  // tarball, failing on unmatched files; the tarball is packed and validated
+  // before the release step attaches it.
   // PKG-030/PKG-031/PKG-032: the publish step authenticates via the GitHub
   // Actions OIDC token (`id-token: write`), references no NPM_TOKEN secret
   // and no NODE_AUTH_TOKEN variable, and runs on the pinned Node.js runtime
   // bundling npm >= 11.5.1 (OIDC Trusted Publishing floor).
   const workflow = readWorkflow(RELEASE_WORKFLOW_PATH);
-  const packIdx = workflow.indexOf("run: npm pack");
+  const packIdx = workflow.indexOf("run: npm pack --ignore-scripts");
+  const validateIdx = workflow.indexOf("run: node tools/check-release-artifacts.mjs");
   const releaseIdx = workflow.indexOf("files: mcp-google-api-*.tgz");
   const expected_output = {
     oidcPermissionGranted: true,
@@ -191,14 +221,16 @@ test("Release workflow publishes via npm OIDC Trusted Publishing and attaches th
     pinnedNodeMajor24: true,
     releaseAssetPatternPresent: true,
     tarballPackedBeforeRelease: true,
+    tarballValidatedBeforeRelease: true,
   };
   assert.notEqual(releaseIdx, -1);
   assert.equal(workflow.includes("id-token: write"), expected_output.oidcPermissionGranted);
   assert.equal(workflow.includes("secrets.NPM_TOKEN"), expected_output.npmTokenSecretReferenced);
   assert.equal(workflow.includes("NODE_AUTH_TOKEN"), expected_output.nodeAuthTokenVariableReferenced);
-  assert.equal(workflow.includes("run: npm publish --provenance --access public"), expected_output.publishCommandPresent);
+  assert.equal(workflow.includes("run: npm publish --ignore-scripts --provenance --access public"), expected_output.publishCommandPresent);
   assert.equal(workflow.includes("npm >= 11.5.1"), expected_output.trustedPublishingFloorDocumented);
   assert.equal(/^  NODE_VERSION: '24\./m.test(workflow), expected_output.pinnedNodeMajor24);
   assert.equal(workflow.includes("fail_on_unmatched_files: true"), expected_output.releaseAssetPatternPresent);
   assert.equal(packIdx < releaseIdx, expected_output.tarballPackedBeforeRelease);
+  assert.equal(validateIdx < releaseIdx, expected_output.tarballValidatedBeforeRelease);
 });

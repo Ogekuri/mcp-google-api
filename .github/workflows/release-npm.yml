@@ -1,26 +1,30 @@
-# Release (npm): ONE integrated release process — branch gate, build, pack,
-# publish, changelog, GitHub Release — all in a single workflow job
-# (PKG-027). Triggered only by canonical version tags (PKG-008); branch
-# pushes and pull requests never start it. The branch gate is the first
-# step of this job: it resolves the tagged commit's reachability from
+# Release (npm): ONE integrated release process — branch gate, artifact
+# packing, npm publish, changelog, GitHub Release — all in a single workflow
+# job (PKG-027). Triggered only by canonical version tags (PKG-008); branch
+# pushes and pull requests never start it. The branch gate is the first step
+# of this job: it resolves the tagged commit's reachability from
 # origin/master and origin/develop (PKG-009) and fails the run before any
-# dependency install, build, pack, or publish step when neither branch
-# contains the tag (PKG-028). npm publication runs only when the tag is
-# reachable from origin/master (PKG-042); tags reachable from develop but
-# not master build, pack, and create the GitHub Release without publishing
-# to npm (PKG-043). The package build and tarball packing run
-# exclusively in this release workflow (PKG-026). The pre-release gate step
-# runs scripts/pre-release-check.sh (PKG-063) after dependency installation
-# and before every build, pack, publish, and release-creation step: the gate
-# executes the PKG-058 release-gating stages (publish-version guard,
-# typecheck, unit tests, build) in fail-fast order (PKG-059) and fails the
-# job so no tarball, no npm publication, and no GitHub Release are created
-# for a version whose tests fail. `npm publish` still runs the
-# `prepublishOnly` lifecycle hook (version guard + build, PKG-005). npm
-# authentication uses OIDC Trusted Publishing (PKG-010): the job grants
-# `id-token: write` (PKG-030), no publish-token secret or publish-token
-# environment variable is configured (PKG-031), and the pinned Node.js
-# runtime bundles npm >= 11.5.1, the OIDC Trusted Publishing floor (PKG-032).
+# pack, publish, or release-creation step when neither branch contains the
+# tag (PKG-028).
+#
+# This automation NEVER builds: it consumes the release artifacts produced
+# beforehand by the repository build script and committed in the tagged
+# release commit inside `dist/` (PKG-026, PKG-091, PKG-110). No dependency
+# installation, no compile step, and no build-preparatory check is executed
+# here (PKG-111); the packed tarball is created with `npm pack
+# --ignore-scripts`, so the `prepare` lifecycle never triggers a build.
+# Artifact validation runs offline against the committed `dist/` tree
+# (PKG-113) before publication and release creation.
+#
+# npm publication runs only when the tag is reachable from origin/master
+# (PKG-042); tags reachable from develop but not master pack, validate, and
+# create the GitHub Release without publishing to npm (PKG-043). npm
+# publication disables lifecycle scripts (PKG-112), so `prepublishOnly`
+# never rebuilds inside automation; authentication uses OIDC Trusted
+# Publishing (PKG-010): the job grants `id-token: write` (PKG-030), no
+# publish-token secret or publish-token environment variable is configured
+# (PKG-031), and the pinned Node.js runtime bundles npm >= 11.5.1, the OIDC
+# Trusted Publishing floor (PKG-032).
 name: Release (npm)
 
 on:
@@ -37,8 +41,8 @@ env:
   NODE_VERSION: '24.15.0'
 
 jobs:
-  # Single integrated release process (PKG-027): the branch gate, build,
-  # pack, npm publish, changelog, and GitHub Release all run in this one
+  # Single integrated release process (PKG-027): the branch gate, artifact
+  # packing, npm publish, changelog, and GitHub Release all run in this one
   # job — no parallel or separate release jobs exist.
   release:
     runs-on: ubuntu-24.04
@@ -53,11 +57,11 @@ jobs:
       # release job. The gate resolves the tagged commit's reachability
       # from origin/master and origin/develop and exports both outcomes as
       # step outputs consumed by the publish step. A version tag reachable
-      # from neither branch fails here with exit 1, before any dependency
-      # installation, build, pack, or publish step runs (PKG-028). npm
-      # publication runs only for master-reachable tags (PKG-042);
-      # develop-only tags build, pack, and create the GitHub Release
-      # without publishing to npm (PKG-043).
+      # from neither branch fails here with exit 1, before any pack,
+      # publish, or release-creation step runs (PKG-028). npm publication
+      # runs only for master-reachable tags (PKG-042); develop-only tags
+      # pack and create the GitHub Release without publishing to npm
+      # (PKG-043).
       - name: Check tag branch (master or develop)
         id: branch_gate
         run: |
@@ -73,7 +77,7 @@ jobs:
           echo "on_master=${on_master}" >> "$GITHUB_OUTPUT"
           echo "on_develop=${on_develop}" >> "$GITHUB_OUTPUT"
           if [ "${on_master}" = "false" ] && [ "${on_develop}" = "false" ]; then
-            echo "::error::Tag ${{ github.ref }} is reachable from neither origin/master nor origin/develop. Release builds run only for master or develop version tags (PKG-008, PKG-009, PKG-028); no build is performed."
+            echo "::error::Tag ${{ github.ref }} is reachable from neither origin/master nor origin/develop. Release packing runs only for master or develop version tags (PKG-008, PKG-009, PKG-028); no artifact is packed and no release is created."
             exit 1
           fi
           if [ "${on_master}" = "true" ]; then
@@ -89,36 +93,40 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false  # never use caching in release builds
 
-      - name: Install dependencies
-        run: npm ci
+      # Pre-built artifact intake (PKG-110): the tagged release commit carries
+      # the `dist/` tree generated beforehand by the repository build script.
+      # This step only verifies presence and syntax of the committed entries;
+      # it compiles nothing and runs no build-preparatory check (PKG-111).
+      - name: Verify committed release artifacts in dist/
+        run: |
+          for artifact in dist/cli.js dist/index.js; do
+            if [ ! -s "${artifact}" ]; then
+              echo "::error::Committed release artifact missing or empty: ${artifact} (PKG-110). Generate it with the repository build script and commit dist/ before tagging."
+              exit 1
+            fi
+          done
+          node --check dist/cli.js
+          node --check dist/index.js
+          echo "Committed dist/ artifacts verified from the tagged release commit."
 
-      # Pre-release gate (PKG-063): runs scripts/pre-release-check.sh — the
-      # PKG-058 release-gating stages (publish-version guard, typecheck, unit
-      # tests, build) in mandatory fail-fast order (PKG-059) — after
-      # dependency installation (the gate never installs dependencies,
-      # PKG-060) and before every build, pack, publish, and release-creation
-      # step. A failed stage fails the job here, so no release artifact is
-      # created and no version with failing tests is published.
-      - name: Pre-release check (version guard, typecheck, unit tests, build)
-        run: bash scripts/pre-release-check.sh
+      # Release asset packed once (PKG-012) from the committed artifacts
+      # (PKG-110). `--ignore-scripts` keeps the `prepare` lifecycle inactive,
+      # so packing never compiles anything (PKG-111).
+      - name: Pack npm tarball from committed artifacts
+        run: npm pack --ignore-scripts
 
-      - name: Build if present
-        run: npm run build --if-present
-
-      # Release asset packed once (PKG-012): the built npm tarball, not raw
-      # sources. The PKG-063 pre-release gate has already run the test stages
-      # before this step, so no tarball exists for a version whose tests
-      # failed.
-      - name: Pack npm tarball (release asset)
-        run: npm pack
-
-      - name: Remove private package flag
-        run: npm pkg delete private
+      # Artifact validation (PKG-113): offline checks of the packed tarball
+      # against the committed `dist/` tree and the packaged entry points, run
+      # before publication and release creation so an inconsistent artifact
+      # set never reaches npm or the GitHub Release.
+      - name: Validate release artifacts
+        run: node tools/check-release-artifacts.mjs
 
       # npm publish runs only when the branch gate resolved the tag as
       # reachable from origin/master (PKG-042); develop-only tags skip this
       # step and complete the release without npm publication (PKG-043).
-      # npm publish triggers `prepublishOnly` (version guard + build, PKG-005).
+      # Lifecycle scripts are disabled (PKG-112), so no build runs during
+      # publication and the published payload equals the committed artifacts.
       # npm OIDC Trusted Publishing (PKG-010): authentication is minted from
       # the GitHub Actions OIDC token granted via `id-token: write` (PKG-030);
       # no publish-token secret and no publish-token environment variable are
@@ -127,7 +135,7 @@ jobs:
       # (PKG-032, PKG-014).
       - name: Publish package to npm
         if: steps.branch_gate.outputs.on_master == 'true'
-        run: npm publish --provenance --access public
+        run: npm publish --ignore-scripts --provenance --access public
 
       - name: Build Changelog
         id: build_changelog
