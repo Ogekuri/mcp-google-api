@@ -1,75 +1,75 @@
-# Catalogo dei tool
+# Tool Catalog
 
-18 tool MCP, tutti prefissati `maps_`. L'elenco esposto può essere ridotto con il comando `mcp-google-api tools <list|*>` (vedi [CONFIGURATION.md](CONFIGURATION.md)).
+18 MCP tools, all prefixed `maps_`. The exposed set can be reduced with the `mcp-google-api tools <list|*>` command (see [CONFIGURATION.md](CONFIGURATION.md)).
 
-## Ricerca e dettaglio locali (Places API — New)
+## Local search and details (Places API — New)
 
 ### `maps_search_places`
 
-Text Search (New) con **filtri server-side** — è il tool principale per ricerche strutturate.
+Text Search (New) with **server-side filters** — the primary tool for structured searches.
 
-| Parametro | Tipo | Note |
+| Parameter | Type | Notes |
 | --- | --- | --- |
-| `query` | string (obbligatorio) | Query testuale libera |
-| `priceLevels` | enum array | Filtro economico cumulativo lato API: `PRICE_LEVEL_FREE`, `PRICE_LEVEL_INEXPENSIVE`, `PRICE_LEVEL_MODERATE`, `PRICE_LEVEL_EXPENSIVE`, `PRICE_LEVEL_VERY_EXPENSIVE` |
-| `minRating` | number 1.0–5.0 | Filtro rating applicato dall'API |
-| `includedType` | string | **Un solo tipo per chiamata** (contratto Text Search), es. `restaurant`, `cafe`, `bakery` |
-| `strictTypeFiltering` | boolean | Matching rigoroso di `includedType` |
-| `openNow` | boolean | Solo locali attualmente aperti |
-| `locationBias` | oggetto | `{ latitude, longitude, radius? }` (raggio in metri, default 5000) |
-| `pageSize` | 1–20 | Tetto risultati per chiamata (tradotto in `maxResultCount`). Nota SDK: il proto di `@googlemaps/places` (fino a 3.1.0) non include `page_size`/`page_token` → **paginazione oltre 20 risultati/chiamata non disponibile**; per più risultati usare query diverse |
-| `pageToken` | string | Token della pagina successiva |
-| `languageCode` | string | Lingua risultati (`it`, `en`, …) |
-| `includeRaw` | boolean | Allega il payload originale: `raw_place` per ogni risultato, `raw_response` dell'intera pagina e la `field_mask` realmente inviata |
+| `query` | string (required) | Free-text query |
+| `priceLevels` | enum array | Cumulative price filter applied by the API: `PRICE_LEVEL_FREE`, `PRICE_LEVEL_INEXPENSIVE`, `PRICE_LEVEL_MODERATE`, `PRICE_LEVEL_EXPENSIVE`, `PRICE_LEVEL_VERY_EXPENSIVE` |
+| `minRating` | number 1.0–5.0 | Rating filter applied by the API |
+| `includedType` | string | **One type per call** (Text Search contract), e.g. `restaurant`, `cafe`, `bakery` |
+| `strictTypeFiltering` | boolean | Strict matching of `includedType` |
+| `openNow` | boolean | Only currently open venues |
+| `locationBias` | object | `{ latitude, longitude, radius? }` (radius in meters, default 5000) |
+| `pageSize` | 1–20 | Result cap per call (translated into `maxResultCount`). SDK note: the `@googlemaps/places` proto (up to 3.1.0) does not include `page_size`/`page_token` → **pagination beyond 20 results per call is unavailable**; use different queries for more results |
+| `pageToken` | string | Next-page token |
+| `languageCode` | string | Result language (`it`, `en`, …) |
+| `includeRaw` | boolean | Attaches the original payload: `raw_place` per result, the whole page `raw_response`, and the `field_mask` actually sent |
 
-Output: `{ results[], nextPageToken?, field_mask, raw_response? }`. Ogni risultato include `place_id`, `name`, `address`, `location`, `primary_type`, `types`, `business_status`, `google_maps_uri`, `price_level`, **`price_range` (struttura Money originale: `startPrice`/`endPrice` → `currencyCode`/`units`/`nanos`)**, `rating`, `total_ratings`, `regular_opening_hours`, `current_opening_hours`.
+Output: `{ results[], nextPageToken?, field_mask, raw_response? }`. Each result includes `place_id`, `name`, `address`, `location`, `primary_type`, `types`, `business_status`, `google_maps_uri`, `price_level`, **`price_range` (original Money structure: `startPrice`/`endPrice` → `currencyCode`/`units`/`nanos`)**, `rating`, `total_ratings`, `regular_opening_hours`, `current_opening_hours`.
 
 ### `maps_search_nearby`
 
-Search Nearby (New) attorno a un centro (`center.value` indirizzo/landmark/coordinate, `radius` in metri), con filtro `keyword` (tipo), `openNow`, `minRating` (post-filtro).
+Search Nearby (New) around a center (`center.value` address/landmark/coordinates, `radius` in meters), with `keyword` (type), `openNow`, and `minRating` filters (post-filtering).
 
 ### `maps_place_details`
 
-Place Details (New) per `placeId`: contatti, sito, orari (regular + current con `periods`), recensioni con attribuzione, foto (`maxPhotos` 0–10), `price_range`, `business_status`, `types`. Con `includeRaw: true` allega `raw_place` e `field_mask`.
+Place Details (New) for `placeId`: contact data, website, opening hours (regular + current with `periods`), reviews with attribution, photos (`maxPhotos` 0–10), `price_range`, `business_status`, `types`. With `includeRaw: true` it attaches `raw_place` and `field_mask`.
 
 ### `maps_explore_area`
 
-Esplora una zona per categorie (default `restaurant`, `cafe`, `tourist_attraction`) con i top-N per tipo.
+Explores an area by category (defaults `restaurant`, `cafe`, `tourist_attraction`) with the top-N results per type.
 
 ### `maps_compare_places`
 
-Confronta fino a N locali da una query: tipo, orari, contatti, prezzi, opzioni.
+Compares up to N venues from one query: type, opening hours, contacts, prices, options.
 
 ### `maps_search_along_route`
 
-Cerca locali lungo un percorso (origine → destinazione).
+Searches venues along a route (origin → destination).
 
 ### `maps_local_rank_tracker`
 
-Traccia il rank di un locale su una griglia di punti (ARP/ATRP/Solv) per una keyword.
+Tracks a venue rank over a grid of points (ARP/ATRP/Solv) for one keyword.
 
 ## Geocoding
 
-- `maps_geocode` — indirizzo/nome → coordinate + `place_id`
-- `maps_reverse_geocode` — coordinate → indirizzo
-- `maps_batch_geocode` — fino a 25 richieste batch
+- `maps_geocode` — address/name → coordinates + `place_id`
+- `maps_reverse_geocode` — coordinates → address
+- `maps_batch_geocode` — up to 25 batched requests
 
-## Navigazione
+## Navigation
 
-- `maps_directions` — percorso A→B con tappe, modalità, evitamenti
-- `maps_distance_matrix` — matrice origini/destinazioni (Routes API)
-- `maps_plan_route` — pianificazione multi-tappa con ottimizzazione tappe intermedie
+- `maps_directions` — route A→B with waypoints, travel mode, avoid flags
+- `maps_distance_matrix` — origin/destination matrix (Routes API)
+- `maps_plan_route` — multi-stop itinerary with intermediate waypoint optimization
 
-## Ambiente
+## Environment
 
-- `maps_elevation` — quota di punti o profilo di un tracciato
-- `maps_timezone` — fuso orario e ora locale
-- `maps_weather` — meteo corrente/previsioni
-- `maps_air_quality` — qualità dell'aria
-- `maps_static_map` — mappa statica (immagine PNG)
+- `maps_elevation` — point elevation or elevation profile of a track
+- `maps_timezone` — time zone and local time
+- `maps_weather` — current weather and forecasts
+- `maps_air_quality` — air quality
+- `maps_static_map` — static map (PNG image)
 
-## Convenzioni comuni
+## Common conventions
 
-- Coordinate in input: `{ latitude, longitude }` oppure stringa `"lat,lng"` dove indicato.
-- Tutti i tool restituiscono JSON in `content[0].text`; errori con `isError: true`.
-- I campi grezzi dell'API (es. `price_range` Money) sono **conservati verbatim**, mai convertiti in numeri semplici.
+- Coordinates in input: `{ latitude, longitude }` or a `"lat,lng"` string where documented.
+- Every tool returns JSON in `content[0].text`; failures set `isError: true`.
+- Raw API fields (e.g. Money `price_range`) are **preserved verbatim**, never converted into plain numbers.

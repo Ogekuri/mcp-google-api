@@ -4259,6 +4259,70 @@ function handleUndispatchedEntry(args, streams = process) {
   );
   return 1;
 }
+var HELP_WRAP_WIDTH = 78;
+var HELP_EPILOG_LABEL_WIDTH = 16;
+function wrapHelpText(text, width) {
+  const output = [];
+  for (const logicalLine of text.split("\n")) {
+    const trimmed = logicalLine.trim();
+    if (trimmed === "") {
+      output.push("");
+      continue;
+    }
+    const indentMatch = logicalLine.match(/^\s*/);
+    const indent = indentMatch ? indentMatch[0] : "";
+    const available = Math.max(width - indent.length, 1);
+    let current = "";
+    for (const word of trimmed.split(/\s+/)) {
+      if (current === "") {
+        current = word;
+      } else if (current.length + 1 + word.length <= available) {
+        current = `${current} ${word}`;
+      } else {
+        output.push(`${indent}${current}`);
+        current = word;
+      }
+    }
+    if (current !== "") {
+      output.push(`${indent}${current}`);
+    }
+  }
+  return output.join("\n");
+}
+function formatHelpEntry(label, description) {
+  const paddedLabel = label.padEnd(HELP_EPILOG_LABEL_WIDTH, " ");
+  const continuation = " ".repeat(HELP_EPILOG_LABEL_WIDTH);
+  const available = Math.max(HELP_WRAP_WIDTH - HELP_EPILOG_LABEL_WIDTH, 1);
+  const lines = [];
+  let current = "";
+  for (const word of description.trim().split(/\s+/)) {
+    if (current === "") {
+      current = word;
+    } else if (current.length + 1 + word.length <= available) {
+      current = `${current} ${word}`;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  if (current !== "") {
+    lines.push(current);
+  }
+  return lines.map((line, index) => `${index === 0 ? paddedLabel : continuation}${line}`);
+}
+var HELP_EPILOG = [
+  "Management commands (single flags):",
+  ...formatHelpEntry("  --ver", "Print the installed, npmjs-latest, and GitHub-latest versions"),
+  ...formatHelpEntry("  --version", "Alias of --ver"),
+  ...formatHelpEntry(
+    "  --upgrade",
+    "Upgrade the global package to the latest version and refresh installed skills"
+  ),
+  ...formatHelpEntry("", "--develop | --dev: install the latest tagged GitHub release (any branch)"),
+  ...formatHelpEntry("", "--force: force package re-download and complete reinstallation (npm install --force)"),
+  ...formatHelpEntry("  --uninstall", "Remove the globally installed mcp-google-api package"),
+  ""
+].join("\n");
 var isMainModule = isEntryMainModule();
 if (isMainModule) {
   let packageVersion = "0.0.0";
@@ -4346,11 +4410,14 @@ if (isMainModule) {
         });
       }
     };
-    const cli = yargs(hideBin(process.argv)).scriptName("mcp-google-api").usage(
-      `mcp-google-api v${packageVersion}
+    const cli = yargs(hideBin(process.argv)).scriptName("mcp-google-api").wrap(null).usage(
+      wrapHelpText(
+        `mcp-google-api v${packageVersion}
 
 Usage: mcp-google-api <command> [options]
-       mcp-google-api start|run [--stdio] [options]`
+       mcp-google-api start|run [--stdio] [options]`,
+        HELP_WRAP_WIDTH
+      )
     ).command(
       "doctor",
       "Check standalone CLI readiness without starting an MCP server",
@@ -4745,17 +4812,8 @@ Usage: mcp-google-api <command> [options]
       () => {
         cli.showHelp("log");
       }
-    ).version(packageVersion).alias("version", "v").epilog(
-      `Management commands (single flags):
-  --ver         Print the installed, npmjs-latest, and GitHub-latest versions
-  --version     Alias of --ver
-  --upgrade     Upgrade the global package to the latest version and refresh installed skills
-                --develop | --dev: install the latest tagged GitHub release (any branch)
-                --force: force package re-download and complete reinstallation (npm install --force)
-  --uninstall   Remove the globally installed mcp-google-api package
-
-` + CONFIG_CLI_USAGE
-    ).help();
+    ).version(packageVersion).alias("version", "v").epilog(`${HELP_EPILOG}
+${CONFIG_CLI_USAGE}`).help();
     cli.parse();
   }
 } else {

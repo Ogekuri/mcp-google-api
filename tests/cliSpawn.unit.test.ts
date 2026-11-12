@@ -222,16 +222,31 @@ test("no command prints the help text and exits 0 without starting a server", as
   const result = await spawnCli([]);
   // Assert: REQ-129 (help instead of a server start, exit 0), REQ-130 (version
   // adjacent to the first mcp-google-api line), REQ-131 (management commands
-  // documented in the help text), REQ-191 (--force upgrade option documented).
+  // documented in the help text), REQ-191 (--force upgrade option documented),
+  // REQ-224 (no help token split across a line break).
   assert.equal(result.code, 0, `bare invocation must exit 0; stderr:\n${result.stderr}`);
   assert.equal(result.stderr, "");
   assert.match(result.stdout, /mcp-google-api v\d+\.\d+\.\d+/);
-  assert.equal(result.stdout.includes("Usage: mcp-google-api <command>"), true);
+  assert.equal(result.stdout.includes("Usage: mcp-google-api <command> [options]"), true);
+  assert.equal(
+    result.stdout.includes("       mcp-google-api start|run [--stdio] [options]"),
+    true,
+    "second usage line MUST stay intact on one line (REQ-224)"
+  );
+  assert.equal(
+    result.stdout.includes("Check standalone CLI readiness without starting an MCP server"),
+    true,
+    "command descriptions MUST stay word-intact (REQ-224)"
+  );
   assert.equal(result.stdout.includes("--upgrade"), true);
   assert.equal(result.stdout.includes("--uninstall"), true);
   assert.equal(result.stdout.includes("--ver"), true);
   assert.equal(result.stdout.includes("--version"), true);
   assert.equal(result.stdout.includes("--force"), true);
+  // REQ-224: no fragment of a longer token may open or close a help line.
+  assert.equal(/mcp-goo\n/.test(result.stdout), false, "program name MUST NOT split (REQ-224)");
+  assert.equal(/without st\n/.test(result.stdout), false, "description word MUST NOT split (REQ-224)");
+  assert.equal(/refresh ins\n/.test(result.stdout), false, "epilog word MUST NOT split (REQ-224)");
   // REQ-129: nothing was started (no server banner on any stream).
   assert.equal(result.stdout.includes("MCP Google API server"), false);
   assert.equal(result.stderr.includes("MCP Google API server"), false);

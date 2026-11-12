@@ -192,6 +192,9 @@ test("test_package_json_declares_current_spdx_license_id", () => {
 test("test_readme_license_statements_match_package_json_spdx_id", () => {
   // PKG-034: README badge alt text and License section carry GPL-3.0-only;
   // no residual bare GPL-3.0 token may remain outside the -only form.
+  // PKG-114: the LICENSE link MUST be an absolute repository URL so it resolves
+  // from the npm landing page, because the tarball ships LICENSE but npm does not
+  // serve package-relative browsing links.
   // Arrange
   const readme = readReadme();
   const manifest = loadPackageManifest();
@@ -200,7 +203,13 @@ test("test_readme_license_statements_match_package_json_spdx_id", () => {
   // Assert
   assert.equal(manifest.license, REQUIRED_SPDX_ID);
   assert.equal(readme.includes(`License: ${REQUIRED_SPDX_ID}`), true);
-  assert.equal(readme.includes(`${REQUIRED_SPDX_ID} — see [LICENSE](LICENSE)`), true);
+  assert.equal(
+    readme.includes(
+      `${REQUIRED_SPDX_ID} — see [LICENSE](https://github.com/Ogekuri/mcp-google-api/blob/main/LICENSE)`
+    ),
+    true,
+    "License section MUST link LICENSE through an absolute repository URL (PKG-114)"
+  );
   assert.deepEqual(bareDeprecatedTokens, []);
 });
 

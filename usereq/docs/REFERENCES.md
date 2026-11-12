@@ -50,7 +50,7 @@
         └── upgradeManager.ts
 ```
 
-# cli.ts | TypeScript | 1806L | 38 symbols | 21 imports | 65 comments
+# cli.ts | TypeScript | 1905L | 40 symbols | 21 imports | 70 comments
 > Path: `src/cli.ts`
 
 ## Imports
@@ -373,7 +373,30 @@ code is returned, never exited inline.
 - @return {number} 1 when the remediation diagnostic was emitted; 0 otherwise.
 - @satisfies REQ-094, REQ-015, CTN-003
 
-### fn `const buildServerCommandOptions = (yargs: Argv) =>` (L1168-1193)
+### fn `function wrapHelpText(text: string, width: number): string` (L1146-1173)
+- @brief Wraps one logical help-text block at word boundaries, preserving indentation.
+- @details Extracts each line's leading whitespace as its indentation, then greedily packs
+whitespace-separated tokens so every emitted line stays within `width` characters;
+continuation lines reuse the same indentation, and a token longer than the available width
+stays intact on its own line so no word is ever split (REQ-224). Empty input lines are kept
+as hard breaks. Pure; complexity O(n) in token count.
+- @param text {string} Logical help-text block; embedded newlines are hard line breaks.
+- @param width {number} Maximum output line width in characters; at least 1.
+- @return {string} Wrapped block joined with `\n`.
+- @satisfies REQ-224
+
+### fn `function formatHelpEntry(label: string, description: string): string[]` (L1186-1206)
+- @brief Renders one epilog entry with a hanging indent at word boundaries.
+- @details Emits the padded label plus the first wrapped description line, then pads every
+continuation line to `HELP_EPILOG_LABEL_WIDTH`, so the description column stays aligned while
+no token is split (REQ-224). An empty label renders a continuation-only entry. Pure;
+complexity O(n) in description length.
+- @param label {string} Entry label such as ` --ver`; MUST be shorter than the label width.
+- @param description {string} Entry description text.
+- @return {string[]} Rendered lines in output order.
+- @satisfies REQ-224
+
+### fn `const buildServerCommandOptions = (yargs: Argv) =>` (L1271-1296)
 - @brief Applies the shared server-start options to a yargs builder.
 - @details Declares `--port`, `--host`, and `--stdio` with defaults taken
 from the persisted settings (DES-015) plus the server-mode examples.
@@ -383,8 +406,8 @@ identical option surface (PRJ-003). Complexity O(1).
 - @return {Argv} The same builder instance with the typed server options attached.
 - @satisfies REQ-079, REQ-008
 
-- type `type ServerCommandArgs = BuilderArguments<typeof buildServerCommandOptions>;` (L1196)
-### fn `const runServerCommand = async (argv: ServerCommandArgs): Promise<void> =>` (L1215-1274)
+- type `type ServerCommandArgs = BuilderArguments<typeof buildServerCommandOptions>;` (L1299)
+### fn `const runServerCommand = async (argv: ServerCommandArgs): Promise<void> =>` (L1318-1377)
 - @brief Server-start handler shared by the `start` and `run` commands.
 - @details Resolves the effective API key exclusively from the persisted
 settings key (REQ-142) and injects it into `ApiKeyManager` (DES-006);
@@ -401,7 +424,7 @@ HTTP mode without an API key logs a warning and still starts (REQ-080).
 - @return {Promise<void>} Resolves when stdio mode stops; HTTP mode persists.
 - @satisfies REQ-079, REQ-080, REQ-082, REQ-095, REQ-142, REQ-143, REQ-165
 
-### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1720-1732)
+### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1828-1840)
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
@@ -440,10 +463,12 @@ HTTP mode without an API key logs a warning and still starts (REQ-080).
 |`isEntryMainModule`|fn||1041-1051|function isEntryMainModule(): boolean|
 |`describeUndispatchedServerStart`|fn||1069-1080|export function describeUndispatchedServerStart(args: rea...|
 |`handleUndispatchedEntry`|fn||1097-1099|export function handleUndispatchedEntry(|
-|`buildServerCommandOptions`|fn||1168-1193|const buildServerCommandOptions = (yargs: Argv) =>|
-|`ServerCommandArgs`|type||1196||
-|`runServerCommand`|fn||1215-1274|const runServerCommand = async (argv: ServerCommandArgs):...|
-|`semaphore`|fn||1720-1732|const semaphore = async (tasks: (() => Promise<void>)[], ...|
+|`wrapHelpText`|fn||1146-1173|function wrapHelpText(text: string, width: number): string|
+|`formatHelpEntry`|fn||1186-1206|function formatHelpEntry(label: string, description: stri...|
+|`buildServerCommandOptions`|fn||1271-1296|const buildServerCommandOptions = (yargs: Argv) =>|
+|`ServerCommandArgs`|type||1299||
+|`runServerCommand`|fn||1318-1377|const runServerCommand = async (argv: ServerCommandArgs):...|
+|`semaphore`|fn||1828-1840|const semaphore = async (tasks: (() => Promise<void>)[], ...|
 
 
 ---

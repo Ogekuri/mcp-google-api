@@ -1117,6 +1117,109 @@ export function handleUndispatchedEntry(
   return 1;
 }
 
+/**
+ * @brief Maximum output line width used when pre-wrapping help-text blocks.
+ * @details Chosen so rendered help stays readable in an 80-column terminal after the yargs
+ * continuation indent; cliui wrapping is disabled because it breaks tokens mid-word (REQ-224).
+ */
+const HELP_WRAP_WIDTH = 78;
+
+/**
+ * @brief Column width reserved for epilog entry labels, including the two-space outer indent.
+ * @details Continuation lines are padded to this width so the description column stays aligned
+ * while every line is wrapped at word boundaries (REQ-224).
+ */
+const HELP_EPILOG_LABEL_WIDTH = 16;
+
+/**
+ * @brief Wraps one logical help-text block at word boundaries, preserving indentation.
+ * @details Extracts each line's leading whitespace as its indentation, then greedily packs
+ * whitespace-separated tokens so every emitted line stays within `width` characters;
+ * continuation lines reuse the same indentation, and a token longer than the available width
+ * stays intact on its own line so no word is ever split (REQ-224). Empty input lines are kept
+ * as hard breaks. Pure; complexity O(n) in token count.
+ * @param text {string} Logical help-text block; embedded newlines are hard line breaks.
+ * @param width {number} Maximum output line width in characters; at least 1.
+ * @return {string} Wrapped block joined with `\n`.
+ * @satisfies REQ-224
+ */
+function wrapHelpText(text: string, width: number): string {
+  const output: string[] = [];
+  for (const logicalLine of text.split("\n")) {
+    const trimmed = logicalLine.trim();
+    if (trimmed === "") {
+      output.push("");
+      continue;
+    }
+    const indentMatch = logicalLine.match(/^\s*/);
+    const indent = indentMatch ? indentMatch[0] : "";
+    const available = Math.max(width - indent.length, 1);
+    let current = "";
+    for (const word of trimmed.split(/\s+/)) {
+      if (current === "") {
+        current = word;
+      } else if (current.length + 1 + word.length <= available) {
+        current = `${current} ${word}`;
+      } else {
+        output.push(`${indent}${current}`);
+        current = word;
+      }
+    }
+    if (current !== "") {
+      output.push(`${indent}${current}`);
+    }
+  }
+  return output.join("\n");
+}
+
+/**
+ * @brief Renders one epilog entry with a hanging indent at word boundaries.
+ * @details Emits the padded label plus the first wrapped description line, then pads every
+ * continuation line to `HELP_EPILOG_LABEL_WIDTH`, so the description column stays aligned while
+ * no token is split (REQ-224). An empty label renders a continuation-only entry. Pure;
+ * complexity O(n) in description length.
+ * @param label {string} Entry label such as `  --ver`; MUST be shorter than the label width.
+ * @param description {string} Entry description text.
+ * @return {string[]} Rendered lines in output order.
+ * @satisfies REQ-224
+ */
+function formatHelpEntry(label: string, description: string): string[] {
+  const paddedLabel = label.padEnd(HELP_EPILOG_LABEL_WIDTH, " ");
+  const continuation = " ".repeat(HELP_EPILOG_LABEL_WIDTH);
+  const available = Math.max(HELP_WRAP_WIDTH - HELP_EPILOG_LABEL_WIDTH, 1);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of description.trim().split(/\s+/)) {
+    if (current === "") {
+      current = word;
+    } else if (current.length + 1 + word.length <= available) {
+      current = `${current} ${word}`;
+    } else {
+      lines.push(current);
+      current = word;
+    }
+  }
+  if (current !== "") {
+    lines.push(current);
+  }
+  return lines.map((line, index) => `${index === 0 ? paddedLabel : continuation}${line}`);
+}
+
+/** Help epilog: management commands plus the configuration interface reference (REQ-131, REQ-175, REQ-191, REQ-224). */
+const HELP_EPILOG: string = [
+  "Management commands (single flags):",
+  ...formatHelpEntry("  --ver", "Print the installed, npmjs-latest, and GitHub-latest versions"),
+  ...formatHelpEntry("  --version", "Alias of --ver"),
+  ...formatHelpEntry(
+    "  --upgrade",
+    "Upgrade the global package to the latest version and refresh installed skills"
+  ),
+  ...formatHelpEntry("", "--develop | --dev: install the latest tagged GitHub release (any branch)"),
+  ...formatHelpEntry("", "--force: force package re-download and complete reinstallation (npm install --force)"),
+  ...formatHelpEntry("  --uninstall", "Remove the globally installed mcp-google-api package"),
+  "",
+].join("\n");
+
 const isMainModule = isEntryMainModule();
 
 if (isMainModule) {
@@ -1282,16 +1385,21 @@ if (isMainModule) {
      * epilog documents the pre-yargs management commands `--ver`, `--version`,
      * `--upgrade`, `--uninstall` (REQ-131) including the `--develop`/`--dev`
      * upgrade-channel options (REQ-175) and the `--force` forced-reinstall
-     * option (REQ-191).
+     * option (REQ-191). Multi-line blocks are pre-wrapped by `wrapHelpText` and
+     * cliui wrapping is disabled, so no help line ever splits a token (REQ-224).
      * @return {Argv} Configured yargs instance ready for `parse()`.
-     * @satisfies REQ-079, REQ-129, REQ-130, REQ-131, REQ-191
+     * @satisfies REQ-079, REQ-129, REQ-130, REQ-131, REQ-191, REQ-224
      */
     const cli = yargs(hideBin(process.argv))
       .scriptName("mcp-google-api")
+      .wrap(null)
       .usage(
-        `mcp-google-api v${packageVersion}\n\n` +
-          `Usage: mcp-google-api <command> [options]\n` +
-          `       mcp-google-api start|run [--stdio] [options]`
+        wrapHelpText(
+          `mcp-google-api v${packageVersion}\n\n` +
+            `Usage: mcp-google-api <command> [options]\n` +
+            `       mcp-google-api start|run [--stdio] [options]`,
+          HELP_WRAP_WIDTH
+        )
       )
       .command(
         "doctor",
@@ -1788,16 +1896,7 @@ if (isMainModule) {
       )
       .version(packageVersion)
       .alias("version", "v")
-      .epilog(
-        `Management commands (single flags):\n` +
-          `  --ver         Print the installed, npmjs-latest, and GitHub-latest versions\n` +
-          `  --version     Alias of --ver\n` +
-          `  --upgrade     Upgrade the global package to the latest version and refresh installed skills\n` +
-          `                --develop | --dev: install the latest tagged GitHub release (any branch)\n` +
-          `                --force: force package re-download and complete reinstallation (npm install --force)\n` +
-          `  --uninstall   Remove the globally installed mcp-google-api package\n\n` +
-          CONFIG_CLI_USAGE
-      )
+      .epilog(`${HELP_EPILOG}\n${CONFIG_CLI_USAGE}`)
       .help();
     cli.parse();
   }
