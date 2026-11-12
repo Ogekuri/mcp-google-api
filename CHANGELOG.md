@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.26.4](https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.4) - 2026-11-12
+## [0.26.5](https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.5) - 2026-11-12
 ### ⛰️  Features
 - Update gitalias config.
 - add scripts/clean.sh build-artifact cleaner [useReq] *(clean)*
@@ -28,6 +28,15 @@
   Requirements unchanged; PKG-036, PKG-013, REQ-152, REQ-153, PKG-075..079 preserved.
 
 ### 🚜  Changes
+- install the develop release asset and force-remove the global tree [useReq] *(upgradeManager)*
+  Requirements: REQ-171/REQ-172/REQ-225/REQ-228 move the develop channel to the
+  GitHub Release tarball asset install; REQ-182/REQ-183/REQ-226/REQ-227/REQ-229
+  replace the reify recovery with a forced global-tree removal plus single retry
+  and one bounded restore child; REQ-230 acceptance; TST-023/TST-034; LIM-008.
+  Source: buildDevelopUpgradeCommand emits the release asset URL, new
+  resolveGlobalPackageDir and purgeGlobalPackageTree with injectable fs/platform.
+  Tests: upgradeManager suite covers asset install, no git-ref spec, recovery
+  removal, retry, restore, and unresolvable global root.
 - ship the committed dist release tarball [useReq] *(release-packaging)*
   scripts/build.sh packs, validates, and retains dist/<name>-<version>.tgz; build removes the compiled bundle so dist/ holds only the release artifact; tools/check-release-artifacts.mjs validates the committed tarball path; release workflow consumes the pre-built artifact through git cat-file, no build; package files exclude the committed archive from any repacking; requirements, .gitignore, and contract suites updated
 - clean foreign-version dist artifacts before compiling *(build-script)*
@@ -671,7 +680,7 @@
 - \[0.24.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.24.0
 - \[0.25.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.25.0
 - \[0.26.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.26.0
-- \[0.26.4\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.26.4
+- \[0.26.5\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.26.5
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.2.0..v0.3.0
@@ -697,4 +706,4 @@
 [0.24.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.23.0..v0.24.0
 [0.25.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.24.0..v0.25.0
 [0.26.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.25.0..v0.26.0
-[0.26.4]: https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.4
+[0.26.5]: https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.5
