@@ -12,8 +12,10 @@
 #  *    every package version number (including any `<name>-<version>.tgz` tarball); emptied ancestor
 #  *    directories are pruned deepest-first, `dist/` itself only when empty, and non-generated entries
 #  *    are never touched. An absent `dist/` is a successful no-op.
-#  * 4. Compile (PKG-069): `npm run build` runs tsup (ESM runtime bundle and shared chunks). The
-#  *    project tsup configuration sets `clean: true`, so tsup clears `dist/` first.
+#  * 4. Compile (PKG-069): `npm run build` runs the generated-only pruner
+#  *    (`tools/prune-generated-dist.mjs`, PKG-119) and then tsup (ESM runtime bundle and shared
+#  *    chunks). tsup runs with `clean: false` so the committed release archive in `dist/` is never
+#  *    wiped by the compiler (PKG-117, PKG-118).
 #  * 5. Compile verification (PKG-069, PKG-074): `dist/cli.js` and `dist/index.js` must exist and be
 #  *    non-empty; both must pass `node --check`; every relative import target of both entries must
 #  *    exist and be non-empty.
