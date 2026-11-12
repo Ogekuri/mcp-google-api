@@ -8,10 +8,13 @@
  * spawn + exit propagation), REQ-126 (post-upgrade `install` child via the
  * upgraded package bin, captured stdout), REQ-127 (uninstall child), REQ-128
  * (spawn-failure hint), REQ-132/REQ-135 (summary fallback), the
- * management-command exact-match dispatch (PRJ-003), and the `--force`
- * auxiliary upgrade option (REQ-187, REQ-188, REQ-189, REQ-190). All child processes,
- * filesystem reads, network probes, and output streams are injected, so the
- * suite is deterministic and side-effect free.
+ * management-command exact-match dispatch (PRJ-003), the `--force`
+ * auxiliary upgrade option (REQ-187, REQ-188, REQ-189, REQ-190), the
+ * develop-channel release-asset install (REQ-171, REQ-172, REQ-225, REQ-228),
+ * and the ENOENT global-tree recovery (REQ-182, REQ-183, REQ-226, REQ-227,
+ * REQ-229, REQ-230). All child processes, filesystem reads, network probes,
+ * and output streams are injected, so the suite is deterministic and
+ * side-effect free.
  */
 
 import assert from "node:assert/strict";
@@ -26,10 +29,12 @@ import {
   PACKAGE_UNINSTALL_COMMAND,
   parseManagementCommand,
   parseUpgradeForce,
+  purgeGlobalPackageTree,
   runPackageManagerCommand,
   runUpgradeCommand,
   runUninstallCommand,
   UPGRADE_FORCE_OPTION,
+  type GlobalPackageTreeFs,
   type ManagementCommandDeps,
   type ManagementCommandOptions,
 } from "../src/utils/upgradeManager.js";
@@ -42,7 +47,7 @@ interface RecordedSpawn {
   /** Spawned arguments (remaining elements of the command tuple). */
   args: readonly string[];
   /** Spawn options; `stdio` distinguishes inherited vs captured streams. */
-  options: { stdio?: unknown; shell?: boolean; cwd?: unknown };
+  options: { stdio?: unknown; shell?: boolean; cwd?: unknown; encoding?: unknown };
 }
 
 /**
@@ -384,26 +389,73 @@ test("runPackageManagerCommand_spawns_child_with_neutral_home_cwd", () => {
   assert.equal(cwd, homedir());
 });
 
+/**
+ * @brief Builds the release-asset URL installed by the develop channel.
+ * @details Mirrors the REQ-171/REQ-225 shape: the download URL of the probed
+ * tag carrying the `mcp-google-api-<version>.tgz` asset of that tag.
+ * @param tag {string} Raw release tag (`tag_name`).
+ * @param version {string} Version text of the tag without its leading `v`.
+ * @return {string} Absolute GitHub Release asset URL.
+ */
+function developAssetUrl(tag: string, version: string): string {
+  return `https://github.com/Ogekuri/mcp-google-api/releases/download/${tag}/mcp-google-api-${version}.tgz`;
+}
+
+/**
+ * @brief Builds a stateful in-memory npm global tree for recovery assertions.
+ * @details Implements the REQ-226 filesystem surface over a path set so the
+ * REQ-182 removal and the retired-directory sweep are observable without
+ * touching a real npm installation.
+ * @param paths {readonly string[]} Initially existing absolute paths, files or directories.
+ * @return {{ globalTreeFs: GlobalPackageTreeFs; removed: string[] }} Injected surface plus the removal log in call order.
+ */
+function createGlobalTreeStub(paths: readonly string[]): {
+  globalTreeFs: GlobalPackageTreeFs;
+  removed: string[];
+} {
+  const existing = new Set(paths);
+  const removed: string[] = [];
+  const globalTreeFs: GlobalPackageTreeFs = {
+    existsSync: (path) => existing.has(path),
+    readdirSync: (path) => {
+      const prefix = `${path}/`;
+      return [...existing]
+        .filter((entry) => entry.startsWith(prefix) && !entry.slice(prefix.length).includes("/"))
+        .map((entry) => entry.slice(prefix.length));
+    },
+    rmSync: (path) => {
+      for (const entry of [...existing]) {
+        if (entry === path || entry.startsWith(`${path}/`)) {
+          existing.delete(entry);
+        }
+      }
+      removed.push(path);
+    },
+  };
+  return { globalTreeFs, removed };
+}
+
 // ---------------------------------------------------------------------------
 // Level 0 — buildDevelopUpgradeCommand (pure tag-install command builder)
 // ---------------------------------------------------------------------------
 
-test("buildDevelopUpgradeCommand_builds_tagged_github_install_command", () => {
-  assert.deepEqual(
-    [...buildDevelopUpgradeCommand("v1.2.3")],
-    ["npm", "install", "-g", "github:Ogekuri/mcp-google-api#v1.2.3"]
-  );
+test("buildDevelopUpgradeCommand_builds_tagged_release_asset_install_command", () => {
+  // Act + Assert: REQ-171/REQ-225 — the develop channel installs the release
+  // tarball asset of the probed tag, never a git-ref spec.
+  const command = [...buildDevelopUpgradeCommand("v1.2.3", "1.2.3")];
+  assert.deepEqual(command, ["npm", "install", "-g", developAssetUrl("v1.2.3", "1.2.3")]);
+  assert.equal(command.some((token) => token.startsWith("github:")), false);
 });
 
 test("buildDevelopUpgradeCommand_appends_the_npm_force_flag_only_when_requested", () => {
   // Act + Assert: REQ-189 — forced develop-channel install carries the npm
   // --force flag; REQ-190 — the default invocation stays unforced.
   assert.deepEqual(
-    [...buildDevelopUpgradeCommand("v1.2.3", true)],
-    ["npm", "install", "-g", "github:Ogekuri/mcp-google-api#v1.2.3", UPGRADE_FORCE_OPTION]
+    [...buildDevelopUpgradeCommand("v1.2.3", "1.2.3", true)],
+    ["npm", "install", "-g", developAssetUrl("v1.2.3", "1.2.3"), UPGRADE_FORCE_OPTION]
   );
-  assert.equal(buildDevelopUpgradeCommand("v1.2.3").includes(UPGRADE_FORCE_OPTION), false);
-  assert.equal(buildDevelopUpgradeCommand("v1.2.3", false).includes(UPGRADE_FORCE_OPTION), false);
+  assert.equal(buildDevelopUpgradeCommand("v1.2.3", "1.2.3").includes(UPGRADE_FORCE_OPTION), false);
+  assert.equal(buildDevelopUpgradeCommand("v1.2.3", "1.2.3", false).includes(UPGRADE_FORCE_OPTION), false);
 });
 
 // ---------------------------------------------------------------------------
@@ -435,10 +487,12 @@ test("runUpgradeCommand_develop_channel_spawns_latest_tagged_github_release", as
     // endpoint only; no npm-registry request (REQ-172 skip semantics).
     assert.deepEqual(requestedUrls, [DEFAULT_GITHUB_RELEASES_API_URL]);
 
-    // Assert: REQ-171 — the single spawned child installs the RAW tag_name ref.
+    // Assert: REQ-171/REQ-225/REQ-228 — the single spawned child installs the
+    // release tarball asset of the RAW tag_name, so no git-ref spec is built.
     assert.equal(calls.length, 1);
     assert.equal(calls[0].command, "npm");
-    assert.deepEqual([...calls[0].args], ["install", "-g", "github:Ogekuri/mcp-google-api#v1.2.3"]);
+    assert.deepEqual([...calls[0].args], ["install", "-g", developAssetUrl("v1.2.3", "1.2.3")]);
+    assert.equal(calls[0].args.some((token) => token.startsWith("github:")), false);
 
     // Assert: REQ-173 — the summary reports the probed GitHub release version.
     assert.ok(chunks.join("").includes("0.8.0 -> 1.2.3"));
@@ -466,10 +520,10 @@ test("runUpgradeCommand_develop_channel_installs_even_when_tag_matches_installed
     const exitCode = await runUpgradeCommand(options, deps);
 
     // Assert: REQ-172 — no installed-vs-latest comparison (the channel always
-    // downloads): the tagged GitHub update runs even when the probed tag equals
-    // the installed version; the ref carries the RAW tag_name (REQ-171).
+    // downloads): the tagged release asset install runs even when the probed
+    // tag equals the installed version (REQ-171, REQ-225).
     assert.equal(calls.length, 1);
-    assert.deepEqual([...calls[0].args], ["install", "-g", "github:Ogekuri/mcp-google-api#v0.8.0"]);
+    assert.deepEqual([...calls[0].args], ["install", "-g", developAssetUrl("v0.8.0", "0.8.0")]);
     assert.equal(exitCode, 0);
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -493,12 +547,12 @@ test("runUpgradeCommand_develop_channel_force_appends_the_npm_force_flag", async
     const exitCode = await runUpgradeCommand(options, deps);
 
     // Assert: REQ-189 — the forced develop channel appends the npm --force
-    // flag to the tagged GitHub install command, preserving the REQ-171 shape.
+    // flag to the release-asset install command, preserving the REQ-171 shape.
     assert.equal(exitCode, 0);
     assert.equal(calls.length, 1);
     assert.deepEqual(
       [...calls[0].args],
-      ["install", "-g", "github:Ogekuri/mcp-google-api#v1.2.3", UPGRADE_FORCE_OPTION]
+      ["install", "-g", developAssetUrl("v1.2.3", "1.2.3"), UPGRADE_FORCE_OPTION]
     );
   } finally {
     rmSync(home, { recursive: true, force: true });
@@ -531,4 +585,105 @@ test("runUpgradeCommand_develop_channel_fails_fast_when_github_probe_errors", as
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Level 1 — ENOENT global-tree recovery (REQ-182, REQ-183, REQ-226, REQ-227, REQ-229)
+// ---------------------------------------------------------------------------
+
+test("runUpgradeCommand_enoent_recovery_removes_the_global_tree_then_retries_once", async () => {
+  const home = createFakeHome([]);
+  try {
+    const prefix = join(tmpdir(), "npm-global-root");
+    const globalNodeModules = join(prefix, "lib", "node_modules");
+    const packageDir = join(globalNodeModules, "mcp-google-api");
+    const retiredDir = join(globalNodeModules, ".mcp-google-api-AWNsTvJL");
+    const { globalTreeFs, removed } = createGlobalTreeStub([globalNodeModules, packageDir, retiredDir]);
+    const { spawnStub, calls } = createSpawnStub([
+      { status: 1, stderr: "npm error spawn sh ENOENT\n" },
+      { status: 0, stdout: `${prefix}\n` },
+      { status: 0 },
+    ]);
+    const { logger, errors } = createLoggerStub();
+    const deps: ManagementCommandDeps = {
+      ...buildDeps(spawnStub, logger, process.stdout),
+      globalTreeFs,
+      platform: "linux",
+    };
+    const options: ManagementCommandOptions = { currentVersion: "0.8.0", home };
+
+    const exitCode = await runUpgradeCommand(options, deps);
+
+    // Assert: REQ-227 — the recovery resolves the npm global root with
+    // `npm prefix -g` before touching the destination tree.
+    assert.equal(calls.length, 3);
+    assert.equal(calls[1].command, "npm");
+    assert.deepEqual([...calls[1].args], ["prefix", "-g"]);
+
+    // Assert: REQ-226 — the package directory and every retired sibling are
+    // force-removed, so the retry reifies into a clean destination.
+    assert.deepEqual(removed, [packageDir, retiredDir]);
+    assert.equal(globalTreeFs.existsSync?.(packageDir), false);
+    assert.equal(globalTreeFs.existsSync?.(retiredDir), false);
+
+    // Assert: REQ-182 — exactly one retry of the same channel update command.
+    assert.deepEqual([...calls[2].args], [...PACKAGE_UPGRADE_COMMAND.slice(1)]);
+    assert.equal(exitCode, 0);
+    // The failed first attempt echoes its captured stderr, but no restore child
+    // is needed once the retry succeeds (REQ-183 not triggered).
+    assert.equal(errors.some((text) => text.includes("restoring a working global installation")), false);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("runUpgradeCommand_failed_retry_spawns_one_restore_child_and_propagates_retry_code", async () => {
+  const home = createFakeHome([]);
+  try {
+    const prefix = join(tmpdir(), "npm-global-root");
+    const globalNodeModules = join(prefix, "lib", "node_modules");
+    const packageDir = join(globalNodeModules, "mcp-google-api");
+    const { globalTreeFs } = createGlobalTreeStub([globalNodeModules, packageDir]);
+    const { spawnStub, calls } = createSpawnStub([
+      { status: 1, stderr: "npm error spawn sh ENOENT\n" },
+      { status: 0, stdout: `${prefix}\n` },
+      { status: 9, stderr: "npm error retry failed\n" },
+      { status: 0 },
+    ]);
+    const { logger, errors } = createLoggerStub();
+    const deps: ManagementCommandDeps = {
+      ...buildDeps(spawnStub, logger, process.stdout),
+      globalTreeFs,
+      platform: "linux",
+    };
+    const options: ManagementCommandOptions = { currentVersion: "0.8.0", home };
+
+    const exitCode = await runUpgradeCommand(options, deps);
+
+    // Assert: REQ-183 — one bounded restore child reinstalls the npm package
+    // so the global installation is not left destroyed.
+    assert.equal(calls.length, 4);
+    assert.deepEqual([...calls[3].args], [...PACKAGE_UPGRADE_COMMAND.slice(1)]);
+    assert.ok(errors.some((text) => text.includes("restoring a working global installation")));
+
+    // Assert: REQ-229 — the retry exit code propagates (no summary printed).
+    assert.equal(exitCode, 9);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("purgeGlobalPackageTree_returns_false_when_the_global_root_is_unresolvable", () => {
+  const { spawnStub, calls } = createSpawnStub([{ status: 1 }]);
+  const { logger, errors } = createLoggerStub();
+  const { globalTreeFs, removed } = createGlobalTreeStub([]);
+
+  const purged = purgeGlobalPackageTree({ spawn: spawnStub, logger, globalTreeFs, platform: "linux" });
+
+  // Assert: REQ-227 — an unresolvable global root never guesses a path: the
+  // removal reports failure on stderr and deletes nothing.
+  assert.equal(purged, false);
+  assert.equal(calls.length, 1);
+  assert.equal(removed.length, 0);
+  assert.ok(errors.some((text) => text.includes("cannot resolve the npm global root")));
 });

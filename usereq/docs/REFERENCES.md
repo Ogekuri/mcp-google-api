@@ -3126,13 +3126,13 @@ Complexity O(n) in tool names plus O(n*a) API union work.
 
 ---
 
-# upgradeManager.ts | TypeScript | 1111L | 41 symbols | 7 imports | 88 comments
+# upgradeManager.ts | TypeScript | 1278L | 44 symbols | 7 imports | 99 comments
 > Path: `src/utils/upgradeManager.ts`
 
 ## Imports
 ```
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { Logger } from "../index.js";
@@ -3142,64 +3142,69 @@ import { loadCliSettings } from "./cliSettings.js";
 
 ## Definitions
 
-- fn `const green = (text: string): string => `${ANSI_GREEN}${text}${ANSI_RESET}`;` (L59)
+- fn `const green = (text: string): string => `${ANSI_GREEN}${text}${ANSI_RESET}`;` (L61)
 - @brief Wraps diagnostic text in bright-green SGR sequences.
 - @param text {string} Plain diagnostic text.
 - @return {string} Green-colored text terminated by an SGR reset.
-- fn `const red = (text: string): string => `${ANSI_RED}${text}${ANSI_RESET}`;` (L66)
+- fn `const red = (text: string): string => `${ANSI_RED}${text}${ANSI_RESET}`;` (L68)
 - @brief Wraps diagnostic text in bright-red SGR sequences.
 - @param text {string} Plain diagnostic text.
 - @return {string} Red-colored text terminated by an SGR reset.
-### fn `export function buildDevelopUpgradeCommand(tag: string, force = false): readonly string[]` (L116-119)
-- @brief Builds the package-manager command installing one GitHub release tag (REQ-171).
-- @details Produces `npm install -g github:<repository>#<tag>` where `<tag>`
-is the raw `tag_name` probed from the GitHub releases API (REQ-177), so the
-develop channel installs the latest tagged release regardless of the branch
-carrying it (REQ-170, REQ-172). When `force` is true the npm `--force` flag
-is appended so the tagged package is re-downloaded and fully reinstalled
-(REQ-189); the default invocation carries no force flag (REQ-190). npm
-fetches and builds the referenced tag; child exit-code and spawn-failure
-semantics are identical to `PACKAGE_UPGRADE_COMMAND` (REQ-125, REQ-128).
+### fn `export function buildDevelopUpgradeCommand(` (L153-161)
+- @brief Builds the package-manager command installing one GitHub release asset (REQ-171).
+- @details Produces `npm install -g <download base>/<tag>/mcp-google-api-<version>.tgz`,
+the PKG-012 release asset attached to the tagged commit, where `<tag>` is the
+raw `tag_name` probed from the GitHub releases API (REQ-177) and `<version>`
+is that tag without its leading `v` (REQ-225). Because the target is an npm
+tarball rather than a git ref, npm never runs the dependency `prepare`
+install, so the nested global reify that corrupts the destination tree
+(LIM-008) cannot occur and the channel installs the tagged release in every
+invocation regardless of the branch carrying the tag (REQ-170, REQ-172). When
+`force` is true the npm `--force` flag is appended so the asset is
+re-downloaded and fully reinstalled (REQ-189); the default invocation carries
+no force flag (REQ-190). Child exit-code and spawn-failure semantics are
+identical to `PACKAGE_UPGRADE_COMMAND` (REQ-125, REQ-128, REQ-228).
 - @param tag {string} Raw GitHub release tag (`tag_name`, e.g. `v1.2.3`); MUST be non-empty.
+- @param version {string} Version of that tag without a leading `v` (`1.2.3`); MUST be non-empty (REQ-225).
 - @param force {boolean} True to append the npm `--force` reinstall flag (REQ-189). Default: false.
 - @return {readonly string[]} Executable-plus-arguments command tuple.
-- @note Complexity: O(n) in tag length. Pure; no side effects.
+- @note Complexity: O(n) in tag and version length. Pure; no side effects.
 - @see probeLatestGitHubVersion
-- @satisfies REQ-170, REQ-171, REQ-177, REQ-189, REQ-190
+- @satisfies REQ-170, REQ-171, REQ-172, REQ-177, REQ-189, REQ-190, REQ-225
 
-### iface `export interface PostUpgradeCliOutcome` (L154-163)
+### iface `export interface PostUpgradeCliOutcome` (L196-205)
 - @brief Per-CLI result entry of the post-upgrade install consumed by the `--upgrade` summary.
 - @details One entry per CLI processed by the child `install` command (REQ-133);
 counts are present only when the child activity report was parseable.
 
-### iface `export interface PostUpgradeInstallOutcome` (L170-175)
+### iface `export interface PostUpgradeInstallOutcome` (L212-217)
 - @brief Aggregate outcome of the post-upgrade `install` child command (REQ-126, REQ-132).
 - @details `clis` is empty only when no CLI is enabled (successful no-op);
 `exitCode` is the child exit code, 0 for the no-op and success cases.
 
-### iface `export interface VersionIdleCache` (L182-191)
+### iface `export interface VersionIdleCache` (L224-233)
 - @brief Persisted idle-cache shape (snake_case keys, reference-CLI layout).
 - @details `*_epoch` fields are POSIX milliseconds since the Unix epoch;
 `*_human` fields are their ISO-8601 UTC renderings (REQ-122).
 
-### iface `export interface IdleFsDeps` (L198-205)
+### iface `export interface IdleFsDeps` (L240-247)
 - @brief Injectable filesystem surface consumed by the idle check.
 - @details Tests substitute in-memory readers/writers so no real cache file
 is touched; production defaults map to `node:fs` primitives.
 
-### iface `export interface IdleCheckDeps extends AutoUpdateCheckerDeps` : AutoUpdateCheckerDeps (L212-221)
+### iface `export interface IdleCheckDeps extends AutoUpdateCheckerDeps` : AutoUpdateCheckerDeps (L254-263)
 - @brief Dependency surface of the idle-gated version check.
 - @details Extends the registry-probe injection surface with the idle-gate
 inputs: forced mode, cache path override, injectable clock, and fs stubs.
 
-- type `export type IdleCheckStatus =` (L224)
-### iface `export interface IdleCheckResult` (L238-251)
+- type `export type IdleCheckStatus =` (L266)
+### iface `export interface IdleCheckResult` (L280-293)
 - @brief Result of one idle-gated version-check attempt.
 - @details `checked` is false only when no registry probe ran (idle gate hit
 or disabled flag); the remaining fields echo the probe outcome and the
 freshly persisted idle deadline for callers and tests.
 
-### fn `export function resolveIdleCachePath(home?: string): string` (L262-264)
+### fn `export function resolveIdleCachePath(home?: string): string` (L304-306)
 - @brief Resolves the program-owned idle-cache file path.
 - @details Joins `<home>/.cache/mcp-google-api/check_version_idle-time.json`
 (program-owned directory segment per the DES-021 naming rule; never a
@@ -3208,7 +3213,7 @@ shared or generic directory).
 - @return {string} Absolute idle-cache file path.
 - @satisfies REQ-121, REQ-122
 
-### fn `export function loadIdleCache(cachePath: string, fs: IdleFsDeps = {}): VersionIdleCache` (L275-299)
+### fn `export function loadIdleCache(cachePath: string, fs: IdleFsDeps = {}): VersionIdleCache` (L317-341)
 - @brief Loads the idle cache tolerating any missing or malformed content.
 - @details Missing files, I/O errors, non-object JSON, and wrong-typed fields
 all normalize to `{}`; numeric fields are accepted only when finite numbers.
@@ -3217,9 +3222,9 @@ all normalize to `{}`; numeric fields are accepted only when finite numbers.
 - @return {VersionIdleCache} Parsed cache subset; empty object on any failure.
 - @satisfies REQ-122
 
-### fn `const isFiniteNumber = (value: unknown): value is number =>` (L284-295)
+### fn `const isFiniteNumber = (value: unknown): value is number =>` (L326-337)
 
-### fn `export function persistIdleCache(` (L316-320)
+### fn `export function persistIdleCache(` (L358-362)
 - @brief Persists the idle cache after one executed check.
 - @details Serializes `last_success_*` and `idle_time_*` fields with two-space
 indentation plus a trailing newline, creating the parent directory on
@@ -3234,9 +3239,9 @@ check itself already completed).
 - @satisfies REQ-122
 - @post The cache file contains the serialized deadlines, or a stderr error was emitted.
 
-### fn `const toIso = (epoch: number | undefined): string | null =>` (L323-330)
+### fn `const toIso = (epoch: number | undefined): string | null =>` (L365-372)
 
-### fn `export async function checkVersionIdle(deps: IdleCheckDeps = {}): Promise<IdleCheckResult>` (L363-420)
+### fn `export async function checkVersionIdle(deps: IdleCheckDeps = {}): Promise<IdleCheckResult>` (L405-462)
 - @brief Runs the idle-gated automatic version check.
 - @details Resolution order: disabled-flag short-circuit (REQ-083; zero
 network calls, zero cache writes) -> idle gate (skip with `status: "idle"`
@@ -3257,22 +3262,31 @@ failures never throw. Never blocks the caller's error path: never throws.
 - @see persistIdleCache
 - @satisfies REQ-120, REQ-121, REQ-122, REQ-123, REQ-124
 
-- type `export type ManagementCommandName = "--ver" | "--version" | "--upgrade" | "--uninstall";` (L423)
-- type `export type UpgradeChannel = "npm" | "develop";` (L434)
+- type `export type ManagementCommandName = "--ver" | "--version" | "--upgrade" | "--uninstall";` (L465)
+- type `export type UpgradeChannel = "npm" | "develop";` (L476)
 - @brief Install source selected for the `--upgrade` command.
 - @details `npm` (default) resolves `mcp-google-api@latest` from the npm
 registry (REQ-125); `develop` resolves the latest tagged GitHub release of
-`Ogekuri/mcp-google-api` via the releases API (REQ-177) and installs it as
-`github:Ogekuri/mcp-google-api#<tag>` (REQ-171), independent of the branch
-carrying the tag (REQ-170).
-- @satisfies REQ-170
-### iface `export interface PackageManagerDeps` (L442-447)
+`Ogekuri/mcp-google-api` via the releases API (REQ-177) and installs its
+release tarball asset (REQ-171, REQ-225), independent of the branch carrying
+the tag (REQ-170).
+- @satisfies REQ-170, REQ-171
+### iface `export interface GlobalPackageTreeFs` (L485-492)
+- @brief Injectable filesystem surface of the global-tree recovery.
+- @details Every field is optional and defaults to the corresponding
+`node:fs` primitive, so the REQ-182 removal is exercised deterministically
+without touching a real npm installation (DES-022, REQ-226).
+- @satisfies REQ-226
+
+### iface `export interface PackageManagerDeps` (L502-511)
 - @brief Injectable child-process surface for package-manager commands.
 - @details `spawn` defaults to `node:child_process` `spawnSync`; `logger`
-defaults to the stderr `Logger`. Injection keeps the management commands
-deterministic and side-effect free under test (DES-022).
+defaults to the stderr `Logger`; `globalTreeFs` and `platform` inject the
+global-tree recovery surface and the npm global layout of the running OS
+(REQ-226, REQ-227). Injection keeps the management commands deterministic
+and side-effect free under test (DES-022).
 
-### iface `export interface ManagementCommandOptions` (L460-469)
+### iface `export interface ManagementCommandOptions` (L524-533)
 - @brief Options consumed by the management command handlers.
 - @details `currentVersion` backs the `--ver`/`--version` output, the forced
 online check, and the starting version of the `--upgrade` summary; `home`
@@ -3283,12 +3297,12 @@ default; `develop` = latest tagged GitHub release, REQ-170, REQ-177);
 reinstallation via the channel-specific package-manager force flag
 (REQ-187, REQ-188, REQ-189).
 
-### iface `export interface ManagementCommandDeps extends PackageManagerDeps` : PackageManagerDeps (L476-483)
+### iface `export interface ManagementCommandDeps extends PackageManagerDeps` : PackageManagerDeps (L540-547)
 - @brief Aggregated dependency surface of the management dispatch.
 - @details Combines the package-manager injection surface with the idle-check
 injection surface and an injectable stdout sink used by the version print.
 
-### fn `export function parseManagementCommand(` (L499-529)
+### fn `export function parseManagementCommand(` (L563-593)
 - @brief Detects an exact management-command argv shape in a raw argv array.
 - @details Single-token shape: exactly one of `--ver`, `--version`,
 `--upgrade`, `--uninstall` (no options beside them). `--upgrade` shapes:
@@ -3302,7 +3316,7 @@ dispatch stays untouched.
 - @note Complexity: O(n) in argv length. Pure.
 - @satisfies PRJ-003, REQ-120, REQ-125, REQ-127, REQ-170, REQ-187
 
-### fn `export function parseUpgradeChannel(args: readonly string[]): UpgradeChannel` (L542-544)
+### fn `export function parseUpgradeChannel(args: readonly string[]): UpgradeChannel` (L606-608)
 - @brief Resolves the `--upgrade` install channel from a raw argv array.
 - @details Returns `"develop"` when the argv contains the `--develop` option
 or its equivalent `--dev` alias (both orderings relative to `--upgrade`
@@ -3313,7 +3327,7 @@ otherwise. Pure; no side effects.
 - @note Complexity: O(n) in argv length. Pure.
 - @satisfies REQ-170
 
-### fn `export function parseUpgradeForce(args: readonly string[]): boolean` (L558-560)
+### fn `export function parseUpgradeForce(args: readonly string[]): boolean` (L622-624)
 - @brief Detects the `--force` auxiliary upgrade option in a raw argv array.
 - @details Returns true when the argv contains `--force` (REQ-187), the
 forced-reinstall selector consumed by the `--upgrade` channel update child
@@ -3325,15 +3339,15 @@ the `--upgrade` dispatch reads it. Pure; no side effects.
 - @see parseUpgradeChannel
 - @satisfies REQ-187
 
-### fn `export function runPackageManagerCommand(` (L581-583)
+### fn `export function runPackageManagerCommand(` (L645-647)
 - @brief Runs one package-manager command as a child process with inherited stdio.
 - @details Spawns `command[0]` with the remaining tokens, inheriting stdio so
 npm/npx output streams through unchanged; on Windows the spawn runs through
 a shell so `npm.cmd` resolves. The child runs with an explicit neutral
 working directory (the user home), never the caller's cwd: management
 installs are routinely invoked from inside the source checkout of the same
-package being replaced, and reconciling a git-ref global install against
-that same-name local project context corrupts npm reify (observed as
+package being replaced, where reconciling a global install against that
+same-name local project context corrupts npm reify (observed as
 TAR_ENTRY_ERROR ENOENT floods plus lifecycle `spawn sh ENOENT` in a cwd
 deleted mid-reify). A spawn failure (missing executable or thrown spawn
 error) prints the error plus the exact manual command hint on stderr and
@@ -3344,15 +3358,45 @@ maps to 1).
 - @return {number} Child exit code, or 1 when spawning failed.
 - @satisfies REQ-125, REQ-127, REQ-128
 
-### fn `const reportSpawnFailure = (message: string): number =>` (L587-591)
+### fn `const reportSpawnFailure = (message: string): number =>` (L651-655)
 
-### fn `function toStreamText(value: string | Buffer | undefined): string` (L623-625)
+### fn `function toStreamText(value: string | Buffer | undefined): string` (L689-691)
 - @brief Renders a captured child-process stream chunk as UTF-8 text.
 - @param value {string | Buffer | undefined} Raw `spawnSync` stream chunk.
 - @return {string} Decoded text; empty for undefined or null chunks.
 - @note Complexity: O(n) in chunk size. Pure.
 
-### fn `function runCapturedPackageManagerCommand(` (L647-681)
+### fn `export function resolveGlobalPackageDir(deps: PackageManagerDeps = {}): string | undefined` (L707-732)
+- @brief Resolves the managed global package directory of the running npm prefix.
+- @details Runs one captured `npm prefix -g` child (`NPM_GLOBAL_ROOT_ARGUMENTS`,
+neutral home cwd, win32 shell bridge) and derives the global `node_modules`
+directory from the printed prefix: `<prefix>/lib/node_modules` on POSIX,
+`<prefix>/node_modules` on Windows, then appends the distribution package
+name. Returns undefined for a spawn failure, a non-zero child status, or an
+empty prefix, so the caller never removes a guessed path (REQ-227).
+- @param deps {PackageManagerDeps} Optional spawner/platform overrides; defaults to `spawnSync` and `process.platform`.
+- @return {string | undefined} Absolute global package directory; undefined when the global root is unresolvable.
+- @note Complexity: O(1) plus one child round-trip.
+- @see purgeGlobalPackageTree
+- @satisfies REQ-226, REQ-227
+
+### fn `export function purgeGlobalPackageTree(deps: PackageManagerDeps = {}): boolean` (L750-778)
+- @brief Force-removes the global package tree and every retired sibling directory.
+- @details Resolves the destination through `resolveGlobalPackageDir` (REQ-227),
+deletes the package directory, deletes every sibling entry matching
+`RETIRED_PACKAGE_DIR_PREFIX` left behind by earlier retired reifications
+(REQ-226), and verifies the package directory is absent afterwards so the
+REQ-182 retry reifies into a clean destination. Removal failures and an
+unresolvable global root are reported on stderr and yield false; nothing is
+guessed or deleted outside the resolved global `node_modules` directory.
+- @param deps {PackageManagerDeps} Optional spawner, logger, filesystem, and platform overrides.
+- @return {boolean} True only when the package directory is verified absent.
+- @note Complexity: O(n) in global `node_modules` entries plus one child round-trip.
+- @see resolveGlobalPackageDir
+- @see runPackageUpdateCommand
+- @satisfies REQ-226, REQ-227
+
+### fn `function runCapturedPackageManagerCommand(` (L800-834)
 - @brief Runs one package-manager child with captured output echoed to stderr.
 - @details Spawns `command[0]` with the remaining tokens using
 `stdio: ["inherit", "pipe", "pipe"]` (stdin inherited so interactive prompts
@@ -3370,33 +3414,34 @@ and maps to exit code 1 (REQ-128); otherwise the child exit code propagates
 - @note Complexity: O(n) in captured output size plus one child round-trip.
 - @see runPackageManagerCommand
 - @see runPackageUpdateCommand
-- @satisfies REQ-125, REQ-128, REQ-171
+- @satisfies REQ-125, REQ-128, REQ-171, REQ-228
 
-### fn `const reportSpawnFailure = (message: string): { code: number; stderr: string } =>` (L653-657)
+### fn `const reportSpawnFailure = (message: string): { code: number; stderr: string } =>` (L806-810)
 
-### fn `function runPackageUpdateCommand(` (L705-715)
-- @brief Runs the `--upgrade` package-update child with clean-slate ENOENT recovery.
+### fn `function runPackageUpdateCommand(` (L859-879)
+- @brief Runs the `--upgrade` package-update child with forced-removal ENOENT recovery.
 - @details First attempt runs the captured-stdio child
-(`runCapturedPackageManagerCommand`). When it exits non-zero and its
-captured stderr matches `REIFY_ENOENT_SIGNATURE` — the
-`spawn sh ENOENT` class produced by npm global reify over a corrupted
-same-name install tree, where dependency lifecycle scripts (e.g. the
-protobufjs postinstall) run against directories removed mid-reify — it
-runs one tolerated `PACKAGE_UNINSTALL_COMMAND` child that removes the
-broken global tree including every dangling nested entry, then retries the
-update child exactly once so the fresh install rebuilds the full dependency
-directory set (REQ-182). Any other failure propagates immediately; after
-the recovery uninstall no further recovery children are spawned and the
-final exit code is the retry outcome (REQ-183).
-- @param command {readonly string[]} Executable-plus-arguments update command (`PACKAGE_UPGRADE_COMMAND` or `buildDevelopUpgradeCommand(tag)`).
-- @param deps {PackageManagerDeps} Optional spawner/logger overrides.
-- @return {number} Child exit code; 0 only when the (possibly retried) update succeeded.
-- @note Complexity: one or two update children plus at most one uninstall child.
+(`runCapturedPackageManagerCommand`). When it exits non-zero and its captured
+stderr matches `REIFY_ENOENT_SIGNATURE` — the `spawn sh ENOENT` class produced
+by a destination tree reified more than once, where dependency lifecycle
+scripts run against directories removed mid-reify — `purgeGlobalPackageTree`
+resolves the npm global root, force-removes the package directory and every
+retired `.mcp-google-api-*` sibling, and verifies the destination absent
+(REQ-182, REQ-226, REQ-227); the update child then retries exactly once. When
+that retry also fails, one bounded restore child (`npm install -g
+mcp-google-api@latest`) re-emits a working global installation (REQ-183) and
+its outcome is reported on stderr only while the retry exit code propagates
+(REQ-229). Any other first-attempt failure propagates immediately.
+- @param command {readonly string[]} Executable-plus-arguments update command (`PACKAGE_UPGRADE_COMMAND` or `buildDevelopUpgradeCommand(tag, version, force)`).
+- @param deps {PackageManagerDeps} Optional spawner, logger, filesystem, and platform overrides.
+- @return {number} Recovery retry exit code when the recovery ran; otherwise the first-attempt exit code.
+- @note Complexity: one or two update children, one global-root child, and at most one restore child.
 - @see runCapturedPackageManagerCommand
-- @see runPackageManagerCommand
-- @satisfies REQ-125, REQ-171, REQ-182, REQ-183
+- @see purgeGlobalPackageTree
+- @see PACKAGE_UPGRADE_COMMAND
+- @satisfies REQ-125, REQ-171, REQ-182, REQ-183, REQ-226, REQ-227, REQ-229
 
-### fn `function parsePostUpgradeCliOutcomes(` (L731-761)
+### fn `function parsePostUpgradeCliOutcomes(` (L895-925)
 - @brief Parses the child `install` activity report into per-CLI outcomes.
 - @details Accepts the human-readable report emitted by the `install` command
 on stdout (REQ-166): lines of the form ` <cli>: <activity>` under the
@@ -3410,7 +3455,7 @@ unparseable output so callers fall back to the persisted enabled-CLI list
 - @note Complexity: O(n + m) with n report lines and m error strings.
 - @satisfies REQ-133, REQ-135, REQ-166
 
-### fn `export function runPostUpgradeSkillInstall(` (L783-785)
+### fn `export function runPostUpgradeSkillInstall(` (L947-949)
 - @brief Refreshes installed skills through the upgraded package after `--upgrade`.
 - @details When at least one CLI is enabled in the persisted settings, spawns
 `mcp-google-api install` — the globally installed bin of the just-upgraded
@@ -3430,9 +3475,9 @@ zero enabled CLIs the hook is a successful no-op with an empty CLI list.
 - @see parsePostUpgradeCliOutcomes
 - @satisfies REQ-126, REQ-128, REQ-133, REQ-135
 
-### fn `const reportSpawnFailure = (message: string): PostUpgradeInstallOutcome =>` (L793-797)
+### fn `const reportSpawnFailure = (message: string): PostUpgradeInstallOutcome =>` (L957-961)
 
-### fn `export function renderUpgradeSummary(` (L835-864)
+### fn `export function renderUpgradeSummary(` (L999-1028)
 - @brief Renders the human-readable `--upgrade` summary block.
 - @details First line states the version transition `starting -> updated`;
 the second line states the post-upgrade install outcome (success, failure
@@ -3445,7 +3490,7 @@ reported server/skill counts when known. Pure; deterministic text.
 - @return {string} Multi-line summary terminated by one trailing newline.
 - @satisfies REQ-132, REQ-133, REQ-134
 
-### fn `function resolveProbeLatestVersion(probe: LatestVersionProbe): string` (L877-885)
+### fn `function resolveProbeLatestVersion(probe: LatestVersionProbe): string` (L1041-1049)
 - @brief Maps one registry probe outcome to its latest-version text.
 - @details `newer` -> `latestVersion`; `current` -> `currentVersion`;
 every other outcome (`disabled`, `unknown-version`, `error`) -> `unknown`
@@ -3456,7 +3501,7 @@ every other outcome (`disabled`, `unknown-version`, `error`) -> `unknown`
 - @see probeLatestVersion
 - @satisfies REQ-164
 
-### fn `function renderVersionReportLine(label: string, value: string): string` (L912-914)
+### fn `function renderVersionReportLine(label: string, value: string): string` (L1076-1078)
 - @brief Renders one aligned label/value line of the `--ver`/`--version` report.
 - @details Right-pads `label` with spaces to `VERSION_REPORT_LABEL_WIDTH`
 characters, then appends ` : ` and the value, producing the exact REQ-120
@@ -3472,7 +3517,7 @@ release (REQ-163), whose failed-probe value renders as
 - @see resolveProbeLatestVersion
 - @satisfies REQ-120, REQ-192, REQ-162, REQ-163, REQ-181
 
-### fn `async function resolveUpdatedVersion(` (L932-941)
+### fn `async function resolveUpdatedVersion(` (L1096-1105)
 - @brief Resolves the updated package version reported by the `--upgrade` summary.
 - @details Runs one logging-free `probeLatestVersion` registry probe after the
 upgrade child succeeds, forwarding the injected idle-check dependencies, and
@@ -3488,7 +3533,7 @@ Invoked by `runUpgradeCommand` after the package-update child succeeds.
 - @see resolveProbeLatestVersion
 - @satisfies REQ-134
 
-### fn `export async function runVersionCommand(` (L965-967)
+### fn `export async function runVersionCommand(` (L1129-1131)
 - @brief Handles `--ver`/`--version`: dual online probe plus three-line version report.
 - @details Runs the npm packument-manifest probe (`probeLatestManifestVersion`,
 abbreviated-manifest Accept header, latest resolved from `dist-tags.latest`,
@@ -3510,7 +3555,7 @@ line as `Latest @ GitHub : unknown (<reason>)` with
 - @see resolveProbeLatestVersion
 - @satisfies REQ-120, REQ-161, REQ-162, REQ-163, REQ-164, REQ-179, REQ-180, REQ-181, REQ-192
 
-### fn `export async function runUpgradeCommand(` (L1028-1030)
+### fn `export async function runUpgradeCommand(` (L1195-1197)
 - @brief Handles `--upgrade`: channel selection, package reinstall, then refresh skills with a stdout summary.
 - @details Develop channel (`options.channel === "develop"`, selected by the
 `--develop` option or its equivalent `--dev` alias, REQ-170): skips the
@@ -3519,14 +3564,17 @@ proceeding with the tagged GitHub update (REQ-172). It first runs one
 forced GitHub releases probe bypassing the idle cache gate (REQ-177); on
 probe failure it prints a stderr diagnostic carrying the probe message and
 returns 1 without spawning any child process (REQ-178); on success it runs
-`buildDevelopUpgradeCommand(tag)` (REQ-171), then the post-upgrade
+`buildDevelopUpgradeCommand(tag, version)` (REQ-171, REQ-225) installing the
+release tarball asset of the probed tag, then the post-upgrade
 install and summary with the probed latest GitHub release version as the
 updated version (REQ-173). Default npm channel: unconditional flow with no
 pre-upgrade version comparison (REQ-146): the update path runs the
 package-update child via `runPackageUpdateCommand` with captured output
 echoed on stderr; a non-zero exit carrying an ENOENT reify diagnostic
-triggers one tolerated clean-slate uninstall plus a single update retry
-(REQ-182, REQ-183) and propagates the final exit code unchanged without
+triggers the REQ-182 forced removal of the global package directory plus a
+single update retry and, when that retry also fails, one bounded restore
+child (REQ-183, REQ-226, REQ-227, REQ-229) while the retry exit code
+propagates unchanged without
 printing any summary; on success resolves the updated version via one
 post-upgrade registry probe (REQ-134), runs the
 captured-stdout post-upgrade install (REQ-126), prints the
@@ -3548,9 +3596,9 @@ channel (REQ-189); without it the standard unforced update child runs
 - @see resolveUpdatedVersion
 - @see runPostUpgradeSkillInstall
 - @see renderUpgradeSummary
-- @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-146, REQ-170, REQ-171, REQ-172, REQ-173, REQ-177, REQ-178, REQ-182, REQ-183, REQ-187, REQ-188, REQ-189, REQ-190
+- @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-146, REQ-170, REQ-171, REQ-172, REQ-173, REQ-177, REQ-178, REQ-182, REQ-183, REQ-187, REQ-188, REQ-189, REQ-190, REQ-225, REQ-226, REQ-227, REQ-229
 
-### fn `export function runUninstallCommand(deps: ManagementCommandDeps = {}): number` (L1077-1079)
+### fn `export function runUninstallCommand(deps: ManagementCommandDeps = {}): number` (L1244-1246)
 - @brief Handles `--uninstall`: remove the globally installed package.
 - @details Runs `npm uninstall -g mcp-google-api` with inherited stdio and
 returns the child exit code (spawn failures map to 1 with the manual
@@ -3561,7 +3609,7 @@ responsibility of the existing `uninstall` subcommand.
 - @see runPackageManagerCommand
 - @satisfies REQ-127
 
-### fn `export async function runManagementCommand(` (L1097-1100)
+### fn `export async function runManagementCommand(` (L1264-1267)
 - @brief Dispatches one management command to its handler.
 - @details Single dispatch surface for the CLI entry intercept:
 `--ver`/`--version` -> `runVersionCommand` (async); `--upgrade` ->
@@ -3580,45 +3628,48 @@ forwarded `--force` forced-reinstall option, REQ-187); `--uninstall` ->
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`green`|fn||59|const green = (text: string): string => `${ANSI_GREEN}${t...|
-|`red`|fn||66|const red = (text: string): string => `${ANSI_RED}${text}...|
-|`buildDevelopUpgradeCommand`|fn||116-119|export function buildDevelopUpgradeCommand(tag: string, f...|
-|`PostUpgradeCliOutcome`|iface||154-163|export interface PostUpgradeCliOutcome|
-|`PostUpgradeInstallOutcome`|iface||170-175|export interface PostUpgradeInstallOutcome|
-|`VersionIdleCache`|iface||182-191|export interface VersionIdleCache|
-|`IdleFsDeps`|iface||198-205|export interface IdleFsDeps|
-|`IdleCheckDeps`|iface||212-221|export interface IdleCheckDeps extends AutoUpdateCheckerDeps|
-|`IdleCheckStatus`|type||224||
-|`IdleCheckResult`|iface||238-251|export interface IdleCheckResult|
-|`resolveIdleCachePath`|fn||262-264|export function resolveIdleCachePath(home?: string): string|
-|`loadIdleCache`|fn||275-299|export function loadIdleCache(cachePath: string, fs: Idle...|
-|`isFiniteNumber`|fn||284-295|const isFiniteNumber = (value: unknown): value is number =>|
-|`persistIdleCache`|fn||316-320|export function persistIdleCache(|
-|`toIso`|fn||323-330|const toIso = (epoch: number | undefined): string | null =>|
-|`checkVersionIdle`|fn||363-420|export async function checkVersionIdle(deps: IdleCheckDep...|
-|`ManagementCommandName`|type||423||
-|`UpgradeChannel`|type||434||
-|`PackageManagerDeps`|iface||442-447|export interface PackageManagerDeps|
-|`ManagementCommandOptions`|iface||460-469|export interface ManagementCommandOptions|
-|`ManagementCommandDeps`|iface||476-483|export interface ManagementCommandDeps extends PackageMan...|
-|`parseManagementCommand`|fn||499-529|export function parseManagementCommand(|
-|`parseUpgradeChannel`|fn||542-544|export function parseUpgradeChannel(args: readonly string...|
-|`parseUpgradeForce`|fn||558-560|export function parseUpgradeForce(args: readonly string[]...|
-|`runPackageManagerCommand`|fn||581-583|export function runPackageManagerCommand(|
-|`reportSpawnFailure`|fn||587-591|const reportSpawnFailure = (message: string): number =>|
-|`toStreamText`|fn||623-625|function toStreamText(value: string | Buffer | undefined)...|
-|`runCapturedPackageManagerCommand`|fn||647-681|function runCapturedPackageManagerCommand(|
-|`reportSpawnFailure`|fn||653-657|const reportSpawnFailure = (message: string): { code: num...|
-|`runPackageUpdateCommand`|fn||705-715|function runPackageUpdateCommand(|
-|`parsePostUpgradeCliOutcomes`|fn||731-761|function parsePostUpgradeCliOutcomes(|
-|`runPostUpgradeSkillInstall`|fn||783-785|export function runPostUpgradeSkillInstall(|
-|`reportSpawnFailure`|fn||793-797|const reportSpawnFailure = (message: string): PostUpgrade...|
-|`renderUpgradeSummary`|fn||835-864|export function renderUpgradeSummary(|
-|`resolveProbeLatestVersion`|fn||877-885|function resolveProbeLatestVersion(probe: LatestVersionPr...|
-|`renderVersionReportLine`|fn||912-914|function renderVersionReportLine(label: string, value: st...|
-|`resolveUpdatedVersion`|fn||932-941|async function resolveUpdatedVersion(|
-|`runVersionCommand`|fn||965-967|export async function runVersionCommand(|
-|`runUpgradeCommand`|fn||1028-1030|export async function runUpgradeCommand(|
-|`runUninstallCommand`|fn||1077-1079|export function runUninstallCommand(deps: ManagementComma...|
-|`runManagementCommand`|fn||1097-1100|export async function runManagementCommand(|
+|`green`|fn||61|const green = (text: string): string => `${ANSI_GREEN}${t...|
+|`red`|fn||68|const red = (text: string): string => `${ANSI_RED}${text}...|
+|`buildDevelopUpgradeCommand`|fn||153-161|export function buildDevelopUpgradeCommand(|
+|`PostUpgradeCliOutcome`|iface||196-205|export interface PostUpgradeCliOutcome|
+|`PostUpgradeInstallOutcome`|iface||212-217|export interface PostUpgradeInstallOutcome|
+|`VersionIdleCache`|iface||224-233|export interface VersionIdleCache|
+|`IdleFsDeps`|iface||240-247|export interface IdleFsDeps|
+|`IdleCheckDeps`|iface||254-263|export interface IdleCheckDeps extends AutoUpdateCheckerDeps|
+|`IdleCheckStatus`|type||266||
+|`IdleCheckResult`|iface||280-293|export interface IdleCheckResult|
+|`resolveIdleCachePath`|fn||304-306|export function resolveIdleCachePath(home?: string): string|
+|`loadIdleCache`|fn||317-341|export function loadIdleCache(cachePath: string, fs: Idle...|
+|`isFiniteNumber`|fn||326-337|const isFiniteNumber = (value: unknown): value is number =>|
+|`persistIdleCache`|fn||358-362|export function persistIdleCache(|
+|`toIso`|fn||365-372|const toIso = (epoch: number | undefined): string | null =>|
+|`checkVersionIdle`|fn||405-462|export async function checkVersionIdle(deps: IdleCheckDep...|
+|`ManagementCommandName`|type||465||
+|`UpgradeChannel`|type||476||
+|`GlobalPackageTreeFs`|iface||485-492|export interface GlobalPackageTreeFs|
+|`PackageManagerDeps`|iface||502-511|export interface PackageManagerDeps|
+|`ManagementCommandOptions`|iface||524-533|export interface ManagementCommandOptions|
+|`ManagementCommandDeps`|iface||540-547|export interface ManagementCommandDeps extends PackageMan...|
+|`parseManagementCommand`|fn||563-593|export function parseManagementCommand(|
+|`parseUpgradeChannel`|fn||606-608|export function parseUpgradeChannel(args: readonly string...|
+|`parseUpgradeForce`|fn||622-624|export function parseUpgradeForce(args: readonly string[]...|
+|`runPackageManagerCommand`|fn||645-647|export function runPackageManagerCommand(|
+|`reportSpawnFailure`|fn||651-655|const reportSpawnFailure = (message: string): number =>|
+|`toStreamText`|fn||689-691|function toStreamText(value: string | Buffer | undefined)...|
+|`resolveGlobalPackageDir`|fn||707-732|export function resolveGlobalPackageDir(deps: PackageMana...|
+|`purgeGlobalPackageTree`|fn||750-778|export function purgeGlobalPackageTree(deps: PackageManag...|
+|`runCapturedPackageManagerCommand`|fn||800-834|function runCapturedPackageManagerCommand(|
+|`reportSpawnFailure`|fn||806-810|const reportSpawnFailure = (message: string): { code: num...|
+|`runPackageUpdateCommand`|fn||859-879|function runPackageUpdateCommand(|
+|`parsePostUpgradeCliOutcomes`|fn||895-925|function parsePostUpgradeCliOutcomes(|
+|`runPostUpgradeSkillInstall`|fn||947-949|export function runPostUpgradeSkillInstall(|
+|`reportSpawnFailure`|fn||957-961|const reportSpawnFailure = (message: string): PostUpgrade...|
+|`renderUpgradeSummary`|fn||999-1028|export function renderUpgradeSummary(|
+|`resolveProbeLatestVersion`|fn||1041-1049|function resolveProbeLatestVersion(probe: LatestVersionPr...|
+|`renderVersionReportLine`|fn||1076-1078|function renderVersionReportLine(label: string, value: st...|
+|`resolveUpdatedVersion`|fn||1096-1105|async function resolveUpdatedVersion(|
+|`runVersionCommand`|fn||1129-1131|export async function runVersionCommand(|
+|`runUpgradeCommand`|fn||1195-1197|export async function runUpgradeCommand(|
+|`runUninstallCommand`|fn||1244-1246|export function runUninstallCommand(deps: ManagementComma...|
+|`runManagementCommand`|fn||1264-1267|export async function runManagementCommand(|
 

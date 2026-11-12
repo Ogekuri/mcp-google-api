@@ -9,8 +9,8 @@
  * REQ-180) and GitHub bypassing the idle gate and print the three-line
  * installed/npmjs/GitHub latest-version report (REQ-120, REQ-161, REQ-162,
  * REQ-163, REQ-164); `--upgrade` accepts the `--develop` option and its
- * equivalent `--dev` alias selecting the latest tagged GitHub release as the
- * install source (REQ-170, REQ-177) plus the `--force` auxiliary option
+ * equivalent `--dev` alias selecting the latest tagged GitHub release asset as
+ * the install source (REQ-170, REQ-171, REQ-177) plus the `--force` auxiliary option
  * forcing package re-download and complete reinstallation through the
  * channel-specific package-manager force flag (REQ-187, REQ-188, REQ-189,
  * REQ-190); in the default npm channel it reinstalls
@@ -22,13 +22,15 @@
  * install outcome, and per-CLI results (REQ-132, REQ-133, REQ-134, REQ-135);
  * `--uninstall` removes the globally installed package (REQ-127). Package-update
  * children run with captured output echoed on stderr and self-heal the
- * `spawn sh ENOENT` global-reify corruption class through one tolerated
- * clean-slate uninstall plus a single retry (REQ-182, REQ-183). Every
- * diagnostic is stderr-only; cache write failures never throw (REQ-128).
+ * `spawn sh ENOENT` global-reify corruption class by force-removing the global
+ * package directory plus its retired siblings before a single retry, and by one
+ * bounded restore child when that retry also fails (REQ-182, REQ-183, REQ-226,
+ * REQ-227, REQ-229). Every diagnostic is stderr-only; cache write failures
+ * never throw (REQ-128).
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { Logger } from "../index.js";
@@ -97,24 +99,64 @@ export const UPGRADE_FORCE_OPTION = "--force";
 export const GITHUB_UPGRADE_REPOSITORY = "Ogekuri/mcp-google-api";
 
 /**
- * @brief Builds the package-manager command installing one GitHub release tag (REQ-171).
- * @details Produces `npm install -g github:<repository>#<tag>` where `<tag>`
- * is the raw `tag_name` probed from the GitHub releases API (REQ-177), so the
- * develop channel installs the latest tagged release regardless of the branch
- * carrying it (REQ-170, REQ-172). When `force` is true the npm `--force` flag
- * is appended so the tagged package is re-downloaded and fully reinstalled
- * (REQ-189); the default invocation carries no force flag (REQ-190). npm
- * fetches and builds the referenced tag; child exit-code and spawn-failure
- * semantics are identical to `PACKAGE_UPGRADE_COMMAND` (REQ-125, REQ-128).
+ * GitHub Release download base URL consumed by the develop upgrade channel.
+ * @details The develop channel installs the PKG-012 release asset of the tag
+ * probed by REQ-177, never a git ref: a global git-ref install makes npm run a
+ * nested `prepare` install that inherits `npm_config_global=true` and therefore
+ * reify-retires/prunes the very destination tree the outer install extracts
+ * (observed as `TAR_ENTRY_ERROR` floods plus lifecycle `spawn sh ENOENT`).
+ * @satisfies REQ-171, REQ-172
+ */
+export const GITHUB_RELEASE_DOWNLOAD_BASE_URL =
+  `https://github.com/${GITHUB_UPGRADE_REPOSITORY}/releases/download`;
+
+/**
+ * Prefix of the npm retired-directory siblings of the managed global package.
+ * @details npm global reify renames an installed package directory to
+ * `.<package name>-<suffix>` before replacing it; the REQ-182 recovery removes
+ * those leftovers so the retry reifies into a clean destination (REQ-226).
+ * @satisfies REQ-226
+ */
+export const RETIRED_PACKAGE_DIR_PREFIX = `.${DEFAULT_PACKAGE_NAME}-`;
+
+/**
+ * Package-manager arguments resolving the npm global root (REQ-227).
+ * @details `npm prefix -g` prints the effective global prefix; the recovery
+ * derives the global `node_modules` directory from it instead of guessing
+ * `$HOME`-relative paths, so every npm prefix configuration is honored.
+ * @satisfies REQ-227
+ */
+export const NPM_GLOBAL_ROOT_ARGUMENTS: readonly string[] = ["prefix", "-g"];
+
+/**
+ * @brief Builds the package-manager command installing one GitHub release asset (REQ-171).
+ * @details Produces `npm install -g <download base>/<tag>/mcp-google-api-<version>.tgz`,
+ * the PKG-012 release asset attached to the tagged commit, where `<tag>` is the
+ * raw `tag_name` probed from the GitHub releases API (REQ-177) and `<version>`
+ * is that tag without its leading `v` (REQ-225). Because the target is an npm
+ * tarball rather than a git ref, npm never runs the dependency `prepare`
+ * install, so the nested global reify that corrupts the destination tree
+ * (LIM-008) cannot occur and the channel installs the tagged release in every
+ * invocation regardless of the branch carrying the tag (REQ-170, REQ-172). When
+ * `force` is true the npm `--force` flag is appended so the asset is
+ * re-downloaded and fully reinstalled (REQ-189); the default invocation carries
+ * no force flag (REQ-190). Child exit-code and spawn-failure semantics are
+ * identical to `PACKAGE_UPGRADE_COMMAND` (REQ-125, REQ-128, REQ-228).
  * @param tag {string} Raw GitHub release tag (`tag_name`, e.g. `v1.2.3`); MUST be non-empty.
+ * @param version {string} Version of that tag without a leading `v` (`1.2.3`); MUST be non-empty (REQ-225).
  * @param force {boolean} True to append the npm `--force` reinstall flag (REQ-189). Default: false.
  * @return {readonly string[]} Executable-plus-arguments command tuple.
- * @satisfies REQ-170, REQ-171, REQ-177, REQ-189, REQ-190
- * @note Complexity: O(n) in tag length. Pure; no side effects.
+ * @satisfies REQ-170, REQ-171, REQ-172, REQ-177, REQ-189, REQ-190, REQ-225
+ * @note Complexity: O(n) in tag and version length. Pure; no side effects.
  * @see probeLatestGitHubVersion
  */
-export function buildDevelopUpgradeCommand(tag: string, force = false): readonly string[] {
-  const command: string[] = ["npm", "install", "-g", `github:${GITHUB_UPGRADE_REPOSITORY}#${tag}`];
+export function buildDevelopUpgradeCommand(
+  tag: string,
+  version: string,
+  force = false
+): readonly string[] {
+  const assetUrl = `${GITHUB_RELEASE_DOWNLOAD_BASE_URL}/${tag}/${DEFAULT_PACKAGE_NAME}-${version}.tgz`;
+  const command: string[] = ["npm", "install", "-g", assetUrl];
   return force ? [...command, UPGRADE_FORCE_OPTION] : command;
 }
 
@@ -426,24 +468,46 @@ export type ManagementCommandName = "--ver" | "--version" | "--upgrade" | "--uni
  * @brief Install source selected for the `--upgrade` command.
  * @details `npm` (default) resolves `mcp-google-api@latest` from the npm
  * registry (REQ-125); `develop` resolves the latest tagged GitHub release of
- * `Ogekuri/mcp-google-api` via the releases API (REQ-177) and installs it as
- * `github:Ogekuri/mcp-google-api#<tag>` (REQ-171), independent of the branch
- * carrying the tag (REQ-170).
- * @satisfies REQ-170
+ * `Ogekuri/mcp-google-api` via the releases API (REQ-177) and installs its
+ * release tarball asset (REQ-171, REQ-225), independent of the branch carrying
+ * the tag (REQ-170).
+ * @satisfies REQ-170, REQ-171
  */
 export type UpgradeChannel = "npm" | "develop";
 
 /**
+ * @brief Injectable filesystem surface of the global-tree recovery.
+ * @details Every field is optional and defaults to the corresponding
+ * `node:fs` primitive, so the REQ-182 removal is exercised deterministically
+ * without touching a real npm installation (DES-022, REQ-226).
+ * @satisfies REQ-226
+ */
+export interface GlobalPackageTreeFs {
+  /** Existence probe; defaults to `node:fs` `existsSync`. */
+  existsSync?: (path: string) => boolean;
+  /** Directory listing; defaults to `node:fs` `readdirSync`. */
+  readdirSync?: (path: string) => string[];
+  /** Recursive forced removal; defaults to `node:fs` `rmSync`. */
+  rmSync?: (path: string, options: { recursive: boolean; force: boolean }) => void;
+}
+
+/**
  * @brief Injectable child-process surface for package-manager commands.
  * @details `spawn` defaults to `node:child_process` `spawnSync`; `logger`
- * defaults to the stderr `Logger`. Injection keeps the management commands
- * deterministic and side-effect free under test (DES-022).
+ * defaults to the stderr `Logger`; `globalTreeFs` and `platform` inject the
+ * global-tree recovery surface and the npm global layout of the running OS
+ * (REQ-226, REQ-227). Injection keeps the management commands deterministic
+ * and side-effect free under test (DES-022).
  */
 export interface PackageManagerDeps {
   /** Synchronous child-process spawner with `stdio: "inherit"` semantics. */
   spawn?: typeof spawnSync;
   /** Diagnostics sink for spawn errors and manual-command hints. */
   logger?: AutoUpdateLogger;
+  /** Filesystem surface of the global-tree recovery; defaults to `node:fs` (REQ-226). */
+  globalTreeFs?: GlobalPackageTreeFs;
+  /** Platform selecting the npm global layout; defaults to `process.platform` (REQ-227). */
+  platform?: NodeJS.Platform;
 }
 
 /**
@@ -566,8 +630,8 @@ export function parseUpgradeForce(args: readonly string[]): boolean {
  * a shell so `npm.cmd` resolves. The child runs with an explicit neutral
  * working directory (the user home), never the caller's cwd: management
  * installs are routinely invoked from inside the source checkout of the same
- * package being replaced, and reconciling a git-ref global install against
- * that same-name local project context corrupts npm reify (observed as
+ * package being replaced, where reconciling a global install against that
+ * same-name local project context corrupts npm reify (observed as
  * TAR_ENTRY_ERROR ENOENT floods plus lifecycle `spawn sh ENOENT` in a cwd
  * deleted mid-reify). A spawn failure (missing executable or thrown spawn
  * error) prints the error plus the exact manual command hint on stderr and
@@ -607,10 +671,12 @@ export function runPackageManagerCommand(
 
 /**
  * @brief Diagnostic signature of the npm global-reify ENOENT corruption class.
- * @details Matches the `spawn sh ENOENT` / ENOENT reify failures emitted when
- * npm global reify runs dependency lifecycle scripts against directories
- * removed mid-reify over a previously corrupted same-name install tree; the
- * signature gates the REQ-182 clean-slate recovery in `runPackageUpdateCommand`.
+ * @details Matches the `spawn sh ENOENT` / ENOENT reify failures emitted when a
+ * global install reifies the destination tree more than once, so dependency
+ * lifecycle scripts (e.g. the protobufjs postinstall) start in directories
+ * removed mid-reify; the signature gates the REQ-182 forced-removal recovery in
+ * `runPackageUpdateCommand`.
+ * @satisfies REQ-182
  */
 const REIFY_ENOENT_SIGNATURE = /\bENOENT\b/;
 
@@ -622,6 +688,93 @@ const REIFY_ENOENT_SIGNATURE = /\bENOENT\b/;
  */
 function toStreamText(value: string | Buffer | undefined): string {
   return typeof value === "string" ? value : (value?.toString("utf8") ?? "");
+}
+
+/**
+ * @brief Resolves the managed global package directory of the running npm prefix.
+ * @details Runs one captured `npm prefix -g` child (`NPM_GLOBAL_ROOT_ARGUMENTS`,
+ * neutral home cwd, win32 shell bridge) and derives the global `node_modules`
+ * directory from the printed prefix: `<prefix>/lib/node_modules` on POSIX,
+ * `<prefix>/node_modules` on Windows, then appends the distribution package
+ * name. Returns undefined for a spawn failure, a non-zero child status, or an
+ * empty prefix, so the caller never removes a guessed path (REQ-227).
+ * @param deps {PackageManagerDeps} Optional spawner/platform overrides; defaults to `spawnSync` and `process.platform`.
+ * @return {string | undefined} Absolute global package directory; undefined when the global root is unresolvable.
+ * @satisfies REQ-226, REQ-227
+ * @note Complexity: O(1) plus one child round-trip.
+ * @see purgeGlobalPackageTree
+ */
+export function resolveGlobalPackageDir(deps: PackageManagerDeps = {}): string | undefined {
+  const spawnImpl = deps.spawn ?? spawnSync;
+  const platform = deps.platform ?? process.platform;
+  try {
+    const result = spawnImpl("npm", [...NPM_GLOBAL_ROOT_ARGUMENTS], {
+      cwd: homedir(),
+      encoding: "utf8",
+      shell: platform === "win32",
+    });
+    if (result.error) {
+      return undefined;
+    }
+    if ((result.status ?? 1) !== 0) {
+      return undefined;
+    }
+    const prefix = toStreamText(result.stdout).trim();
+    if (prefix.length === 0) {
+      return undefined;
+    }
+    const globalNodeModulesDir =
+      platform === "win32" ? join(prefix, "node_modules") : join(prefix, "lib", "node_modules");
+    return join(globalNodeModulesDir, DEFAULT_PACKAGE_NAME);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * @brief Force-removes the global package tree and every retired sibling directory.
+ * @details Resolves the destination through `resolveGlobalPackageDir` (REQ-227),
+ * deletes the package directory, deletes every sibling entry matching
+ * `RETIRED_PACKAGE_DIR_PREFIX` left behind by earlier retired reifications
+ * (REQ-226), and verifies the package directory is absent afterwards so the
+ * REQ-182 retry reifies into a clean destination. Removal failures and an
+ * unresolvable global root are reported on stderr and yield false; nothing is
+ * guessed or deleted outside the resolved global `node_modules` directory.
+ * @param deps {PackageManagerDeps} Optional spawner, logger, filesystem, and platform overrides.
+ * @return {boolean} True only when the package directory is verified absent.
+ * @satisfies REQ-226, REQ-227
+ * @note Complexity: O(n) in global `node_modules` entries plus one child round-trip.
+ * @see resolveGlobalPackageDir
+ * @see runPackageUpdateCommand
+ */
+export function purgeGlobalPackageTree(deps: PackageManagerDeps = {}): boolean {
+  const logger = deps.logger ?? Logger;
+  const treeFs = deps.globalTreeFs ?? {};
+  const exists = treeFs.existsSync ?? existsSync;
+  const readdir = treeFs.readdirSync ?? readdirSync;
+  const remove = treeFs.rmSync ?? rmSync;
+  const packageDir = resolveGlobalPackageDir(deps);
+  if (packageDir === undefined) {
+    logger.error("Upgrade recovery: cannot resolve the npm global root; the update retry follows.");
+    return false;
+  }
+  const globalNodeModulesDir = dirname(packageDir);
+  try {
+    if (!exists(globalNodeModulesDir)) {
+      return true;
+    }
+    remove(packageDir, { recursive: true, force: true });
+    for (const entry of readdir(globalNodeModulesDir)) {
+      if (entry.startsWith(RETIRED_PACKAGE_DIR_PREFIX)) {
+        remove(join(globalNodeModulesDir, entry), { recursive: true, force: true });
+      }
+    }
+    return exists(packageDir) === false;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`Upgrade recovery: failed to remove ${packageDir}: ${message}`);
+    return false;
+  }
 }
 
 /**
@@ -639,7 +792,7 @@ function toStreamText(value: string | Buffer | undefined): string {
  * @param command {readonly string[]} Executable plus arguments.
  * @param deps {PackageManagerDeps} Optional spawner/logger overrides.
  * @return {{ code: number; stderr: string }} Child exit code (1 on spawn failure) plus the captured stderr text used by the REQ-182 failure-signature match.
- * @satisfies REQ-125, REQ-128, REQ-171
+ * @satisfies REQ-125, REQ-128, REQ-171, REQ-228
  * @note Complexity: O(n) in captured output size plus one child round-trip.
  * @see runPackageManagerCommand
  * @see runPackageUpdateCommand
@@ -681,37 +834,48 @@ function runCapturedPackageManagerCommand(
 }
 
 /**
- * @brief Runs the `--upgrade` package-update child with clean-slate ENOENT recovery.
+ * @brief Runs the `--upgrade` package-update child with forced-removal ENOENT recovery.
  * @details First attempt runs the captured-stdio child
- * (`runCapturedPackageManagerCommand`). When it exits non-zero and its
- * captured stderr matches `REIFY_ENOENT_SIGNATURE` — the
- * `spawn sh ENOENT` class produced by npm global reify over a corrupted
- * same-name install tree, where dependency lifecycle scripts (e.g. the
- * protobufjs postinstall) run against directories removed mid-reify — it
- * runs one tolerated `PACKAGE_UNINSTALL_COMMAND` child that removes the
- * broken global tree including every dangling nested entry, then retries the
- * update child exactly once so the fresh install rebuilds the full dependency
- * directory set (REQ-182). Any other failure propagates immediately; after
- * the recovery uninstall no further recovery children are spawned and the
- * final exit code is the retry outcome (REQ-183).
- * @param command {readonly string[]} Executable-plus-arguments update command (`PACKAGE_UPGRADE_COMMAND` or `buildDevelopUpgradeCommand(tag)`).
- * @param deps {PackageManagerDeps} Optional spawner/logger overrides.
- * @return {number} Child exit code; 0 only when the (possibly retried) update succeeded.
- * @satisfies REQ-125, REQ-171, REQ-182, REQ-183
- * @note Complexity: one or two update children plus at most one uninstall child.
+ * (`runCapturedPackageManagerCommand`). When it exits non-zero and its captured
+ * stderr matches `REIFY_ENOENT_SIGNATURE` — the `spawn sh ENOENT` class produced
+ * by a destination tree reified more than once, where dependency lifecycle
+ * scripts run against directories removed mid-reify — `purgeGlobalPackageTree`
+ * resolves the npm global root, force-removes the package directory and every
+ * retired `.mcp-google-api-*` sibling, and verifies the destination absent
+ * (REQ-182, REQ-226, REQ-227); the update child then retries exactly once. When
+ * that retry also fails, one bounded restore child (`npm install -g
+ * mcp-google-api@latest`) re-emits a working global installation (REQ-183) and
+ * its outcome is reported on stderr only while the retry exit code propagates
+ * (REQ-229). Any other first-attempt failure propagates immediately.
+ * @param command {readonly string[]} Executable-plus-arguments update command (`PACKAGE_UPGRADE_COMMAND` or `buildDevelopUpgradeCommand(tag, version, force)`).
+ * @param deps {PackageManagerDeps} Optional spawner, logger, filesystem, and platform overrides.
+ * @return {number} Recovery retry exit code when the recovery ran; otherwise the first-attempt exit code.
+ * @satisfies REQ-125, REQ-171, REQ-182, REQ-183, REQ-226, REQ-227, REQ-229
+ * @note Complexity: one or two update children, one global-root child, and at most one restore child.
  * @see runCapturedPackageManagerCommand
- * @see runPackageManagerCommand
+ * @see purgeGlobalPackageTree
+ * @see PACKAGE_UPGRADE_COMMAND
  */
 function runPackageUpdateCommand(
   command: readonly string[],
   deps: PackageManagerDeps
 ): number {
+  const logger = deps.logger ?? Logger;
   const first = runCapturedPackageManagerCommand(command, deps);
   if (first.code === 0 || !REIFY_ENOENT_SIGNATURE.test(first.stderr)) {
     return first.code;
   }
-  runPackageManagerCommand(PACKAGE_UNINSTALL_COMMAND, deps);
-  return runCapturedPackageManagerCommand(command, deps).code;
+  if (!purgeGlobalPackageTree(deps)) {
+    logger.log("Warning: the global package directory removal was not verified; retrying the update anyway.");
+  }
+  const retried = runCapturedPackageManagerCommand(command, deps);
+  if (retried.code === 0) {
+    return 0;
+  }
+  logger.error("Upgrade retry failed; restoring a working global installation.");
+  const restore = runCapturedPackageManagerCommand(PACKAGE_UPGRADE_COMMAND, deps);
+  logger.log(`Restore child exited with code ${restore.code}.`);
+  return retried.code;
 }
 
 /**
@@ -994,14 +1158,17 @@ export async function runVersionCommand(
  * forced GitHub releases probe bypassing the idle cache gate (REQ-177); on
  * probe failure it prints a stderr diagnostic carrying the probe message and
  * returns 1 without spawning any child process (REQ-178); on success it runs
- * `buildDevelopUpgradeCommand(tag)` (REQ-171), then the post-upgrade
+ * `buildDevelopUpgradeCommand(tag, version)` (REQ-171, REQ-225) installing the
+ * release tarball asset of the probed tag, then the post-upgrade
  * install and summary with the probed latest GitHub release version as the
  * updated version (REQ-173). Default npm channel: unconditional flow with no
  * pre-upgrade version comparison (REQ-146): the update path runs the
  * package-update child via `runPackageUpdateCommand` with captured output
  * echoed on stderr; a non-zero exit carrying an ENOENT reify diagnostic
- * triggers one tolerated clean-slate uninstall plus a single update retry
- * (REQ-182, REQ-183) and propagates the final exit code unchanged without
+ * triggers the REQ-182 forced removal of the global package directory plus a
+ * single update retry and, when that retry also fails, one bounded restore
+ * child (REQ-183, REQ-226, REQ-227, REQ-229) while the retry exit code
+ * propagates unchanged without
  * printing any summary; on success resolves the updated version via one
  * post-upgrade registry probe (REQ-134), runs the
  * captured-stdout post-upgrade install (REQ-126), prints the
@@ -1016,7 +1183,7 @@ export async function runVersionCommand(
  * @param options {ManagementCommandOptions} Options carrying `currentVersion`, `home`, `channel`, and `force`.
  * @param deps {ManagementCommandDeps} Optional spawner/idle-check/stdout overrides.
  * @return {Promise<number>} The upgrade exit code when non-zero, else the post-upgrade install exit code.
- * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-146, REQ-170, REQ-171, REQ-172, REQ-173, REQ-177, REQ-178, REQ-182, REQ-183, REQ-187, REQ-188, REQ-189, REQ-190
+ * @satisfies REQ-125, REQ-126, REQ-132, REQ-133, REQ-134, REQ-135, REQ-146, REQ-170, REQ-171, REQ-172, REQ-173, REQ-177, REQ-178, REQ-182, REQ-183, REQ-187, REQ-188, REQ-189, REQ-190, REQ-225, REQ-226, REQ-227, REQ-229
  * @see probeLatestGitHubVersion
  * @see runPackageManagerCommand
  * @see runPackageUpdateCommand
@@ -1036,7 +1203,7 @@ export async function runUpgradeCommand(
       return 1;
     }
     const upgraded = runPackageUpdateCommand(
-      buildDevelopUpgradeCommand(githubProbe.tag, options.force === true),
+      buildDevelopUpgradeCommand(githubProbe.tag, githubProbe.version, options.force === true),
       deps
     );
     if (upgraded !== 0) {
