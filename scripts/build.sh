@@ -7,17 +7,19 @@
 #  * 1. Preflight (PKG-067, PKG-068): `node` and `npm` on PATH, Node.js major >= 24, and the
 #  *    installed `node_modules/.bin/tsup` binary. Dependencies are never installed here and no
 #  *    package is ever published.
-#  * 2. Obsolete-build cleanup (PKG-071, PKG-072, PKG-104, PKG-105, PKG-106, PKG-107): every
-#  *    `dist/` regular file classified as generated (`*.js`, `*.js.map`, `*.d.ts`, `*.d.ts.map`,
-#  *    `*.tgz`, `*.tsbuildinfo`, `*.tmp`) is removed, covering every artifact of every earlier
-#  *    build; emptied ancestor directories are pruned deepest-first, `dist/` itself only when
-#  *    empty, and non-generated entries are never touched. An absent `dist/` is a no-op.
+#  * 2. Obsolete-build cleanup (PKG-071, PKG-072, PKG-104, PKG-105, PKG-106, PKG-107, PKG-132):
+#  *    every `dist/` regular file classified as generated (`*.js`, `*.js.map`, `*.d.ts`,
+#  *    `*.d.ts.map`, `*.tgz`, `*.tsbuildinfo`, `*.tmp`) and every file whose path carries a
+#  *    `MAJOR.MINOR.PATCH` token differing from the `package.json` version is removed, covering
+#  *    every artifact of every earlier build and release; emptied ancestor directories are pruned
+#  *    deepest-first, `dist/` itself only when empty, and version-free non-generated entries are
+#  *    never touched. An absent `dist/` is a no-op. This phase runs strictly before the compile.
 #  * 3. Compile (PKG-069, PKG-129): `npm run build` invokes the `tsup` compiler directly for the
 #  *    single runtime entry `src/cli.ts`; `tsup.config.ts` keeps `clean: true`, so the compiler
 #  *    also removes stale generated outputs before compiling (PKG-130).
-#  * 4. Compile verification (PKG-069, PKG-074, PKG-109): `dist/cli.js` MUST exist, be non-empty,
-#  *    pass `node --check`, and every relative import target MUST resolve; `dist/` MUST hold no
-#  *    other file besides `dist/cli.js`.
+#  * 4. Compile verification (PKG-069, PKG-074, PKG-109, PKG-133): `dist/cli.js` MUST exist, be
+#  *    non-empty, pass `node --check`, and every relative import target MUST resolve; no `dist/`
+#  *    file may carry a foreign version token.
 #  * 5. Final cleanup and summary (PKG-102, PKG-108, PKG-109, PKG-074): every `*.tsbuildinfo` and
 #  *    `*.tmp` file is removed, the private work directory is removed, and the path plus byte size
 #  *    of every artifact in `dist/` is printed. No `*.tgz` archive is ever created (PKG-102).
@@ -31,7 +33,8 @@
 #  * @note Writes only under `dist/` and the OS temp directory; no network access, no dependency
 #  *       installation, no publication.
 #  * @satisfies PKG-065, PKG-066, PKG-067, PKG-068, PKG-069, PKG-071, PKG-072, PKG-073, PKG-074,
-#  *            PKG-102, PKG-104, PKG-105, PKG-106, PKG-107, PKG-108, PKG-109, PKG-129, PKG-130
+#  *            PKG-102, PKG-104, PKG-105, PKG-106, PKG-107, PKG-108, PKG-109, PKG-129, PKG-130,
+#  *            PKG-132, PKG-133
 #  */
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -44,6 +47,8 @@ readonly MIN_NODE_MAJOR=24
 CURRENT_PHASE="preflight"
 # Private work directory holding enumeration lists only; removed on exit (PKG-108).
 WORKDIR=""
+# Package version being built, read during preflight (PKG-132).
+CURRENT_VERSION=""
 
 # /**
 #  * @brief Prints one informational line on stdout with the build tag.
@@ -109,6 +114,47 @@ is_intermediate_output() {
   esac
 }
 
+#  * @brief Classifies one dist-relative path as an obsolete-build artifact.
+#  * @details Accepts every path accepted by `is_generated_output` (PKG-072) plus every path whose
+#  * name carries a `MAJOR.MINOR.PATCH` token differing from the `package.json` version read into
+#  * `CURRENT_VERSION` (PKG-132), so a retained artifact of an earlier release never survives the
+#  * cleanup even when its suffix is not in the generated set. Pure, O(k) in version tokens.
+#  * @param relative {string} Path relative to `dist/`.
+#  * @return {number} 0 when obsolete; 1 otherwise.
+#  * @satisfies PKG-071, PKG-072, PKG-132
+#  */
+is_obsolete_artifact() {
+  if is_generated_output "$1"; then
+    return 0
+  fi
+  carries_foreign_version "$1"
+}
+
+# /**
+#  * @brief Classifies one dist-relative path as carrying a foreign version token.
+#  * @details Scans the path for `MAJOR.MINOR.PATCH` tokens with a pure-bash regex loop; returns 0
+#  * when at least one token differs from the current package version (or from `$2` when supplied).
+#  * A version-free path never matches, so version-free non-generated entries survive the cleanup
+#  * (PKG-071, PKG-132). Complexity O(t) in version tokens.
+#  * @param relative {string} Path relative to `dist/`.
+#  * @param current {string} Optional version to compare against; defaults to `CURRENT_VERSION`.
+#  * @return {number} 0 when a foreign version token is present; 1 otherwise.
+#  * @satisfies PKG-132
+#  */
+carries_foreign_version() {
+  local remainder="$1"
+  local current="${2:-$CURRENT_VERSION}"
+  local token
+  while [[ "$remainder" =~ (^|[^0-9])([0-9]+\.[0-9]+\.[0-9]+)([^0-9]|$) ]]; do
+    token="${BASH_REMATCH[2]}"
+    if [ "$token" != "$current" ]; then
+      return 0
+    fi
+    remainder="${remainder#*"$token"}"
+  done
+  return 1
+}
+
 # /**
 #  * @brief Removes one directory when it is empty, tolerating non-empty directories.
 #  * @details `rmdir` succeeds only on an empty directory; a directory still holding any entry is
@@ -141,7 +187,7 @@ prune_emptied_dir() {
 #  * deepest-first and `dist/` itself when it ends up empty (PKG-106). Symlinks, directories, and
 #  * non-accepted entries are preserved. An absent `dist/` is a no-op; enumeration or removal
 #  * failures abort naming the failed entry (PKG-107). Complexity O(n) in `dist/` entry count.
-#  * @param classifier {string} Name of the classifier function (`is_generated_output` or `is_intermediate_output`).
+#  * @param classifier {string} Name of the classifier function (`is_obsolete_artifact` or `is_intermediate_output`).
 #  * @param list_name {string} Base name of the private enumeration list file.
 #  * @param label {string} Phase label used in log lines.
 #  * @return {void}
@@ -292,14 +338,21 @@ fi
 if [ ! -x "node_modules/.bin/tsup" ]; then
   fail "dependencies not installed: node_modules/.bin/tsup missing; run 'npm run build' only after installing dependencies"
 fi
+if ! CURRENT_VERSION="$(node -p 'require("./package.json").version')"; then
+  fail "could not read the version field from package.json (PKG-132)"
+fi
+if [ -z "$CURRENT_VERSION" ]; then
+  fail "package.json carries an empty version field (PKG-132)"
+fi
 if ! WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/mcp-google-api-build.XXXXXX")"; then
   fail "could not create the private work directory"
 fi
-log "preflight passed (node $(node -p 'process.versions.node'))"
+log "preflight passed (node $(node -p 'process.versions.node'), version $CURRENT_VERSION)"
 
-# Obsolete-build cleanup (PKG-071, PKG-072, PKG-104, PKG-105, PKG-106, PKG-107).
+# Obsolete-build cleanup (PKG-071, PKG-072, PKG-104, PKG-105, PKG-106, PKG-107, PKG-132).
+# Runs strictly before the compile step, so no artifact of an earlier release survives the build.
 CURRENT_PHASE="cleanup"
-remove_classified_outputs is_generated_output "obsolete-files.lst" "cleanup"
+remove_classified_outputs is_obsolete_artifact "obsolete-files.lst" "cleanup"
 
 # Compile (PKG-069, PKG-129, PKG-130).
 CURRENT_PHASE="compile"
@@ -316,6 +369,24 @@ fi
 node --check "$DIST_DIR/$RUNTIME_BUNDLE"
 verify_relative_imports "$DIST_DIR/$RUNTIME_BUNDLE"
 log "compile verified: $DIST_DIR/$RUNTIME_BUNDLE with relative imports resolved"
+
+# Foreign-version verification (PKG-133): no artifact of another release may survive the build.
+if [ -e "$DIST_DIR" ]; then
+  foreign=""
+  while IFS= read -r -d '' path; do
+    relative="${path#"$DIST_DIR"/}"
+    if [ "$relative" = "$RUNTIME_BUNDLE" ]; then
+      continue
+    fi
+    if carries_foreign_version "$relative"; then
+      foreign="$foreign $path"
+    fi
+  done < <(find "$DIST_DIR" -type f -print0)
+  if [ -n "$foreign" ]; then
+    fail "version-stamped artifact(s) of another release survive in $DIST_DIR/:$foreign (PKG-133)"
+  fi
+fi
+log "version cleanup verified: no artifact of another release remains in $DIST_DIR/"
 
 # Final cleanup (PKG-102, PKG-108, PKG-109): no tarball, no intermediate artifact, no work directory.
 CURRENT_PHASE="final cleanup"

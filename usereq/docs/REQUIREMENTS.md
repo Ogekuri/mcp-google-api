@@ -168,7 +168,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-067**: `scripts/build.sh` MUST abort non-zero before any build step when Node.js major version is below 24, when `node` or `npm` is absent, or when `node_modules/.bin/tsup` is absent, naming the missing prerequisite.
 - **PKG-068**: `scripts/build.sh` MUST NOT install dependencies and MUST NOT publish packages.
 - **PKG-069**: `scripts/build.sh` MUST generate the single ESM runtime bundle through the `build` npm script, writing `dist/cli.js` and no other JavaScript artifact.
-- **PKG-071**: `scripts/build.sh` MUST remove before the first build step every generated output of earlier builds in `dist/`, including every `*.tgz` tarball of any version, without removing non-generated entries.
+- **PKG-071**: `scripts/build.sh` MUST remove before the first build step every generated output and every version-stamped artifact of earlier builds in `dist/`, without removing version-free non-generated entries.
 - **PKG-072**: `scripts/build.sh` MUST classify as generated every file in `dist/` matching `*.js`, `*.js.map`, `*.d.ts`, `*.d.ts.map`, `*.tgz`, `*.tsbuildinfo`, or `*.tmp`; every other entry is non-generated.
 - **PKG-073**: `scripts/build.sh` MUST exit non-zero naming the failing phase when any build phase fails.
 - **PKG-074**: `scripts/build.sh` MUST print the path and byte size of every generated artifact in `dist/` on success, and MUST exit 0 only after every generation and verification step passes.
@@ -213,6 +213,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-129**: `package.json` `build` MUST invoke the installed `tsup` compiler directly for the single runtime entry `src/cli.ts`, emitting only `dist/cli.js`.
 - **PKG-130**: The `build` lifecycle MUST remove every stale output of an earlier build from `dist/` before compiling.
 - **PKG-131**: The `build` lifecycle MUST exit non-zero when the compile step fails.
+- **PKG-132**: `scripts/build.sh` MUST treat every `dist/` file whose path carries a `MAJOR.MINOR.PATCH` token differing from the `package.json` version as an obsolete-build artifact.
+- **PKG-133**: `scripts/build.sh` MUST exit non-zero naming every `dist/` entry that still carries a foreign version token after the compile step.
 
 ## 3. Requirements
 
@@ -533,6 +535,6 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-028**: MUST verify REQ-193-REQ-208 and REQ-213-REQ-222 by running `npm test` (`tests/configCommands.unit.test.ts`): get/set/unset/print/info/print-raw behavior, exit codes, stream separation, resets, bounds, and no mutation on rejection are asserted.
 - **TST-029**: MUST verify PKG-090/PKG-091/PKG-092/PKG-093 by running `npm test` (`tests/gitignoreDist.unit.test.ts`): static contract asserts the active `.gitignore` `dist/` exclusion, the absence of any `dist/` re-inclusion rule, the `!tools/` and `!bin/` tail exceptions, and the validator nested-tarball rejection guard; pass when all assertions hold.
 - **TST-030**: MUST verify PKG-114/PKG-115 by running `npm test` (`tests/docsContract.unit.test.ts`): every `README.md` documentation link that targets an excluded `docs/` document is an absolute repository URL, and every project Markdown document (`README.md`, `CHANGELOG.md`, `docs/**`) contains no non-English marker; pass when all assertions hold.
-- **TST-031**: MUST verify PKG-102/PKG-108/PKG-109 by running `npm test` (`tests/releaseBuildScript.unit.test.ts`): a sandboxed build MUST leave `dist/cli.js` as the only `dist/` artifact, MUST create no `*.tgz` archive, and MUST remove its private work directory; pass when all assertions hold.
+- **TST-031**: MUST verify PKG-071/PKG-102/PKG-108/PKG-109/PKG-132/PKG-133 by running `npm test` (`tests/releaseBuildScript.unit.test.ts`): a sandboxed build MUST leave `dist/cli.js` as the only `dist/` artifact, MUST create no `*.tgz` archive, MUST remove every foreign-version token entry while preserving version-free non-generated entries, MUST remove its private work directory, and MUST run the cleanup before the compile; pass when all assertions hold.
 - **TST-032**: MUST verify PKG-129/PKG-130 by running `npm test` (`tests/buildOutputContract.unit.test.ts`): a sandboxed `build` lifecycle MUST emit only `dist/cli.js` and MUST remove every stale generated output of an earlier build; pass when all assertions hold.
 - **TST-033**: MUST verify PKG-131 by running `npm test` (`tests/buildOutputContract.unit.test.ts`): a sandboxed lifecycle MUST exit non-zero when the compiler fails; pass when all assertions hold.
