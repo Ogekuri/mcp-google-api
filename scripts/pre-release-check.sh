@@ -3,45 +3,49 @@
 #  * @file pre-release-check.sh
 #  * @brief Runs every release-gating check required before an official npm release.
 #  * @details Executes from the repository root, in fail-fast order (PKG-059, PKG-080):
-#  * 0. Preflight (PKG-081, PKG-083): `git`, `node`, `npm`, `tar`, `diff`, `cmp` on PATH; Node.js >= 24;
-#  *    installed `node_modules/.bin/{tsc,tsup,tsx}`; git work tree. Records the `dist/` snapshot
-#  *    (PKG-084) and the `git status --porcelain --ignored` snapshot (PKG-082). Never installs.
+#  * 0. Preflight (PKG-081, PKG-083): `git`, `node`, `npm`, `diff`, `cmp` on PATH; Node.js >= 24;
+#  *    installed `node_modules/.bin/{tsc,tsup,tsx}`; git work tree; a private temporary work directory
+#  *    located outside the repository working tree (PKG-061); the `git status --porcelain --ignored`
+#  *    snapshot (PKG-082). Never installs.
 #  * 1. `npm run check:publish-version` - publish version guard (PKG-017, PKG-057).
 #  * 2. `npm run typecheck` - TypeScript type surface (`tsc --noEmit`).
 #  * 3. `npm test` - full unit suite (live e2e excluded, TST-010).
-#  * 4. `npm run build` - production tsup ESM build (PRJ-020).
-#  * 5. `bash scripts/build.sh` - release artifact generation into `dist/` (PKG-080).
-#  * 6. `node tools/check-release-artifacts.mjs` - release artifact validation (PKG-075..PKG-079).
-#  * Cleanup and integrity (EXIT trap, PKG-084..PKG-086): removes `dist/` when the run created it,
-#  * restores the pre-run snapshot when it pre-existed, then compares the final
-#  * `git status --porcelain --ignored` output with the pre-run snapshot (PKG-082).
-#  * The original failing exit status is never overwritten (PKG-085). A passing run whose cleanup or
-#  * integrity check fails exits 1 (PKG-086). Signals HUP, INT, TERM exit through the same trap
-#  * with status 129, 130, 143 (PKG-087). No dependency install, no package publication (PKG-060),
-#  * and no destructive git command (PKG-088).
+#  * 4. Test build (PKG-061): `node_modules/.bin/tsup --out-dir <private temp build directory>` emits
+#  *    the production ESM bundle and its shared chunks outside the repository working tree.
+#  * 5. Temporary artifact verification (PKG-080): the emitted `index.js` and `cli.js` entries MUST
+#  *    exist, be non-empty, and pass `node --check`.
+#  * Cleanup and integrity (EXIT trap, PKG-084..PKG-086): the final `git status --porcelain --ignored`
+#  * output is compared with the pre-run snapshot (PKG-082) and the private temporary work directory is
+#  * removed (PKG-084). The original failing exit status is never overwritten (PKG-085). A passing run
+#  * whose cleanup or integrity check fails exits 1 (PKG-086). Signals HUP, INT, TERM exit through the
+#  * same trap with status 129, 130, 143 (PKG-087). No dependency install, no package publication
+#  * (PKG-060), and no destructive git command (PKG-088).
 #  * @return Exit code 0 only when every stage passes and cleanup plus integrity verification succeed;
 #  *         1 at the first failed stage or cleanup/integrity failure.
 #  * @pre Dependencies installed beforehand by the project package manager; repository is a git work tree.
-#  * @post No artifact created by the run remains; `dist/` equals its pre-run state; tracked, untracked,
-#  *       and ignored repository state equals the pre-run snapshot.
-#  * @note Runnable from any working directory; the repository root is resolved from the script location.
+#  * @post No artifact created by the run remains; the private temporary work directory is removed;
+#  *       tracked, untracked, and ignored repository state equals the pre-run snapshot.
+#  * @note Independent of the repository `dist/` directory: this script neither creates, modifies,
+#  *       deletes, cleans, reads, nor validates any `dist/` entry (PKG-062, PKG-123, PKG-124).
+#  *       Runnable from any working directory; the repository root is resolved from the script location.
 #  * @satisfies PKG-058, PKG-059, PKG-060, PKG-061, PKG-062, PKG-080, PKG-081, PKG-082, PKG-083,
-#  *            PKG-084, PKG-085, PKG-086, PKG-087, PKG-088, PKG-089
+#  *            PKG-084, PKG-085, PKG-086, PKG-087, PKG-088, PKG-089, PKG-123, PKG-124
 #  */
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-readonly DIST_DIR="dist"
+readonly MIN_NODE_MAJOR=24
+# Absolute repository root used to prove that the temporary work directory stays outside it (PKG-061).
+readonly REPO_ROOT="$PWD"
 
 # Phase label of the stage in progress; reported on failure (PKG-089).
 CURRENT_PHASE="preflight"
-# dist/ state: unknown (no mutation allowed), absent (run creates it), preexisting (snapshot restored).
-DIST_STATE="unknown"
-DIST_SNAPSHOT_READY=0
+# 1 once the pre-run `git status` snapshot exists (PKG-082).
 REPO_SNAPSHOT_READY=0
-# 1 when a user dist/ snapshot could not be restored; the work directory is then kept.
-SNAPSHOT_RETAINED=0
+# Private temporary work directory outside the repository working tree (PKG-061).
 WORKDIR=""
+# Private temporary build output directory below WORKDIR (PKG-061).
+BUILD_DIR=""
 
 # /**
 #  * @brief Prints one informational line on stdout with the script tag.
@@ -55,8 +59,8 @@ log() {
 
 # /**
 #  * @brief Aborts the current phase with a FAILED diagnostic on stderr.
-#  * @details Prints `<phase>: FAILED: <message>` and exits 1. The EXIT trap then runs cleanup
-#  * (PKG-085). Complexity O(1).
+#  * @details Prints `<phase>: FAILED: <message>` and exits 1; the EXIT trap then removes the private
+#  * temporary work directory (PKG-084, PKG-085). Complexity O(1).
 #  * @param message {string} Diagnostic naming the failed check.
 #  * @return {void} Never returns.
 #  * @side_effect Terminates the process with exit code 1.
@@ -92,51 +96,39 @@ require_binary() {
 }
 
 # /**
-#  * @brief Snapshots a pre-existing dist/ directory into the work directory.
-#  * @details Sets DIST_STATE to `preexisting` only after a complete copy (PKG-084); sets it to `absent`
-#  * when dist/ does not exist. A failed copy leaves DIST_STATE `unknown`, so cleanup never removes a
-#  * partially copied user directory. Complexity O(size of dist).
-#  * @return {void}
-#  * @side_effect Creates `$WORKDIR/dist-preexisting` when dist/ exists.
-#  * @throws {exit 1} Via `fail` when dist exists but is not a directory or the copy fails.
+#  * @brief Classifies one path as located outside the repository working tree.
+#  * @details Byte-prefix comparison against the absolute repository root; pure, O(n) in path length.
+#  * @param path {string} Absolute candidate path.
+#  * @return {number} 0 when the path is outside the repository root; 1 when it equals or lies below it.
 #  */
-snapshot_dist() {
-  if [ -e "$DIST_DIR" ]; then
-    if [ ! -d "$DIST_DIR" ]; then
-      fail "$DIST_DIR exists but is not a directory"
-    fi
-    if ! cp -a "$DIST_DIR" "$WORKDIR/dist-preexisting"; then
-      fail "could not snapshot pre-existing $DIST_DIR/"
-    fi
-    DIST_STATE="preexisting"
-    DIST_SNAPSHOT_READY=1
-  else
-    DIST_STATE="absent"
-  fi
+is_outside_repository() {
+  case "$1" in
+    "$REPO_ROOT" | "$REPO_ROOT"/*) return 1 ;;
+    *) return 0 ;;
+  esac
 }
 
 # /**
-#  * @brief Executes every preflight check and records the repository and dist/ snapshots.
-#  * @details Order: work directory, required commands, Node.js major >= 24 (CTN-005), installed
-#  * dependency binaries, git work tree (PKG-083), dist/ snapshot (PKG-084), and the
-#  * `git status --porcelain --ignored` snapshot (PKG-082). Complexity O(repository status size).
+#  * @brief Executes every preflight check and records the repository and work-directory state.
+#  * @details Order: required commands, Node.js major >= 24 (CTN-005), installed dependency binaries,
+#  * git work tree (PKG-083), private temporary work directory outside the repository working tree
+#  * (PKG-061), and the `git status --porcelain --ignored` snapshot (PKG-082). Complexity O(repository
+#  * status size).
 #  * @return {void}
-#  * @side_effect Creates `$WORKDIR` under the OS temp root and the snapshot files inside it.
+#  * @side_effect Creates `$WORKDIR` under the OS temp root and `$WORKDIR/repo-before.txt`.
 #  * @throws {exit 1} Via `fail` on any missing prerequisite or snapshot failure.
 #  */
 run_preflight() {
   CURRENT_PHASE="preflight"
-  WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/pre-release-check.XXXXXX")"
   require_command git
   require_command node
   require_command npm
-  require_command tar
   require_command diff
   require_command cmp
   local node_major
   node_major="$(node -p 'process.versions.node.split(".")[0]')"
-  if [ "$node_major" -lt 24 ]; then
-    fail "Node.js >= 24 required (CTN-005), found major $node_major"
+  if [ "$node_major" -lt "$MIN_NODE_MAJOR" ]; then
+    fail "Node.js >= $MIN_NODE_MAJOR required (CTN-005), found major $node_major"
   fi
   require_binary tsc
   require_binary tsup
@@ -144,22 +136,86 @@ run_preflight() {
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     fail "repository is not a git work tree; integrity cannot be verified (PKG-083)"
   fi
-  snapshot_dist
+  if ! WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/pre-release-check.XXXXXX")"; then
+    fail "could not create the private temporary work directory"
+  fi
+  BUILD_DIR="$WORKDIR/build"
+  if ! is_outside_repository "$WORKDIR"; then
+    fail "temporary work directory must live outside the repository working tree (PKG-061): $WORKDIR"
+  fi
   if ! git status --porcelain --ignored >"$WORKDIR/repo-before.txt"; then
     fail "git status failed while recording the pre-run snapshot"
   fi
   REPO_SNAPSHOT_READY=1
-  log "preflight: toolchain, dependency binaries, and repository snapshot ready"
+  log "preflight: toolchain, dependency binaries, repository snapshot, and temporary work directory ready"
+}
+
+# /**
+#  * @brief Emits the production ESM bundle into the private temporary build directory.
+#  * @details Runs the installed `tsup` binary with `--out-dir $BUILD_DIR`, so the emitted entries and
+#  * shared chunks never touch the repository working tree (PKG-061). A `{ "type": "module" }` marker is
+#  * written first so the emitted `.js` entries are parsed as ECMAScript modules by `node --check`
+#  * (CTN-006). The repository `dist/` directory is never created, modified, or cleaned
+#  * (PKG-062, PKG-123). Failure handling is explicit because `run_stage` invokes this function as a
+#  * conditional command, where `set -e` does not abort. Complexity O(bundle size).
+#  * @return {void} Returns only on a successful compile.
+#  * @throws {exit 1} Via `fail` when the binary, directory, or compile step fails (PKG-080, PKG-081).
+#  * @side_effect Writes `$BUILD_DIR` contents only.
+#  */
+build_into_temp_dir() {
+  local tsup_bin="node_modules/.bin/tsup"
+  if [ -z "$BUILD_DIR" ]; then
+    fail "temporary build directory is not initialized"
+  fi
+  if [ ! -x "$tsup_bin" ]; then
+    fail "installed dependency binary missing: $tsup_bin (dependencies must be installed beforehand)"
+  fi
+  if ! mkdir -p "$BUILD_DIR"; then
+    fail "could not create the temporary build directory: $BUILD_DIR"
+  fi
+  if ! printf '{\n  "type": "module"\n}\n' >"$BUILD_DIR/package.json"; then
+    fail "could not write the module marker into the temporary build directory: $BUILD_DIR"
+  fi
+  log "build: emitting the ESM bundle into the private temporary build directory $BUILD_DIR"
+  if ! "$tsup_bin" --out-dir "$BUILD_DIR"; then
+    fail "tsup build into the temporary build directory failed"
+  fi
+}
+
+# /**
+#  * @brief Verifies the emitted temporary build artifacts (PKG-080).
+#  * @details Requires `$BUILD_DIR/index.js` and `$BUILD_DIR/cli.js` to exist, be non-empty, and pass
+#  * `node --check`. No repository entry is read or validated (PKG-123). Complexity O(entry size).
+#  * @return {void} Returns only when every emitted entry verifies.
+#  * @throws {exit 1} Via `fail` when an entry is missing, empty, or syntactically invalid.
+#  * @side_effect Writes verification lines to stdout.
+#  */
+verify_temp_build() {
+  local entry
+  local entry_path
+  if [ -z "$BUILD_DIR" ] || [ ! -d "$BUILD_DIR" ]; then
+    fail "temporary build directory is missing: ${BUILD_DIR:-<unset>}"
+  fi
+  for entry in index.js cli.js; do
+    entry_path="$BUILD_DIR/$entry"
+    if [ ! -f "$entry_path" ] || [ ! -s "$entry_path" ]; then
+      fail "temporary build entry missing or empty: $entry_path"
+    fi
+    if ! node --check "$entry_path"; then
+      fail "temporary build entry failed node --check: $entry_path"
+    fi
+    log "artifact verification: $entry exists, is non-empty, and passes node --check"
+  done
 }
 
 # /**
 #  * @brief Executes one release-gating stage and aborts the pipeline on first failure.
 #  * @details Prints a running header naming the stage and its command tokens, executes the command
-#  * with inherited stdio, prints a PASS line on exit code 0, or prints a FAILED diagnostic on stderr and
-#  * exits 1 so no later stage runs (PKG-059). Records the stage label as CURRENT_PHASE (PKG-089).
-#  * Complexity O(1) plus the stage runtime.
+#  * (shell function or executable) with inherited stdio, prints a PASS line on exit code 0, or prints a
+#  * FAILED diagnostic on stderr and exits 1 so no later stage runs (PKG-059). Records the stage label as
+#  * CURRENT_PHASE (PKG-089). Complexity O(1) plus the stage runtime.
 #  * @param stage_label {string} Human-readable stage name printed in headers and diagnostics.
-#  * @param command {string...} Command tokens executed verbatim with inherited stdio.
+#  * @param command {string...} Command tokens or shell-function name executed verbatim.
 #  * @return {void} Returns only on stage success.
 #  * @throws {exit 1} When the stage command exits non-zero.
 #  * @side_effect Streams stage output to stdout and failure diagnostics to stderr.
@@ -179,48 +235,10 @@ run_stage() {
 }
 
 # /**
-#  * @brief Removes or restores dist/ according to its recorded pre-run state.
-#  * @details `preexisting`: removes dist/ and copies the snapshot back (PKG-084); the work directory
-#  * is retained for manual recovery when this fails. `absent`: removes dist/ only when the run created
-#  * it (PKG-061). `unknown`: performs no mutation. Complexity O(size of dist).
-#  * @return {number} 0 on success; 1 when removal or restoration fails.
-#  * @side_effect Mutates dist/ only.
-#  */
-cleanup_artifacts() {
-  if [ "$DIST_STATE" = "preexisting" ]; then
-    if [ "$DIST_SNAPSHOT_READY" -ne 1 ]; then
-      printf '[pre-release-check] cleanup: FAILED: pre-run snapshot of %s/ is incomplete\n' "$DIST_DIR" >&2
-      return 1
-    fi
-    # The snapshot is retained from the first destructive step until a complete restore (PKG-084).
-    SNAPSHOT_RETAINED=1
-    if ! rm -rf "$DIST_DIR"; then
-      printf '[pre-release-check] cleanup: FAILED: could not remove %s/ before restoration (snapshot kept at %s)\n' "$DIST_DIR" "$WORKDIR" >&2
-      return 1
-    fi
-    if ! cp -a "$WORKDIR/dist-preexisting" "$DIST_DIR"; then
-      printf '[pre-release-check] cleanup: FAILED: could not restore pre-existing %s/ (snapshot kept at %s)\n' "$DIST_DIR" "$WORKDIR" >&2
-      return 1
-    fi
-    SNAPSHOT_RETAINED=0
-    log "cleanup: restored pre-existing $DIST_DIR/ snapshot (PKG-084)"
-    return 0
-  fi
-  if [ "$DIST_STATE" = "absent" ] && [ -e "$DIST_DIR" ]; then
-    if ! rm -rf "$DIST_DIR"; then
-      printf '[pre-release-check] cleanup: FAILED: could not remove %s/ created by this run\n' "$DIST_DIR" >&2
-      return 1
-    fi
-    log "cleanup: removed $DIST_DIR/ created by this run (PKG-061)"
-  fi
-  return 0
-}
-
-# /**
 #  * @brief Compares the final repository state with the pre-run snapshot.
 #  * @details Recomputes `git status --porcelain --ignored` and requires byte equality with the pre-run
-#  * snapshot, covering tracked, untracked, and git-ignored leftovers (PKG-082). Prints a unified
-#  * `diff` on mismatch. Complexity O(repository status size).
+#  * snapshot, covering tracked, untracked, and git-ignored leftovers (PKG-082). Prints a unified `diff`
+#  * on mismatch. Complexity O(repository status size).
 #  * @return {number} 0 when identical; 1 when different or unverifiable.
 #  * @side_effect Writes `$WORKDIR/repo-after.txt`; writes diagnostics to stderr on mismatch.
 #  */
@@ -243,33 +261,46 @@ verify_repository_integrity() {
 }
 
 # /**
-#  * @brief EXIT trap: cleanup, integrity verification, and final result line.
-#  * @details Captures the script exit status first and preserves it (PKG-085). Runs cleanup and
-#  * integrity verification unconditionally. Exits with the original status on failure; exits 1 when
-#  * a passing run fails cleanup or integrity (PKG-086); prints the PASS result only when everything
-#  * succeeded (PKG-089). The work directory is removed unless it holds an unrestored user dist/ snapshot.
+#  * @brief Removes the private temporary work directory and every build artifact inside it.
+#  * @details Removes `$WORKDIR` only; no repository path is touched (PKG-062, PKG-084). An absent or
+#  * never-created work directory is a successful no-op. Complexity O(temporary tree size).
+#  * @return {number} 0 on success; 1 when removal fails.
+#  * @side_effect Deletes `$WORKDIR` from the OS temp root.
+#  */
+cleanup_workdir() {
+  if [ -z "$WORKDIR" ] || [ ! -d "$WORKDIR" ]; then
+    return 0
+  fi
+  if ! rm -rf "$WORKDIR"; then
+    printf '[pre-release-check] cleanup: FAILED: could not remove temporary work directory %s\n' "$WORKDIR" >&2
+    return 1
+  fi
+  log "cleanup: removed the private temporary work directory (PKG-084)"
+  return 0
+}
+
+# /**
+#  * @brief EXIT trap: integrity verification, cleanup, and final result line.
+#  * @details Captures the script exit status first and preserves it (PKG-085). Verifies repository
+#  * integrity (PKG-082) and then removes the private temporary work directory (PKG-084). Exits with the
+#  * original status on failure; exits 1 when a passing run fails integrity or cleanup (PKG-086); prints
+#  * the PASS result only when everything succeeded (PKG-089).
 #  * @return {void} Terminates with the resulting exit status.
-#  * @side_effect Mutates dist/, removes `$WORKDIR` on success, writes the result line.
+#  * @side_effect Removes `$WORKDIR`, writes the result line.
 #  */
 on_exit() {
   local exit_status=$?
   local failed_phase="$CURRENT_PHASE"
   local cleanup_status=0
   trap - EXIT
-  if ! cleanup_artifacts; then
-    cleanup_status=1
-  fi
   # Integrity is compared only when a pre-run snapshot exists; a failed preflight ran no stage (PKG-082).
   if [ "$REPO_SNAPSHOT_READY" -eq 1 ] || [ "$exit_status" -eq 0 ]; then
     if ! verify_repository_integrity; then
       cleanup_status=1
     fi
   fi
-  if [ "$SNAPSHOT_RETAINED" -eq 0 ] && [ -n "$WORKDIR" ]; then
-    if ! rm -rf "$WORKDIR"; then
-      printf '[pre-release-check] cleanup: FAILED: could not remove work directory %s\n' "$WORKDIR" >&2
-      cleanup_status=1
-    fi
+  if ! cleanup_workdir; then
+    cleanup_status=1
   fi
   if [ "$exit_status" -ne 0 ]; then
     printf '[pre-release-check] RESULT: FAILED in phase "%s" (exit %s)\n' "$failed_phase" "$exit_status"
@@ -297,6 +328,5 @@ run_preflight
 run_stage 'publish-version guard' npm run check:publish-version
 run_stage 'typecheck' npm run typecheck
 run_stage 'unit tests' npm test
-run_stage 'build' npm run build
-run_stage 'release artifacts' bash scripts/build.sh
-run_stage 'artifact validation' node tools/check-release-artifacts.mjs
+run_stage 'build' build_into_temp_dir
+run_stage 'artifact verification' verify_temp_build
