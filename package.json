@@ -9,6 +9,7 @@
   "files": [
     "bin",
     "dist",
+    "!dist/*.tgz",
     "skills",
     "README.md",
     "CHANGELOG.md"

@@ -1,5 +1,5 @@
 /**
- * @file Static contract suite for the git-tracked `dist/` exclusion model.
+ * @file Static contract suite for the git-tracked `dist/` release-tarball model.
  * @details UUT: the tracked `.gitignore` rule contract plus the tracked
  * `tools/check-release-artifacts.mjs` nested-tarball guard source — the behavior contract IS the
  * file content, so the suite reads the tracked, immutable inputs directly. Level 0 (atomic static
@@ -8,9 +8,10 @@
  * environment dependence, no git subprocess, no `dist/` existence assumption).
  *
  * Contract under test (PKG mapping):
- * - `.gitignore` MUST exclude the `dist/` build output directory (PKG-090).
- * - No `dist/` entry may be version-controlled: no re-inclusion rule, no negation of the `dist/`
- *   exclusion, may survive anywhere in `.gitignore` (PKG-091).
+ * - `.gitignore` MUST re-include `dist/` and its `*.tgz` release tarball so the current-version
+ *   artifact is version-controlled (PKG-090, PKG-091).
+ * - `.gitignore` MUST NOT carry a plain `dist/` exclusion that would drop the committed tarball, and
+ *   no other `dist/` output may be re-included (PKG-090, PKG-091).
  * - The CTN-009 `!tools/` and CTN-010 `!bin/` exceptions MUST stay at the tail of the
  *   included-paths section, after the `skills/` re-inclusion (PKG-092).
  * - `tools/check-release-artifacts.mjs` rejects every packed `*.tgz` entry at any path, so no
@@ -26,26 +27,17 @@ const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const GITIGNORE_PATH = join(PROJECT_ROOT, ".gitignore");
 const VALIDATOR_PATH = join(PROJECT_ROOT, "tools", "check-release-artifacts.mjs");
 
-/** Active rule that excludes the build output directory (PKG-090). */
-const REQUIRED_DIST_RULE = "dist/";
+/** Active rule re-including the release artifact directory (PKG-090). */
+const REQUIRED_DIST_INCLUSION = "!/dist/";
 
-/** Re-inclusion shapes that would version-control build output (PKG-091). */
-const FORBIDDEN_DIST_RULES = ["!dist/", "!dist/**/*", "!dist/**", "!dist"];
+/** Active rule re-including the version-stamped release tarball (PKG-090, PKG-091). */
+const REQUIRED_TARBALL_INCLUSION = "!/dist/*.tgz";
 
-/**
- * @brief Loads a tracked repository file as UTF-8 text for contract assertions.
- * @details Tracked files are immutable inputs during the test run, so no caching layer is needed.
- * Missing files fail the test through the thrown error. Complexity O(file size).
- * @param absolutePath {string} Absolute path of the tracked file.
- * @return {string} Raw UTF-8 text of the file.
- * @throws {Error} When the file does not exist or cannot be read.
- */
-function readTrackedFile(absolutePath: string): string {
-  return readFileSync(absolutePath, "utf-8");
-}
+/** Plain exclusion shape that would drop the committed release tarball (PKG-090). */
+const FORBIDDEN_DIST_EXCLUSION = "dist/";
 
 /**
- * @brief Splits `.gitignore` text into trimmed lines.
+ * @brief Normalizes `.gitignore` text into trimmed lines.
  * @param text {string} Raw `.gitignore` content.
  * @return {string[]} Trimmed lines in file order; trailing newline artifacts removed.
  */
@@ -71,55 +63,63 @@ function parseActiveRules(lines: string[]): { rule: string; negated: boolean }[]
   return rules;
 }
 
-test("gitignore excludes the dist build output directory", () => {
-  // PKG-090: dist/ is compiled on demand, so an active rule must exclude it.
+test("gitignore version-controls the dist release tarball", () => {
+  // PKG-090/PKG-091: dist/ and its *.tgz artifact are re-included so the tagged commit carries
+  // the release tarball the workflow resolves.
   // Arrange
-  const rules = parseActiveRules(gitignoreLines(readTrackedFile(GITIGNORE_PATH)));
+  const rules = parseActiveRules(gitignoreLines(readFileSync(GITIGNORE_PATH, "utf-8")));
   // Act
-  const excludingRules = rules.filter((rule) => !rule.negated).map((rule) => rule.rule);
+  const negatedRules = rules.filter((rule) => rule.negated).map((rule) => rule.rule);
   // Assert
   assert.equal(
-    excludingRules.includes(REQUIRED_DIST_RULE),
+    negatedRules.includes(REQUIRED_DIST_INCLUSION.slice(1)),
     true,
-    `.gitignore must carry the active exclusion "${REQUIRED_DIST_RULE}" (PKG-090)`,
+    `.gitignore must re-include "dist/" (PKG-090)`,
+  );
+  assert.equal(
+    negatedRules.includes(REQUIRED_TARBALL_INCLUSION.slice(1)),
+    true,
+    `.gitignore must re-include "dist/*.tgz" (PKG-090, PKG-091)`,
   );
 });
 
-test("gitignore re-includes no dist entry", () => {
-  // PKG-091: every dist/ entry is build output; no negation may version-control it.
+test("gitignore keeps the dist release directories out of the exclusion section", () => {
+  // PKG-090: a plain `dist/` exclusion rule would override the version-controlled tarball.
   // Arrange
-  const lines = gitignoreLines(readTrackedFile(GITIGNORE_PATH));
+  const lines = gitignoreLines(readFileSync(GITIGNORE_PATH, "utf-8"));
   // Act
-  const reInclusions = lines.filter((line) => line.startsWith("!") && /(^|\/)dist([/*]|$)/.test(line));
+  const excludingRules = lines.filter((line) => line.length > 0 && !line.startsWith("#") && !line.startsWith("!"));
   // Assert
-  assert.deepEqual(
-    reInclusions,
-    [],
-    `no dist/ re-inclusion rule may survive (PKG-091): ${JSON.stringify(reInclusions)}`,
+  assert.equal(
+    excludingRules.includes(FORBIDDEN_DIST_EXCLUSION),
+    false,
+    `.gitignore must not exclude "${FORBIDDEN_DIST_EXCLUSION}" (PKG-090)`,
   );
-  for (const forbidden of FORBIDDEN_DIST_RULES) {
-    assert.equal(lines.includes(forbidden), false, `rule "${forbidden}" must not survive (PKG-091)`);
-  }
+  const reInclusions = lines.filter((line) => line.startsWith("!") && /(^|\/)dist([/*]|$)/.test(line));
+  assert.deepEqual(reInclusions, [REQUIRED_DIST_INCLUSION, REQUIRED_TARBALL_INCLUSION]);
 });
 
 test("gitignore keeps the tools and bin exceptions at the tail of the included-paths section", () => {
-  // PKG-092: the skills re-inclusion precedes the CTN-009 `!tools/` and CTN-010 `!bin/`
+  // PKG-092: the skills and dist re-inclusions precede the CTN-009 `!tools/` and CTN-010 `!bin/`
   // exceptions, which remain the last include rules of the section.
   // Arrange
-  const lines = gitignoreLines(readTrackedFile(GITIGNORE_PATH));
+  const lines = gitignoreLines(readFileSync(GITIGNORE_PATH, "utf-8"));
   // Act
   const skillsIndex = lines.indexOf("!skills/");
+  const distIndex = lines.indexOf(REQUIRED_TARBALL_INCLUSION);
   const toolsIndex = lines.indexOf("!tools/");
   const binIndex = lines.indexOf("!bin/");
   // Assert
   for (const [name, index] of [
     ["!skills/", skillsIndex],
+    [REQUIRED_TARBALL_INCLUSION, distIndex],
     ["!tools/", toolsIndex],
     ["!bin/", binIndex],
   ] as const) {
     assert.equal(index >= 0, true, `.gitignore must contain the rule "${name}" (PKG-092)`);
   }
   assert.equal(skillsIndex < toolsIndex, true, `"!skills/" must precede "!tools/" (PKG-092)`);
+  assert.equal(distIndex < toolsIndex, true, `${REQUIRED_TARBALL_INCLUSION} must precede "!tools/" (PKG-092)`);
   assert.equal(toolsIndex < binIndex, true, `"!tools/" must precede "!bin/" (PKG-092)`);
 });
 
@@ -127,7 +127,7 @@ test("release artifact validator rejects nested packed tarballs", () => {
   // PKG-093: a packed `*.tgz` entry would nest a package archive inside the payload; the
   // validator MUST reject it at any path, not only under dist/.
   // Arrange
-  const source = readTrackedFile(VALIDATOR_PATH);
+  const source = readFileSync(VALIDATOR_PATH, "utf-8");
   // Act
   const guardsTarballSuffix = /file\.endsWith\("\.tgz"\)/.test(source);
   const namesRequirement = source.includes("PKG-093");

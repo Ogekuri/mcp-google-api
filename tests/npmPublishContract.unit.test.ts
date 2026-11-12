@@ -15,7 +15,8 @@
  * runtime prefixes plus npm-invariant metadata files while excluding tests, local configuration,
  * secret files, and skills authoring documentation, with every `skills/` entry limited to
  * `manifest.json` or a `<skill-id>/` file (PKG-038, PKG-075); the `bin`/`dist`/`skills` `files`
- * allowlist with no `dist` archive negation (PKG-116); a packed `dist/` tree holding at most the
+ * allowlist with the `!dist/*.tgz` exclusion that keeps the committed release tarball out of any
+ * repack (PKG-102, PKG-116); a packed `dist/` tree holding at most the
  * single runtime bundle `dist/cli.js` (PKG-078); no `private: true` publication blocker
  * (PKG-039); registry-valid package name shared by both manifests (PKG-040); the npm `prepare`
  * lifecycle hook declared so git-source installs (develop channel
@@ -233,8 +234,8 @@ test("test_package_json_declares_no_library_entry", () => {
 
 test("test_files_allowlist_ships_changelog_and_runtime_assets", () => {
   // PKG-036/PKG-116: the files allowlist declares CHANGELOG.md plus the bin, dist, and skills
-  // runtime prefixes required by the published package, and carries no archive negation because
-  // no release tarball ever lives in dist/.
+  // runtime prefixes required by the published package, and negates the committed dist tarball so
+  // a repack never nests the release archive (PKG-093).
   // Arrange
   const manifest = loadPackageManifest();
   // Act
@@ -246,8 +247,8 @@ test("test_files_allowlist_ships_changelog_and_runtime_assets", () => {
   assert.equal(files.includes("docs"), false, 'files allowlist must not include "docs" (PKG-038: non-runtime)');
   assert.equal(
     files.includes("!dist/*.tgz"),
-    false,
-    'files allowlist must not negate a dist archive: no archive is produced in dist/ (PKG-102, PKG-116)'
+    true,
+    'files allowlist must negate the committed dist tarball so it is never repacked (PKG-102, PKG-116)'
   );
 });
 

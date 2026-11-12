@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # /**
 #  * @file build.sh
-#  * @brief Generates the single ESM runtime bundle in `dist/` after cleaning every earlier build.
-#  * @details Standalone, repeatable runtime-bundle generator and obsolete-build cleaner (PKG-065,
+#  * @brief Generates the committed release artifact in `dist/` after cleaning every earlier build.
+#  * @details Standalone, repeatable release-artifact generator and obsolete-build cleaner (PKG-065,
 #  * PKG-104), runnable from any working directory (PKG-066), in fail-fast order:
-#  * 1. Preflight (PKG-067, PKG-068): `node` and `npm` on PATH, Node.js major >= 24, and the
-#  *    installed `node_modules/.bin/tsup` binary. Dependencies are never installed here and no
-#  *    package is ever published.
+#  * 1. Preflight (PKG-067, PKG-068): `node`, `npm`, and `tar` on PATH, Node.js major >= 24, the
+#  *    installed `node_modules/.bin/tsup` binary, and the package name plus version. Dependencies
+#  *    are never installed here and no package is ever published.
 #  * 2. Obsolete-build cleanup (PKG-071, PKG-072, PKG-104, PKG-105, PKG-106, PKG-107, PKG-132):
 #  *    every `dist/` regular file classified as generated (`*.js`, `*.js.map`, `*.d.ts`,
 #  *    `*.d.ts.map`, `*.tgz`, `*.tsbuildinfo`, `*.tmp`) and every file whose path carries a
@@ -17,24 +17,31 @@
 #  * 3. Compile (PKG-069, PKG-129): `npm run build` invokes the `tsup` compiler directly for the
 #  *    single runtime entry `src/cli.ts`; `tsup.config.ts` keeps `clean: true`, so the compiler
 #  *    also removes stale generated outputs before compiling (PKG-130).
-#  * 4. Compile verification (PKG-069, PKG-074, PKG-109, PKG-133): `dist/cli.js` MUST exist, be
-#  *    non-empty, pass `node --check`, and every relative import target MUST resolve; no `dist/`
-#  *    file may carry a foreign version token.
-#  * 5. Final cleanup and summary (PKG-102, PKG-108, PKG-109, PKG-074): every `*.tsbuildinfo` and
-#  *    `*.tmp` file is removed, the private work directory is removed, and the path plus byte size
-#  *    of every artifact in `dist/` is printed. No `*.tgz` archive is ever created (PKG-102).
+#  * 4. Compile verification (PKG-069, PKG-074, PKG-133): `dist/cli.js` MUST exist, be non-empty,
+#  *    pass `node --check`, and every relative import target MUST resolve; no `dist/` file may
+#  *    carry a foreign version token.
+#  * 5. Release packing (PKG-102): `npm pack --ignore-scripts --pack-destination dist` packs the
+#  *    compiled tree into the single tarball `dist/<package name>-<version>.tgz`, never triggering
+#  *    a second build.
+#  * 6. Artifact validation (PKG-135): `tools/check-release-artifacts.mjs <tarball>` validates the
+#  *    packed payload offline before the build reports success.
+#  * 7. Bundle removal (PKG-136): the compiled `dist/cli.js` is deleted after packing, so `dist/`
+#  *    holds only the release tarball (PKG-134).
+#  * 8. Final cleanup and summary (PKG-108, PKG-109, PKG-134, PKG-074): every `*.tsbuildinfo` and
+#  *    `*.tmp` file is removed, the private work directory is removed, `dist/` MUST hold exactly
+#  *    the release tarball, and the path plus byte size of every artifact is printed.
 #  * Failure semantics (PKG-073): any failing phase prints `[build] FAILED: <phase>: <reason>` on
 #  * stderr and exits non-zero. Signals HUP, INT, and TERM exit through the EXIT trap with status
 #  * 129, 130, and 143.
 #  * @return Exit code 0 when the bundle is generated and verified; non-zero otherwise.
 #  * @pre Dependencies installed beforehand by the project package manager.
-#  * @post On success `dist/` holds exactly the verified `dist/cli.js` bundle and the private work
-#  *       directory is removed; on failure the failing phase is named on stderr.
+#  * @post On success `dist/` holds exactly the verified release tarball `<package name>-<version>.tgz`
+#  *       and the private work directory is removed; on failure the failing phase is named on stderr.
 #  * @note Writes only under `dist/` and the OS temp directory; no network access, no dependency
 #  *       installation, no publication.
 #  * @satisfies PKG-065, PKG-066, PKG-067, PKG-068, PKG-069, PKG-071, PKG-072, PKG-073, PKG-074,
 #  *            PKG-102, PKG-104, PKG-105, PKG-106, PKG-107, PKG-108, PKG-109, PKG-129, PKG-130,
-#  *            PKG-132, PKG-133
+#  *            PKG-132, PKG-133, PKG-134, PKG-135, PKG-136
 #  */
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -42,6 +49,12 @@ cd "$(dirname "$0")/.."
 readonly DIST_DIR="dist"
 readonly RUNTIME_BUNDLE="cli.js"
 readonly MIN_NODE_MAJOR=24
+# Package identity read during preflight; drives the release tarball name (PKG-102, PKG-134).
+PACKAGE_NAME=""
+# Release tarball basename: `<package name>-<version>.tgz` (PKG-045, PKG-102).
+TARBALL_NAME=""
+# Release tarball path inside `dist/` (PKG-102, PKG-134).
+TARBALL=""
 
 # Phase label of the step in progress; reported on failure (PKG-073).
 CURRENT_PHASE="preflight"
@@ -101,8 +114,8 @@ is_generated_output() {
 
 # /**
 #  * @brief Classifies one dist-relative path as an intermediate build artifact.
-#  * @details Intermediate subset of the PKG-072 generated set: `*.tsbuildinfo` and `*.tmp`. No
-#  * `*.tgz` class exists because the release pipeline packs the tarball in CI (PKG-102, PKG-111).
+#  * @details Intermediate subset of the PKG-072 generated set: `*.tsbuildinfo` and `*.tmp`. The
+#  * release tarball is a retained release artifact, not an intermediate one (PKG-102, PKG-134).
 #  * Pure, O(1).
 #  * @param relative {string} Path relative to `dist/`.
 #  * @return {number} 0 when intermediate; 1 otherwise.
@@ -331,6 +344,7 @@ trap 'exit 143' TERM
 CURRENT_PHASE="preflight"
 require_command node
 require_command npm
+require_command tar
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 if [ "$NODE_MAJOR" -lt "$MIN_NODE_MAJOR" ]; then
   fail "Node.js >= $MIN_NODE_MAJOR required, found major $NODE_MAJOR"
@@ -338,16 +352,24 @@ fi
 if [ ! -x "node_modules/.bin/tsup" ]; then
   fail "dependencies not installed: node_modules/.bin/tsup missing; run 'npm run build' only after installing dependencies"
 fi
+if ! PACKAGE_NAME="$(node -p 'require("./package.json").name')"; then
+  fail "could not read the name field from package.json (PKG-102)"
+fi
+if [ -z "$PACKAGE_NAME" ]; then
+  fail "package.json carries an empty name field (PKG-102)"
+fi
 if ! CURRENT_VERSION="$(node -p 'require("./package.json").version')"; then
   fail "could not read the version field from package.json (PKG-132)"
 fi
 if [ -z "$CURRENT_VERSION" ]; then
   fail "package.json carries an empty version field (PKG-132)"
 fi
+TARBALL_NAME="$PACKAGE_NAME-$CURRENT_VERSION.tgz"
+TARBALL="$DIST_DIR/$TARBALL_NAME"
 if ! WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/mcp-google-api-build.XXXXXX")"; then
   fail "could not create the private work directory"
 fi
-log "preflight passed (node $(node -p 'process.versions.node'), version $CURRENT_VERSION)"
+log "preflight passed (node $(node -p 'process.versions.node'), $PACKAGE_NAME@$CURRENT_VERSION)"
 
 # Obsolete-build cleanup (PKG-071, PKG-072, PKG-104, PKG-105, PKG-106, PKG-107, PKG-132).
 # Runs strictly before the compile step, so no artifact of an earlier release survives the build.
@@ -388,30 +410,60 @@ if [ -e "$DIST_DIR" ]; then
 fi
 log "version cleanup verified: no artifact of another release remains in $DIST_DIR/"
 
-# Final cleanup (PKG-102, PKG-108, PKG-109): no tarball, no intermediate artifact, no work directory.
+# Release packing (PKG-102): pack the compiled tree into the single release tarball.
+CURRENT_PHASE="pack"
+log "pack: npm pack --ignore-scripts --pack-destination $DIST_DIR"
+if ! npm pack --ignore-scripts --pack-destination "$DIST_DIR" >/dev/null; then
+  fail "npm pack exited non-zero"
+fi
+if [ ! -s "$TARBALL" ]; then
+  fail "release tarball missing or empty: $TARBALL"
+fi
+log "packed release artifact: $TARBALL"
+
+# Artifact validation (PKG-135): validate the packed payload before reporting success.
+CURRENT_PHASE="artifact validation"
+if ! node tools/check-release-artifacts.mjs "$TARBALL"; then
+  fail "release tarball validation failed: $TARBALL"
+fi
+log "release artifact validated: $TARBALL"
+
+# Bundle removal (PKG-136): the compiled bundle now lives only inside the tarball.
+CURRENT_PHASE="bundle removal"
+if ! rm -f -- "$DIST_DIR/$RUNTIME_BUNDLE"; then
+  fail "could not remove compiled bundle: $DIST_DIR/$RUNTIME_BUNDLE"
+fi
+if [ -e "$DIST_DIR/$RUNTIME_BUNDLE" ]; then
+  fail "compiled bundle survives the removal phase: $DIST_DIR/$RUNTIME_BUNDLE"
+fi
+log "removed compiled bundle: $DIST_DIR/$RUNTIME_BUNDLE"
+
+# Final cleanup (PKG-108, PKG-109, PKG-134): no intermediate artifact, no work directory, and
+# `dist/` holding exactly the release tarball.
 CURRENT_PHASE="final cleanup"
 remove_classified_outputs is_intermediate_output "intermediate-files.lst" "final cleanup"
 if [ -e "$DIST_DIR" ]; then
   unexpected=""
   while IFS= read -r -d '' path; do
     relative="${path#"$DIST_DIR"/}"
-    if [ "$relative" = "$RUNTIME_BUNDLE" ]; then
+    if [ "$relative" = "$TARBALL_NAME" ]; then
       continue
     fi
-    if is_generated_output "$relative"; then
-      unexpected="$unexpected $path"
-    fi
-  done < <(find "$DIST_DIR" -type f -print0)
+    unexpected="$unexpected $path"
+  done < <(find "$DIST_DIR" -mindepth 1 -print0)
   if [ -n "$unexpected" ]; then
-    fail "unexpected generated artifact(s) in $DIST_DIR/:$unexpected"
+    fail "unexpected artifact(s) in $DIST_DIR/; the release directory must hold only $TARBALL_NAME:$unexpected (PKG-134)"
   fi
 fi
+if [ ! -s "$TARBALL" ]; then
+  fail "release tarball missing after the final cleanup: $TARBALL (PKG-134)"
+fi
 remove_workdir
-log "repository left clean: no intermediate build artifact, no temporary work directory"
+log "repository left clean: only the release tarball remains in $DIST_DIR/, no temporary work directory"
 
 # Summary (PKG-074).
 CURRENT_PHASE="summary"
-log "SUCCESS: runtime bundle generated in $DIST_DIR/:"
+log "SUCCESS: release artifact generated in $DIST_DIR/:"
 find "$DIST_DIR" -type f -print0 | sort -z | while IFS= read -r -d '' artifact; do
   printf '[build]   %s (%s bytes)\n' "$artifact" "$(wc -c <"$artifact")"
 done

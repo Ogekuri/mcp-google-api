@@ -1,35 +1,37 @@
 #!/usr/bin/env node
 /**
  * @file check-release-artifacts.mjs
- * @brief Release artifact validator for the npm tarball packed from the built repository.
- * @details Packs the repository into a private temp directory outside `dist/` (PKG-103), then
- *          validates the packed tarball offline, in this order: (1) tarball listing against the
- *          invariant plus runtime-prefix allowlist and the required entry set (PKG-075), the
- *          rejection of every packed `src/` entry so repository sources never become release
- *          artifacts (PKG-125, PKG-127), the rejection of every packed `*.tgz` entry so no package
- *          archive is nested inside the packed payload (PKG-093), and the rejection of every
- *          `skills/` entry that is not `manifest.json` or a file inside a `<skill-id>/` directory,
- *          so skills authoring documentation never ships (PKG-038, PKG-075); (2) extraction into a
- *          private temp directory, then the packed `package/package.json` name and version against
- *          the repository `package.json`, the absence of a library entry (PKG-035) and every
- *          declared `bin` target (PKG-076); (3) every skill `path` and `debug` entry of the packed
- *          `skills/manifest.json` present (PKG-077); (4) the packed `dist/` tree holding exactly the
- *          single runtime bundle `dist/cli.js` with no other JavaScript artifact (PKG-078);
- *          (5) `node --check` on the packed `dist/cli.js` (PKG-079); (6) execution of the repository
- *          `dist/cli.js --help` with exit 0 and `mcp-google-api` on stdout (PKG-079). Every failed
- *          check is collected and reported; the process exits 1 when any check fails.
+ * @brief Release artifact validator for the committed `dist/` release tarball.
+ * @details Validates the tarball named by the first command-line argument, defaulting to
+ *          `dist/<package name>-<version>.tgz` (PKG-103), offline, in this order: (1) tarball
+ *          basename and identity against `<package name>-<version>.tgz` (PKG-137); (2) tarball
+ *          listing against the invariant plus runtime-prefix allowlist and the required entry set
+ *          (PKG-075), the rejection of every packed `src/` entry so repository sources never become
+ *          release artifacts (PKG-125, PKG-127), the rejection of every packed `*.tgz` entry so no
+ *          package archive is nested inside the packed payload (PKG-093), and the rejection of
+ *          every `skills/` entry that is not `manifest.json` or a file inside a `<skill-id>/`
+ *          directory, so skills authoring documentation never ships (PKG-038, PKG-075);
+ *          (3) extraction into a private temp directory, then the packed `package/package.json`
+ *          name and version against the repository `package.json`, the absence of a library entry
+ *          (PKG-035) and every declared `bin` target (PKG-076); (4) every skill `path` and `debug`
+ *          entry of the packed `skills/manifest.json` present (PKG-077); (5) the packed `dist/`
+ *          tree holding exactly the single runtime bundle `dist/cli.js` with no other JavaScript
+ *          artifact (PKG-078); (6) `node --check` on the packed `dist/cli.js` (PKG-079);
+ *          (7) execution of the repository `dist/cli.js --help` with exit 0 and `mcp-google-api`
+ *          on stdout while that build artifact still exists (PKG-079). Every failed check is
+ *          collected and reported; the process exits 1 when any check fails.
  *          Complexity: O(E + F) where E is the tarball entry count and F the packed file byte total.
- * @satisfies PKG-035, PKG-038, PKG-075, PKG-076, PKG-077, PKG-078, PKG-079, PKG-093, PKG-103, PKG-113, PKG-125, PKG-127
- * @note Writes only under the OS temp directory (packed tarball and extraction, removed in
- *       `finally`). No network access, no dependency installation, no publication. stdout carries
- *       per-check `ok:` lines; stderr carries `FAILED:` diagnostics.
- * @pre `npm run build` produced `dist/cli.js`; `npm pack` succeeds for the repository.
- * @post No repository file is modified; the temp work directory (tarball and extraction) is removed.
+ * @satisfies PKG-035, PKG-038, PKG-075, PKG-076, PKG-077, PKG-078, PKG-079, PKG-093, PKG-103, PKG-125, PKG-127, PKG-137
+ * @note Writes only under the OS temp directory (extraction, removed in `finally`). No network
+ *       access, no packing, no dependency installation, no publication. stdout carries per-check
+ *       `ok:` lines; stderr carries `FAILED:` diagnostics.
+ * @pre The tarball exists; `dist/cli.js` exists while this validator runs during `scripts/build.sh`.
+ * @post No repository file is modified; the temp extraction directory is removed.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, posix } from "node:path";
+import { basename, dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** Repository root resolved from this script location (cwd-independent). */
@@ -120,36 +122,47 @@ function runTar(args) {
 }
 
 /**
- * @brief Packs the repository into a private directory with `npm pack --ignore-scripts`.
- * @details Runs `npm pack --ignore-scripts --json --pack-destination <destination>` in the repository
- * root (PKG-103); lifecycle scripts never run, so no second build happens (PKG-111). The packed
- * filename from the JSON result MUST equal `<name>-<version>.tgz` (PKG-045). Complexity O(package
- * file count) plus one npm child.
+ * @brief Resolves the tarball path to validate.
+ * @details Uses the first command-line argument when supplied, otherwise the default committed
+ * artifact `dist/<package name>-<version>.tgz` (PKG-103). Relative arguments resolve against the
+ * invoking working directory. Pure; complexity O(n) in path length.
  * @param repoPackage {{ name: string, version: string }} Repository `package.json` identity.
- * @param destination {string} Private absolute directory outside `dist/` receiving the tarball.
- * @return {string} Absolute path of the packed tarball inside `destination`.
- * @throws {Error} When npm cannot be spawned, exits non-zero, emits malformed JSON, or the packed name differs.
- * @side_effect Writes one tarball into `destination`; spawns one npm child process.
+ * @return {string} Absolute tarball path.
+ * @satisfies PKG-103, PKG-137
  */
-function packRepository(repoPackage, destination) {
-  const result = spawnSync(
-    "npm",
-    ["pack", "--ignore-scripts", "--json", "--pack-destination", destination],
-    { cwd: PROJECT_ROOT, encoding: "utf8", maxBuffer: TAR_MAX_BUFFER_BYTES },
-  );
-  if (result.error) {
-    throw new Error(`npm pack could not be spawned: ${result.error.message}`);
+function resolveTarballPath(repoPackage) {
+  const argument = process.argv[2];
+  if (typeof argument === "string" && argument.length > 0) {
+    return resolve(argument);
   }
-  if (result.status !== 0) {
-    throw new Error(`npm pack failed: ${result.stderr.trim()}`);
-  }
-  const entries = JSON.parse(result.stdout);
-  const filename = Array.isArray(entries) && typeof entries[0]?.filename === "string" ? entries[0].filename : "";
+  return join(PROJECT_ROOT, "dist", `${repoPackage.name}-${repoPackage.version}.tgz`);
+}
+
+/**
+ * @brief Verifies that the tarball exists, is non-empty, and carries the canonical basename.
+ * @details The release artifact MUST be `<package name>-<version>.tgz`, so any other filename
+ * fails the check with the observed name (PKG-137). Complexity O(1).
+ * @param tarballPath {string} Absolute tarball path.
+ * @param repoPackage {{ name: string, version: string }} Repository `package.json` identity.
+ * @return {void}
+ * @side_effect Calls `recordFailure` per violation.
+ * @satisfies PKG-103, PKG-137
+ */
+function checkTarballIdentity(tarballPath, repoPackage) {
   const expected = `${repoPackage.name}-${repoPackage.version}.tgz`;
-  if (filename !== expected) {
-    throw new Error(`npm pack produced "${filename}", expected "${expected}" (PKG-045)`);
+  const observed = basename(tarballPath);
+  if (observed !== expected) {
+    recordFailure(`release tarball basename must be ${expected}, found ${observed} (PKG-137)`);
   }
-  return join(destination, filename);
+  if (!existsSync(tarballPath)) {
+    recordFailure(`release tarball missing (PKG-103): ${tarballPath}`);
+    return;
+  }
+  if (!statSync(tarballPath).isFile() || statSync(tarballPath).size === 0) {
+    recordFailure(`release tarball is not a non-empty file (PKG-103): ${tarballPath}`);
+    return;
+  }
+  recordOk(`release tarball ${observed} present and non-empty (PKG-103, PKG-137)`);
 }
 
 /**
@@ -363,9 +376,11 @@ function checkSyntax(packageDir, entries) {
 
 /**
  * @brief Executes the repository `dist/cli.js --help` as an offline smoke run.
- * @details The packed tarball was produced from this repository tree in the same run (PKG-110,
- * PKG-111), so this execution exercises the shipped entry. Requires exit 0 and the `mcp-google-api`
- * name on stdout (PKG-079). Complexity O(1) plus child runtime bounded by timeout.
+ * @details The validated tarball was packed from this repository tree in the same build run, so
+ * this execution exercises the shipped entry (PKG-079). The bundle MUST still exist when the
+ * validator runs; `scripts/build.sh` removes it only after validation (PKG-135, PKG-136).
+ * Requires exit 0 and the `mcp-google-api` name on stdout (PKG-079). Complexity O(1) plus child
+ * runtime bounded by timeout.
  * @return {void}
  * @side_effect Spawns one Node.js child process; calls `recordFailure` on failure.
  * @satisfies PKG-079
@@ -394,20 +409,25 @@ function checkCliSmoke() {
 }
 
 /**
- * @brief Runs every artifact check in fixed order against the generated tarball.
- * @details Reads the repository `package.json`, packs the repository into a private temp directory
- * (`packRepository`, PKG-103), lists and structurally checks the tarball, extracts it into the same
- * directory, and runs the identity, target, manifest, dist-layout, syntax, and smoke checks. The
- * temp directory is removed in `finally`. Complexity O(E + F).
+ * @brief Runs every artifact check in fixed order against the committed release tarball.
+ * @details Reads the repository `package.json`, resolves the tarball path from the first argument
+ * or the committed default (PKG-103), verifies its basename and presence (PKG-137), lists and
+ * structurally checks the tarball, extracts it into a private temp directory, and runs the
+ * identity, target, manifest, dist-layout, syntax, and smoke checks. The temp directory is removed
+ * in `finally`. Complexity O(E + F).
  * @return {void}
- * @throws {Error} When `npm pack` fails, the packed name differs from `<name>-<version>.tgz`, or the listing is structurally invalid.
+ * @throws {Error} When the listing is structurally invalid or extraction fails.
  * @side_effect Creates and removes one temp directory under the OS temp root.
  */
 function main() {
   const repoPackage = JSON.parse(readFileSync(join(PROJECT_ROOT, "package.json"), "utf8"));
+  const tarballPath = resolveTarballPath(repoPackage);
+  checkTarballIdentity(tarballPath, repoPackage);
+  if (!existsSync(tarballPath)) {
+    return;
+  }
   const workRoot = mkdtempSync(join(tmpdir(), "check-release-artifacts-"));
   try {
-    const tarballPath = packRepository(repoPackage, workRoot);
     const files = listTarballFiles(tarballPath);
     checkStructure(files);
     runTar(["-xzf", tarballPath, "-C", workRoot]);
