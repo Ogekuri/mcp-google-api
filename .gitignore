@@ -48,9 +48,8 @@
 !tsconfig.json
 !tsup.config.ts
 !eslint.config.js
-# dist/ release artifacts are distributed within the repository; no active exclusion rule may match dist/ (PKG-090, PKG-091, PKG-092)
-!dist/
-!dist/**/*
+!skills/
+!skills/**/*
 !tools/
 !tools/**/*
 !bin/
@@ -64,6 +63,9 @@
 .github/agents/
 .github/prompts/
 .github/skills/
+
+# Build output is never version-controlled (PKG-090, PKG-091)
+dist/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

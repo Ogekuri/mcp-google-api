@@ -5,9 +5,9 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const SKILL_PATH = join(PROJECT_ROOT, "src", "resources", "skills", "eatspot-discovery", "SKILL.md");
-const DEBUG_PATH = join(PROJECT_ROOT, "src", "resources", "skills", "eatspot-discovery", "DEBUG.md");
-const MANIFEST_PATH = join(PROJECT_ROOT, "src", "resources", "skills", "manifest.json");
+const SKILL_PATH = join(PROJECT_ROOT, "skills", "eatspot-discovery", "SKILL.md");
+const DEBUG_PATH = join(PROJECT_ROOT, "skills", "eatspot-discovery", "DEBUG.md");
+const MANIFEST_PATH = join(PROJECT_ROOT, "skills", "manifest.json");
 
 /**
  * @brief Loads the packaged eatspot-discovery skill document as text.

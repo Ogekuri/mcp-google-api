@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "Registry of LLM agent skills shipped under src/resources/skills. Each entry points to exactly one <skill-id>/SKILL.md. Adding a skill requires only a new skill directory plus one entry here; no source-code change is needed.",
+  "description": "Registry of LLM agent skills shipped under skills/. Each entry points to exactly one <skill-id>/SKILL.md. Adding a skill requires only a new skill directory plus one entry here; no source-code change is needed.",
   "skills": [
     {
       "id": "eatspot-discovery",

@@ -1,352 +1,195 @@
 /**
- * @fileoverview Release build contract suite for `scripts/build.sh` import integrity.
+ * @fileoverview Release build script contract suite for the standalone runtime-bundle generator.
  *
- * @brief Verifies that the tracked release build fails when an emitted ESM entry imports a
- * relative module that was not generated (PKG-069, PKG-074), and succeeds when every relative
- * import resolves.
- * @details UUT: the tracked shell script `scripts/build.sh`, executed from a temp-directory
- * sandbox whose toolchain is replaced by stubs: `node_modules/.bin/tsup` emits `dist/cli.js`,
- * `dist/index.js`, optionally with the chunk module they import; the
- * `npm` stub resolves `run build` to the tsup stub and `pack` to a tar-readable tarball. Enforced
- * contract: the build exits non-zero and names the dangling import when `./chunk-ABC.js` is absent,
- * and leaves no partial `dist/` behind (PKG-073); with every relative import resolved the build
- * exits 0, writes no declaration file into `dist/` (PKG-069), persists the verified archive at
- * `dist/<name>-<version>.tgz` as the only tarball there (PKG-070, PKG-102), preserves it through the
- * final cleanup while removing stale tarballs and build state files (PKG-108, PKG-109), and removes
- * its private work directory (PKG-074). Isolation: `PATH` is prefixed with
- * the stub directory only for the child process; the sandbox is removed in `finally`; no network,
- * no dependency installation, no write into the repository tree.
- * @note HDT level 1 (composed): depends on the shell runtime (`bash`, `tar`, `node`) as isolated
- * external boundaries. Test cases are independent and each owns its sandbox.
- * @satisfies PKG-069, PKG-070, PKG-073, PKG-074, PKG-102, PKG-108, PKG-109, TST-031
+ * @brief Guards `scripts/build.sh`: obsolete-build cleanup, single-bundle generation, artifact
+ * verification, and the no-tarball/no-work-directory final state.
+ * @details UUT: the tracked shell script plus a sandboxed execution in a private temporary
+ * directory where the compiler is replaced by a stub that emits `dist/cli.js`. Level 0 (static
+ * assertions over the tracked script) plus level 1 sandboxed child-process runs.
+ * Enforced contract (PKG mapping):
+ * - No npm tarball is ever created, moved, or retained inside `dist/` (PKG-102).
+ * - After generation and verification every `*.tsbuildinfo` / `*.tmp` file is removed and the
+ *   private work directory is deleted (PKG-108).
+ * - `dist/` holds no artifact beyond `dist/cli.js`, and a surviving work directory fails the run
+ *   (PKG-109).
+ * - Preflight requires the compiler binary without installing dependencies, and any failing phase
+ *   aborts non-zero naming the phase (PKG-067, PKG-068, PKG-073).
+ * - Generation runs through the `build` npm script and yields the single runtime bundle
+ *   (PKG-069, PKG-129).
+ * @note Deterministic: tracked-file reads plus offline child runs bounded by explicit timeouts.
+ * @satisfies PKG-067, PKG-068, PKG-069, PKG-073, PKG-102, PKG-108, PKG-109, PKG-129, TST-031
  */
-import test from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync, type SpawnSyncReturns } from "node:child_process";
-import {
-  chmodSync,
-  copyFileSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readlinkSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import test from "node:test";
+import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** Repository root resolved from this suite location (cwd-independent). */
-const PROJECT_ROOT: string = join(dirname(fileURLToPath(import.meta.url)), "..");
+const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Tracked release build script under test. */
-const BUILD_SCRIPT: string = join(PROJECT_ROOT, "scripts", "build.sh");
+/** Repository-relative path of the tracked build script under test. */
+const SCRIPT_RELATIVE_PATH = "scripts/build.sh";
 
-/** Sandbox package identity; the tarball name derives from it (PKG-070). */
-const FIXTURE_NAME = "fixture-pkg";
-const FIXTURE_VERSION = "1.0.0";
-const FIXTURE_TARBALL = `${FIXTURE_NAME}-${FIXTURE_VERSION}.tgz`;
+/** Single runtime bundle produced by the build (PKG-069). */
+const RUNTIME_BUNDLE = "cli.js";
 
-/** Relative chunk module imported by the fixture entries; omitted in the failing scenario. */
-const FIXTURE_CHUNK = "chunk-ABC.js";
+/** Sandbox script basename kept so the copy resolves the sandbox as its repository root. */
+const SANDBOX_SCRIPT_BASENAME = "build.sh";
 
 /** Upper bound in milliseconds for one sandboxed build run. */
-const BUILD_TIMEOUT_MS = 120000;
+const SANDBOX_TIMEOUT_MS = 120000;
 
-/** Sandbox `npm` stub source: `run build` delegates to tsup; `pack` writes a tar-readable tarball. */
-const NPM_STUB: string = [
-  "#!/usr/bin/env bash",
-  "set -euo pipefail",
-  'if [ "$1" = "run" ] && [ "$2" = "build" ]; then',
-  "  exec ./node_modules/.bin/tsup",
-  "fi",
-  'if [ "$1" = "pack" ]; then',
-  '  stage="$(mktemp -d)"',
-  '  mkdir -p "$stage/package"',
-  "  printf '{}\\n' > \"$stage/package/package.json\"",
-  `  tar -czf "$5/${FIXTURE_TARBALL}" -C "$stage" package`,
-  '  rm -rf "$stage"',
-  `  printf '[{"filename":"${FIXTURE_TARBALL}"}]\\n'`,
-  "  exit 0",
-  "fi",
-  'echo "npm stub: unsupported invocation: $*" >&2',
-  "exit 2",
-  "",
-].join("\n");
-
-/** Sandbox tsup stub source: emits the runtime entry files; the chunk only when requested. */
-const TSUP_STUB: string = [
-  "#!/usr/bin/env bash",
-  "set -euo pipefail",
-  "rm -rf dist",
-  "mkdir -p dist",
-  `printf 'import { value } from "./${FIXTURE_CHUNK}";\\nconsole.log(value);\\n' > dist/cli.js`,
-  `printf 'export { value } from "./${FIXTURE_CHUNK}";\\n' > dist/index.js`,
-  'if [ "${FIXTURE_WRITE_CHUNK:-0}" = "1" ]; then',
-  `  printf 'export const value = 1;\\n' > dist/${FIXTURE_CHUNK}`,
-  "fi",
-  "",
-].join("\n");
-
-/** Temp-directory sandbox handles: repository-shaped root plus the stub `PATH` directory. */
-interface BuildSandbox {
-  /** Sandbox root containing `scripts/build.sh`, `package.json`, and `node_modules/.bin/tsup`. */
-  readonly root: string;
-  /** Directory holding the `npm` stub, prepended to `PATH` for the child process only. */
-  readonly binDir: string;
+/**
+ * @brief Loads the tracked build script.
+ * @details Synchronous read of the repository-root script; parse-free raw text. Complexity
+ * O(file size).
+ * @return {string} Raw script content.
+ * @throws {Error} When the script is missing or unreadable.
+ */
+function loadBuildScript(): string {
+  return readFileSync(join(PROJECT_ROOT, SCRIPT_RELATIVE_PATH), "utf8");
 }
 
 /**
- * @brief Writes one executable script file.
- * @details Writes the content and sets mode 0755. Side effect: creates or overwrites `path`.
- * Complexity O(n) in content length.
- * @param path {string} Absolute destination path inside the sandbox.
- * @param content {string} Complete POSIX shell script text.
- * @return {void}
- * @throws {Error} When the file cannot be written or its mode cannot be set.
+ * @brief Creates one sandbox repository hosting the tracked build script and a stub compiler.
+ * @details Writes `scripts/build.sh`, a minimal `package.json` whose `build` script runs a stub
+ * that emits `dist/cli.js`, an executable `node_modules/.bin/tsup` marker required by the
+ * preflight, and optional seeded `dist/` entries. Complexity O(bundle size); the caller MUST
+ * remove the returned directory.
+ * @param seed {Record<string, string>} Relative paths mapped to the seeded file content.
+ * @param compilerExitCode {number} Exit code of the stub `build` npm script.
+ * @return {string} Absolute sandbox directory.
  */
-function writeExecutable(path: string, content: string): void {
-  writeFileSync(path, content);
-  chmodSync(path, 0o755);
-}
-
-/**
- * @brief Creates an isolated build sandbox with the tracked build script and stub toolchain.
- * @details Creates a temp directory under the OS temp root containing a copy of the tracked
- * `scripts/build.sh`, a fixture `package.json` (ESM, `name`/`version` from the constants), the tsup
- * stub under `node_modules/.bin/`, and an `npm` stub under a separate bin directory. Complexity O(1)
- * filesystem operations.
- * @return {BuildSandbox} Sandbox handles; the caller MUST remove `root` in a `finally` block.
- * @throws {Error} When the sandbox directories or files cannot be created.
- * @side_effect Creates one directory tree under the OS temp root.
- */
-function createSandbox(): BuildSandbox {
-  const root = mkdtempSync(join(tmpdir(), "release-build-contract-"));
-  const binDir = join(root, "stub-bin");
-  mkdirSync(join(root, "scripts"));
-  mkdirSync(join(root, "node_modules", ".bin"), { recursive: true });
-  mkdirSync(binDir);
+function createSandbox(seed: Record<string, string>, compilerExitCode: number): string {
+  const sandbox = mkdtempSync(join(tmpdir(), "release-build-script-"));
+  mkdirSync(join(sandbox, "scripts"), { recursive: true });
+  mkdirSync(join(sandbox, "node_modules", ".bin"), { recursive: true });
+  writeFileSync(join(sandbox, "scripts", SANDBOX_SCRIPT_BASENAME), loadBuildScript(), { mode: 0o755 });
   writeFileSync(
-    join(root, "package.json"),
-    `${JSON.stringify({ name: FIXTURE_NAME, version: FIXTURE_VERSION, type: "module" }, null, 2)}\n`,
+    join(sandbox, "package.json"),
+    JSON.stringify({ name: "release-build-fixture", version: "1.2.3", scripts: { build: "node ./emit-bundle.mjs" } }, null, 2),
+    "utf8",
   );
-  copyFileSync(BUILD_SCRIPT, join(root, "scripts", "build.sh"));
-  writeExecutable(join(root, "node_modules", ".bin", "tsup"), TSUP_STUB);
-  writeExecutable(join(binDir, "npm"), NPM_STUB);
-  return { root, binDir };
+  writeFileSync(
+    join(sandbox, "emit-bundle.mjs"),
+    [
+      'import { mkdirSync, writeFileSync } from "node:fs";',
+      'mkdirSync("dist", { recursive: true });',
+      'writeFileSync("dist/cli.js", "console.log(\\"fixture\\");\\n");',
+      `process.exit(${compilerExitCode});`,
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  const compilerMarker = join(sandbox, "node_modules", ".bin", "tsup");
+  writeFileSync(compilerMarker, "#!/usr/bin/env node\n", "utf8");
+  chmodSync(compilerMarker, 0o755);
+  for (const [relativePath, content] of Object.entries(seed)) {
+    const absolute = join(sandbox, relativePath);
+    mkdirSync(dirname(absolute), { recursive: true });
+    writeFileSync(absolute, content, "utf8");
+  }
+  return sandbox;
 }
 
 /**
- * @brief Runs the sandboxed copy of `scripts/build.sh` as a bash child process.
- * @details Executes from the sandbox root with `PATH` prefixed by the `npm` stub directory and
- * `FIXTURE_WRITE_CHUNK` set to `1` or `0` to control whether the tsup stub emits the chunk module.
- * Output is captured as UTF-8 text; the child is bounded by `BUILD_TIMEOUT_MS`. Complexity O(build
- * output size) plus one child process.
- * @param sandbox {BuildSandbox} Sandbox produced by `createSandbox`.
- * @param writeChunk {boolean} True when the tsup stub must emit `./chunk-ABC.js`.
- * @return {SpawnSyncReturns<string>} Child exit status and captured stdout/stderr.
- * @throws {Error} When bash cannot be spawned.
+ * @brief Runs the sandboxed build script.
+ * @details Spawns `bash scripts/build.sh` with the sandbox as working directory, capturing both
+ * streams for diagnostics assertions. Complexity O(script runtime).
+ * @param sandbox {string} Absolute sandbox directory.
+ * @return {{ status: number | null, stdout: string, stderr: string }} Captured run outcome.
  */
-function runBuild(sandbox: BuildSandbox, writeChunk: boolean): SpawnSyncReturns<string> {
-  return spawnSync("bash", [join(sandbox.root, "scripts", "build.sh")], {
-    cwd: sandbox.root,
+function runBuildScript(sandbox: string): { status: number | null; stdout: string; stderr: string } {
+  const run = spawnSync("bash", [join("scripts", SANDBOX_SCRIPT_BASENAME)], {
+    cwd: sandbox,
     encoding: "utf8",
-    timeout: BUILD_TIMEOUT_MS,
-    env: {
-      ...process.env,
-      PATH: `${sandbox.binDir}:${process.env.PATH ?? ""}`,
-      FIXTURE_WRITE_CHUNK: writeChunk ? "1" : "0",
-    },
+    timeout: SANDBOX_TIMEOUT_MS,
+    stdio: ["ignore", "pipe", "pipe"],
   });
+  return { status: run.status, stdout: run.stdout ?? "", stderr: run.stderr ?? "" };
 }
 
-/**
- * @brief Reproducer: a dangling relative chunk import must fail the release build.
- * @details Sandbox run with the tsup stub omitting `./chunk-ABC.js`. Expects non-zero exit, a
- * diagnostic naming the chunk, and no `dist/` residue. Complexity O(build) plus one bash child.
- * @satisfies PKG-069, PKG-073, PKG-074
- */
-test("test_build_fails_when_relative_chunk_import_is_missing", () => {
-  // PKG-069/PKG-074: dist/cli.js imports ./chunk-ABC.js which the bundler did not emit.
-  // The build MUST exit non-zero, name the dangling import, and leave no partial dist/ (PKG-073).
+test("test_build_script_never_creates_a_tarball_archive", () => {
+  // PKG-102: packing is the release workflow's job; the build script only compiles.
   // Arrange
-  const sandbox = createSandbox();
+  const script = loadBuildScript();
+  // Act
+  const statements = script
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .join("\n");
+  // Assert
+  assert.equal(/npm\s+pack/.test(statements), false, "build.sh must not run npm pack (PKG-102)");
+  assert.equal(/\btar\b/.test(statements), false, "build.sh must not handle tar archives (PKG-102)");
+  assert.equal(statements.includes("dist/<name>-<version>.tgz"), false, "build.sh must not name a dist archive (PKG-102)");
+});
+
+test("test_build_script_requires_the_compiler_without_installing_dependencies", () => {
+  // PKG-067/PKG-068: the compiler preflight aborts, and no install or publication ever runs.
+  // Arrange
+  const script = loadBuildScript();
+  const statements = script
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .join("\n");
+  // Assert
+  assert.equal(
+    statements.includes('if [ ! -x "node_modules/.bin/tsup" ]'),
+    true,
+    "build.sh must preflight the installed compiler (PKG-067)",
+  );
+  for (const forbidden of ["npm ci", "npm install", "npm publish", "npx "]) {
+    assert.equal(statements.includes(forbidden), false, `build.sh must not run "${forbidden}" (PKG-068)`);
+  }
+  assert.equal(statements.includes('npm run build'), true, "build.sh must generate through the build script (PKG-069)");
+});
+
+test("test_sandboxed_build_leaves_the_single_bundle_and_no_archive", () => {
+  // PKG-069/PKG-102/PKG-108/PKG-109: cleanup prunes stale generated outputs, the compile emits
+  // dist/cli.js only, no *.tgz appears, non-generated entries survive, and the work directory is
+  // removed.
+  // Arrange
+  const sandbox = createSandbox(
+    {
+      "dist/chunk-OLDHASH.js": "export const stale = 1;\n",
+      "dist/older-0.0.1.tgz": "stale archive\n",
+      "dist/stale.tsbuildinfo": "{}\n",
+      "dist/keep.txt": "non-generated\n",
+    },
+    0,
+  );
   try {
     // Act
-    const result = runBuild(sandbox, false);
+    const run = runBuildScript(sandbox);
+    const distEntries = readdirSync(join(sandbox, "dist")).sort();
     // Assert
-    assert.notEqual(result.status, 0, "build must fail on a dangling relative import (PKG-074)");
-    assert.equal(result.stderr.includes(FIXTURE_CHUNK), true, `diagnostic must name "${FIXTURE_CHUNK}"`);
-    assert.equal(existsSync(join(sandbox.root, "dist")), false, "failed build must leave no partial dist/ (PKG-073)");
+    assert.equal(run.status, 0, `sandboxed build must succeed; stderr: ${run.stderr}`);
+    assert.deepEqual(distEntries, [RUNTIME_BUNDLE, "keep.txt"], "dist/ must hold only the bundle and non-generated entries");
+    assert.equal(existsSync(join(sandbox, "dist", "chunk-OLDHASH.js")), false, "stale generated output must be removed");
+    assert.equal(existsSync(join(sandbox, "dist", "older-0.0.1.tgz")), false, "no archive may survive in dist/ (PKG-102)");
+    assert.equal(existsSync(join(sandbox, "dist", "stale.tsbuildinfo")), false, "intermediate artifacts must be removed");
+    assert.equal(run.stdout.includes("temporary work directory removed"), true, "the private work directory must be removed (PKG-108)");
+    assert.equal(run.stdout.includes("SUCCESS"), true, "a passing build must report success (PKG-074)");
   } finally {
-    rmSync(sandbox.root, { recursive: true, force: true });
+    rmSync(sandbox, { recursive: true, force: true });
   }
 });
 
-/**
- * @brief Regression case: successful builds preserve pre-existing empty directories.
- * @details Seeds an empty non-generated directory before the sandbox build; asserts exit 0 and
- * path existence afterward. The npm/tsup stubs isolate the build and no repository path is written.
- * Complexity O(build) plus one bash child.
- * @return {void} No value; assertions throw on a failed preservation condition.
- * @throws {AssertionError} When the build fails or the directory is absent after completion.
- * @satisfies PKG-071, PKG-072
- */
-test("test_build_preserves_preexisting_empty_directory", () => {
+test("test_sandboxed_build_aborts_non_zero_when_the_compiler_fails", () => {
+  // PKG-073: a failing compile phase aborts naming the phase and exits non-zero.
   // Arrange
-  const sandbox = createSandbox();
-  const emptyDirectory = join(sandbox.root, "dist", "preserve-empty");
-  try {
-    mkdirSync(emptyDirectory, { recursive: true });
-    // Act
-    const result = runBuild(sandbox, true);
-    // Assert
-    const expected_output = { exitCode: 0, directoryPreserved: true };
-    assert.equal(result.status, expected_output.exitCode, result.stderr);
-    assert.equal(existsSync(emptyDirectory), expected_output.directoryPreserved);
-  } finally {
-    rmSync(sandbox.root, { recursive: true, force: true });
-  }
-});
-
-/**
- * @brief Regression case: successful builds preserve pre-existing symbolic links.
- * @details Seeds a non-generated symlink in `dist/` pointing to a sandbox file; asserts exit 0,
- * symlink type, and identical link target afterward. The build toolchain is stubbed and isolated.
- * Complexity O(build) plus one bash child.
- * @return {void} No value; assertions throw on a failed preservation condition.
- * @throws {AssertionError} When the build fails or the link type/target changes.
- * @satisfies PKG-071, PKG-072
- */
-test("test_build_preserves_preexisting_symlink", () => {
-  // Arrange
-  const sandbox = createSandbox();
-  const linkTarget = join(sandbox.root, "symlink-target.txt");
-  const linkPath = join(sandbox.root, "dist", "preserve-link");
-  try {
-    writeFileSync(linkTarget, "symlink target\n");
-    mkdirSync(join(sandbox.root, "dist"), { recursive: true });
-    symlinkSync(linkTarget, linkPath);
-    // Act
-    const result = runBuild(sandbox, true);
-    // Assert
-    const expected_output = { exitCode: 0, linkExists: true, isSymlink: true, target: linkTarget };
-    assert.equal(result.status, expected_output.exitCode, result.stderr);
-    assert.equal(existsSync(linkPath), expected_output.linkExists);
-    assert.equal(lstatSync(linkPath).isSymbolicLink(), expected_output.isSymlink);
-    assert.equal(readlinkSync(linkPath), expected_output.target);
-  } finally {
-    rmSync(sandbox.root, { recursive: true, force: true });
-  }
-});
-
-/**
- * @brief Regression case: output-path collisions fail and restore the complete pre-run directory.
- * @details Seeds a non-generated symlink at the generated `dist/cli.js` path and an empty directory.
- * The build MUST fail rather than overwrite the symlink; the EXIT trap MUST restore both entries.
- * The npm/tsup stubs isolate the child process. Complexity O(build) plus one bash child.
- * @return {void} No value; assertions throw when failure or rollback behavior differs.
- * @throws {AssertionError} When the build succeeds or the original entries are not restored.
- * @satisfies PKG-071, PKG-072, PKG-073
- */
-test("test_build_restores_snapshot_on_non_generated_path_collision", () => {
-  // Arrange
-  const sandbox = createSandbox();
-  const linkTarget = join(sandbox.root, "original-cli-target.txt");
-  const cliEntryPath = join(sandbox.root, "dist", "cli.js");
-  const emptyDirectory = join(sandbox.root, "dist", "preserve-empty");
-  try {
-    writeFileSync(linkTarget, "original cli target\n");
-    mkdirSync(emptyDirectory, { recursive: true });
-    symlinkSync(linkTarget, cliEntryPath);
-    // Act
-    const result = runBuild(sandbox, true);
-    // Assert
-    const expected_output = {
-      exitCode: 1,
-      linkRestored: true,
-      directoryRestored: true,
-      target: linkTarget,
-    };
-    assert.equal(result.status, expected_output.exitCode, "conflicting output path must abort the build");
-    assert.equal(lstatSync(cliEntryPath).isSymbolicLink(), expected_output.linkRestored);
-    assert.equal(readlinkSync(cliEntryPath), expected_output.target);
-    assert.equal(existsSync(emptyDirectory), expected_output.directoryRestored);
-  } finally {
-    rmSync(sandbox.root, { recursive: true, force: true });
-  }
-});
-
-/**
- * @brief Positive control: every relative import resolved must yield a successful release build.
- * @details Sandbox run with the tsup stub emitting `./chunk-ABC.js`. Expects exit 0, the chunk, the
- * release archive at `dist/<name>-<version>.tgz`, and no declaration file in `dist/`. Complexity
- * O(build) plus one bash child.
- * @return {void} No value; assertions throw on a failed build condition.
- * @throws {AssertionError} When the build fails or expected artifacts are absent.
- * @satisfies PKG-069, PKG-070, PKG-074, PKG-102
- */
-test("test_build_succeeds_when_every_relative_import_resolves", () => {
-  // PKG-069/PKG-070/PKG-102/PKG-074: every relative import resolves; the build exits 0, keeps the
-  // chunk in dist/, persists the release archive there, and writes no declaration file. Positive
-  // control for the failing scenario above.
-  // Arrange
-  const sandbox = createSandbox();
+  const sandbox = createSandbox({}, 4);
   try {
     // Act
-    const result = runBuild(sandbox, true);
+    const run = runBuildScript(sandbox);
     // Assert
-    assert.equal(result.status, 0, `build must succeed when imports resolve; stderr: ${result.stderr}`);
-    assert.equal(existsSync(join(sandbox.root, "dist", FIXTURE_CHUNK)), true, "chunk must remain in dist/");
-    assert.equal(existsSync(join(sandbox.root, "dist", FIXTURE_TARBALL)), true, "release archive must persist in dist/ (PKG-102)");
-    assert.equal(existsSync(join(sandbox.root, "dist", "cli.d.ts")), false, "declaration files must not be written into dist/ (PKG-069)");
+    assert.notEqual(run.status, 0, "a failing compile must exit non-zero (PKG-073)");
+    assert.equal(run.stderr.includes("FAILED"), true, "the failing phase must be reported on stderr (PKG-073)");
+    assert.equal(run.stderr.includes("compile"), true, "the diagnostic must name the failing phase (PKG-073)");
   } finally {
-    rmSync(sandbox.root, { recursive: true, force: true });
-  }
-});
-
-/**
- * @brief Archive contract: the release archive survives as the only tarball in `dist/`.
- * @details Seeds a stale archive of another version plus a stale build state file, then runs the
- * sandboxed build. Expects exit 0, `dist/<name>-<version>.tgz` present and readable by `tar` with
- * the packed payload inside, exactly one `*.tgz` entry, the stale tarball and state file removed,
- * the preserved-archive diagnostic emitted, and the private work directory removed (PKG-102,
- * PKG-108, PKG-109). Complexity O(build) plus one bash child and one `tar` child.
- * @return {void} No value; assertions throw when the archive contract is violated.
- * @throws {AssertionError} When the archive is missing, duplicated, unreadable, or the stale
- * intermediate artifacts survive.
- * @satisfies PKG-070, PKG-102, PKG-108, PKG-109
- */
-test("test_build_persists_release_archive_and_removes_intermediate_artifacts", () => {
-  // Arrange
-  const sandbox = createSandbox();
-  const distDir = join(sandbox.root, "dist");
-  const archivePath = join(distDir, FIXTURE_TARBALL);
-  const staleArchivePath = join(distDir, `${FIXTURE_NAME}-0.9.0.tgz`);
-  const staleStatePath = join(distDir, "release.tsbuildinfo");
-  try {
-    mkdirSync(distDir, { recursive: true });
-    writeFileSync(staleArchivePath, "stale archive of an earlier version\n");
-    writeFileSync(staleStatePath, "stale build state\n");
-    // Act
-    const result = runBuild(sandbox, true);
-    // Assert
-    assert.equal(result.status, 0, `build must succeed; stderr: ${result.stderr}`);
-    assert.equal(existsSync(archivePath), true, `release archive must persist at dist/${FIXTURE_TARBALL} (PKG-102)`);
-    const tarballs = readdirSync(distDir).filter((entry) => entry.endsWith(".tgz"));
-    assert.deepEqual(tarballs, [FIXTURE_TARBALL], "dist/ must hold exactly the current release archive (PKG-108)");
-    assert.equal(existsSync(staleArchivePath), false, "stale archive of an earlier version must be removed (PKG-108)");
-    assert.equal(existsSync(staleStatePath), false, "stale build state file must be removed (PKG-108)");
-    const listing = spawnSync("tar", ["-tzf", archivePath], { encoding: "utf8" });
-    assert.equal(listing.status, 0, `release archive must stay readable by tar (PKG-070): ${listing.stderr}`);
-    assert.equal(listing.stdout.includes("package/package.json"), true, "release archive must contain the packed payload");
-    assert.equal(result.stdout.includes("preserved release archive"), true, "final cleanup must report the preserved archive");
-    assert.equal(result.stdout.includes("temporary work directory removed"), true, "private work directory must be removed (PKG-109)");
-  } finally {
-    rmSync(sandbox.root, { recursive: true, force: true });
+    rmSync(sandbox, { recursive: true, force: true });
   }
 });

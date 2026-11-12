@@ -568,8 +568,14 @@ import { runWithContext } from "../utils/requestContext.js";
 
 ---
 
-# index.ts | TypeScript | 11L | 0 symbols | 0 imports | 0 comments
+# index.ts | TypeScript | 20L | 0 symbols | 0 imports | 1 comments
 > Path: `src/index.ts`
+- @brief Internal shared module: stderr `Logger` plus the facade re-exports used by module tests.
+- @details Not a package entry point: `package.json` declares no `main` or `exports` map, so the
+published artifact is the single CLI bundle `dist/cli.js` (PKG-035, PKG-129). This module
+exists only for in-repository imports: `Logger` is consumed by most modules and
+`PlacesSearcher`/`NewPlacesService` by the unit suites.
+- @satisfies PKG-035, PKG-129, REQ-015
 
 
 ---
@@ -1385,7 +1391,7 @@ never throws.
 
 ---
 
-# cliInstaller.ts | TypeScript | 246L | 9 symbols | 4 imports | 10 comments
+# cliInstaller.ts | TypeScript | 247L | 9 symbols | 4 imports | 10 comments
 > Path: `src/utils/cliInstaller.ts`
 - @brief Orchestrate MCP-server registration and skill installation for enabled CLIs.
 - @details Loads the enabled-CLI settings, reads the packaged skills
@@ -1408,7 +1414,7 @@ import {
 ## Definitions
 
 ### iface `export interface ManifestSkill` (L33-40)
-- @brief One manifest skill entry from `src/resources/skills/manifest.json`.
+- @brief One manifest skill entry from `skills/manifest.json`.
 - @details `id` names the packaged `<id>/` directory holding `SKILL.md`;
 `debugPath` is the optional debug overlay path relative to that directory
 (REQ-152).
@@ -1432,16 +1438,17 @@ keys or environment setup (REQ-114).
 - @return {object} Registration entry consumed by every supported CLI.
 - @satisfies REQ-114
 
-### fn `export function resolveSkillsResourcesRoot(packageRoot: string): string` (L84-90)
+### fn `export function resolveSkillsResourcesRoot(packageRoot: string): string` (L85-91)
 - @brief Resolve the packaged skills root for the running installation.
-- @details Checks `<packageRoot>/src/resources/skills` — the layout used
+- @details Checks `<packageRoot>/skills` — the layout used
 both by from-source runs and by the published npm package, which ships the
-same subtree (PKG-024).
+same subtree at the package root (PKG-024).
 - @param packageRoot {string} Package installation root.
 - @return {string} Absolute skills resources root.
 - @throws {Error} When the skills root directory is missing.
+- @satisfies PKG-024
 
-### fn `export function loadSkillsManifest(resourcesRoot: string): ManifestSkill[]` (L103-143)
+### fn `export function loadSkillsManifest(resourcesRoot: string): ManifestSkill[]` (L104-144)
 - @brief Load and validate the packaged skills manifest.
 - @details Validates each entry's `id`, `path`, and optional `debug` overlay;
 the overlay path is resolved relative to the skill directory. Malformed
@@ -1452,7 +1459,7 @@ overlay declarations and missing referenced files fail the whole manifest.
 `SKILL.md` or debug overlay path.
 - @satisfies REQ-152
 
-### fn `export function resolveSkillContentLayout(skill: ManifestSkill, includeDebug: boolean): SkillContentLayout` (L155-160)
+### fn `export function resolveSkillContentLayout(skill: ManifestSkill, includeDebug: boolean): SkillContentLayout` (L156-161)
 - @brief Build the install layout of one manifest skill.
 - @details Resolves the declared debug overlay and whether its content must be
 appended to the installed `SKILL.md` (REQ-155, REQ-156). Skills without a
@@ -1462,7 +1469,7 @@ declared overlay always resolve to the empty layout.
 - @return {SkillContentLayout} Layout consumed by `syncSkillTree`.
 - @satisfies REQ-155, REQ-156, REQ-157
 
-### fn `export function installEnabledCliResources(options:` (L177-208)
+### fn `export function installEnabledCliResources(options:` (L178-209)
 - @brief Install the MCP server entry and every manifest skill per enabled CLI.
 - @details For each enabled CLI in settings order: registers the stdio entry
 via `applyServerRegistration` (no key or environment payload; the server
@@ -1477,7 +1484,7 @@ Failures are collected per CLI and remaining CLIs still run.
 - @throws {Error} When the skills manifest cannot be loaded (all CLIs fail).
 - @satisfies REQ-114, REQ-116, REQ-155, REQ-156, REQ-157
 
-### fn `export function uninstallEnabledCliResources(options:` (L221-246)
+### fn `export function uninstallEnabledCliResources(options:` (L222-247)
 - @brief Remove the MCP server entry and managed skills per enabled CLI.
 - @details Reciprocal of `installEnabledCliResources`: removes the managed
 server entry and deletes each manifest skill directory. Missing entries
@@ -1495,11 +1502,11 @@ remaining CLIs still run.
 |`CliOperationSummary`|iface||47-51|export interface CliOperationSummary|
 |`CliOperationResult`|iface||57-60|export interface CliOperationResult|
 |`buildServerRegistration`|fn||71-73|export function buildServerRegistration(): { command: str...|
-|`resolveSkillsResourcesRoot`|fn||84-90|export function resolveSkillsResourcesRoot(packageRoot: s...|
-|`loadSkillsManifest`|fn||103-143|export function loadSkillsManifest(resourcesRoot: string)...|
-|`resolveSkillContentLayout`|fn||155-160|export function resolveSkillContentLayout(skill: Manifest...|
-|`installEnabledCliResources`|fn||177-208|export function installEnabledCliResources(options:|
-|`uninstallEnabledCliResources`|fn||221-246|export function uninstallEnabledCliResources(options:|
+|`resolveSkillsResourcesRoot`|fn||85-91|export function resolveSkillsResourcesRoot(packageRoot: s...|
+|`loadSkillsManifest`|fn||104-144|export function loadSkillsManifest(resourcesRoot: string)...|
+|`resolveSkillContentLayout`|fn||156-161|export function resolveSkillContentLayout(skill: Manifest...|
+|`installEnabledCliResources`|fn||178-209|export function installEnabledCliResources(options:|
+|`uninstallEnabledCliResources`|fn||222-247|export function uninstallEnabledCliResources(options:|
 
 
 ---

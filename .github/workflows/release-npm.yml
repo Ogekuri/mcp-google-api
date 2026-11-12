@@ -1,30 +1,28 @@
-# Release (npm): ONE integrated release process — branch gate, artifact
-# packing, npm publish, changelog, GitHub Release — all in a single workflow
-# job (PKG-027). Triggered only by canonical version tags (PKG-008); branch
-# pushes and pull requests never start it. The branch gate is the first step
-# of this job: it resolves the tagged commit's reachability from
-# origin/master and origin/develop (PKG-009) and fails the run before any
-# pack, publish, or release-creation step when neither branch contains the
-# tag (PKG-028).
+# Release (npm): ONE integrated release process — branch gate, dependency
+# installation, runtime-bundle build, artifact packing, npm publish, changelog,
+# GitHub Release — all in a single workflow job (PKG-027). Triggered only by
+# canonical version tags (PKG-008); branch pushes and pull requests never start
+# it. The branch gate is the first step of this job: it resolves the tagged
+# commit's reachability from origin/master and origin/develop (PKG-009) and
+# fails the run before any install, build, pack, publish, or release-creation
+# step when neither branch contains the tag (PKG-028).
 #
-# This automation NEVER builds: it consumes the release artifacts produced
-# beforehand by the repository build script and committed in the tagged
-# release commit inside `dist/` (PKG-026, PKG-091, PKG-110). No dependency
-# installation, no compile step, and no build-preparatory check is executed
-# here (PKG-111); the packed tarball is created with `npm pack
-# --ignore-scripts`, so the `prepare` lifecycle never triggers a build.
-# Artifact validation runs offline against the committed `dist/` tree
-# (PKG-113) before publication and release creation.
+# This automation BUILDS the release artifact from the tagged sources: `npm ci`
+# installs the locked dependency tree and `npm run build` compiles the single
+# runtime entry `src/cli.ts` into `dist/cli.js` (PKG-110, PKG-111). `npm pack
+# --ignore-scripts` then packs that freshly built tree without triggering a
+# second build, and `tools/check-release-artifacts.mjs` validates the packed
+# payload offline before publication and release creation (PKG-113).
 #
 # npm publication runs only when the tag is reachable from origin/master
 # (PKG-042); tags reachable from develop but not master pack, validate, and
 # create the GitHub Release without publishing to npm (PKG-043). npm
-# publication disables lifecycle scripts (PKG-112), so `prepublishOnly`
-# never rebuilds inside automation; authentication uses OIDC Trusted
-# Publishing (PKG-010): the job grants `id-token: write` (PKG-030), no
-# publish-token secret or publish-token environment variable is configured
-# (PKG-031), and the pinned Node.js runtime bundles npm >= 11.5.1, the OIDC
-# Trusted Publishing floor (PKG-032).
+# publication disables lifecycle scripts (PKG-112), so `prepublishOnly` never
+# rebuilds inside automation; authentication uses OIDC Trusted Publishing
+# (PKG-010): the job grants `id-token: write` (PKG-030), no publish-token secret
+# or publish-token environment variable is configured (PKG-031), and the pinned
+# Node.js runtime bundles npm >= 11.5.1, the OIDC Trusted Publishing floor
+# (PKG-032).
 name: Release (npm)
 
 on:
@@ -93,39 +91,48 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false  # never use caching in release builds
 
-      # Pre-built artifact intake (PKG-110): the tagged release commit carries
-      # the `dist/` tree generated beforehand by the repository build script.
-      # This step only verifies presence and syntax of the committed entries;
-      # it compiles nothing and runs no build-preparatory check (PKG-111).
-      - name: Verify committed release artifacts in dist/
+      # Dependency installation and runtime-bundle build (PKG-110, PKG-111):
+      # the release artifact is built inside this job from the tagged sources.
+      # `npm ci` installs the locked dependency tree (no cache, PKG-014) and
+      # `npm run build` invokes the installed `tsup` compiler for the single
+      # runtime entry `src/cli.ts`, emitting `dist/cli.js` (PKG-129).
+      - name: Install dependencies from the lockfile
+        run: npm ci
+
+      - name: Build runtime bundle
+        run: npm run build
+
+      # Built-artifact verification (PKG-110): the freshly compiled entry MUST
+      # exist and be syntactically valid before packing, so a broken compile
+      # never reaches the registry.
+      - name: Verify built release artifacts in dist/
         run: |
-          for artifact in dist/cli.js dist/index.js; do
+          for artifact in dist/cli.js; do
             if [ ! -s "${artifact}" ]; then
-              echo "::error::Committed release artifact missing or empty: ${artifact} (PKG-110). Generate it with the repository build script and commit dist/ before tagging."
+              echo "::error::Release artifact missing or empty after the build: ${artifact} (PKG-110)."
               exit 1
             fi
           done
           node --check dist/cli.js
-          node --check dist/index.js
-          echo "Committed dist/ artifacts verified from the tagged release commit."
+          echo "Built dist/ artifacts verified."
 
-      # Release asset packed once (PKG-012) from the committed artifacts
-      # (PKG-110). `--ignore-scripts` keeps the `prepare` lifecycle inactive,
-      # so packing never compiles anything (PKG-111).
-      - name: Pack npm tarball from committed artifacts
+      # Release asset packed once (PKG-012) from the freshly built tree
+      # (PKG-111). `--ignore-scripts` keeps the `prepare` lifecycle inactive,
+      # so packing never compiles a second time (PKG-111).
+      - name: Pack npm tarball from the built artifacts
         run: npm pack --ignore-scripts
 
       # Artifact validation (PKG-113): offline checks of the packed tarball
-      # against the committed `dist/` tree and the packaged entry points, run
+      # against the freshly built `dist/` tree and the packaged entry point, run
       # before publication and release creation so an inconsistent artifact
       # set never reaches npm or the GitHub Release.
       - name: Validate release artifacts
         run: node tools/check-release-artifacts.mjs
 
       # Release asset set (PKG-126, PKG-128): the release publishes exactly the
-      # one npm tarball packed from the built `dist/` artifacts committed in
-      # the tagged release commit. Repository sources are build inputs, never
-      # release artifacts, so no source archive may accompany the tarball.
+      # one npm tarball packed from the runtime bundle built in this job.
+      # Repository sources are build inputs, never release artifacts, so no
+      # source archive may accompany the tarball.
       - name: Verify release asset set
         run: |
           tarballs="$(find . -maxdepth 1 -type f -name '*.tgz' -print)"
@@ -145,7 +152,7 @@ jobs:
       # reachable from origin/master (PKG-042); develop-only tags skip this
       # step and complete the release without npm publication (PKG-043).
       # Lifecycle scripts are disabled (PKG-112), so no build runs during
-      # publication and the published payload equals the committed artifacts.
+      # publication and the published payload equals the freshly built artifacts.
       # npm OIDC Trusted Publishing (PKG-010): authentication is minted from
       # the GitHub Actions OIDC token granted via `id-token: write` (PKG-030);
       # no publish-token secret and no publish-token environment variable are

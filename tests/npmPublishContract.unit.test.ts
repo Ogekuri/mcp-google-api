@@ -7,27 +7,26 @@
  * packer listing (`npm pack --dry-run --json`; no network, no registry access, no tarball
  * write). Enforced contract: current non-deprecated SPDX license identifier `GPL-3.0-only`
  * in package.json (PKG-033) and in the README.md license badge plus License section with no
- * residual deprecated bare `GPL-3.0` token (PKG-034); explicit ESM `exports` map with the
- * `.` entry targeting `./dist/index.js`, the `./package.json` subpath entry, and `main`
- * consistent with the `.` target (PKG-035); `CHANGELOG.md` shipped through the `files`
- * allowlist (PKG-036); package-lock.json root `name`/`version` identity with package.json
- * (PKG-037) plus root `bin` launcher-map identity with package.json (PRJ-020 regression
- * guard); packed paths restricted to allowlisted runtime prefixes plus npm-invariant
- * metadata files while excluding tests, local configuration, secret files, and skills
- * authoring documentation, with every `src/resources/skills/` entry limited to
- * `manifest.json` or a `<skill-id>/` file (PKG-038, PKG-075); the `files` negation
- * `!dist/*.tgz` excluding the repository-tracked release archive from the packed payload
- * and no packed `dist/*.tgz` entry in the dry-run listing (PKG-116);
- * no `private: true` publication blocker (PKG-039); registry-valid package name shared by
- * both manifests (PKG-040); the npm `prepare` lifecycle hook declared so git-source
- * installs (develop channel `npm install -g github:...#<tag>`, REQ-171) build `dist/`
- * into the packed tarball, keeping the installed bin executable per PRJ-020/PRJ-021
- * without chained dependency installs (PKG-019). Deterministic by construction: every input is a
- * tracked, immutable-at-test-time repository file or a local child-process listing whose only
- * variability (built `dist/**` presence) stays inside the allowlisted `dist/` prefix.
+ * residual deprecated bare `GPL-3.0` token (PKG-034); no `package.json` `main` or `exports`
+ * library entry, because the only runtime entry is the `bin` launcher (PKG-035); `CHANGELOG.md`
+ * shipped through the `files` allowlist (PKG-036); package-lock.json root `name`/`version`
+ * identity with package.json (PKG-037) plus root `bin` launcher-map identity with package.json
+ * (PRJ-020 regression guard); packed paths restricted to the `bin/`, `dist/`, and `skills/`
+ * runtime prefixes plus npm-invariant metadata files while excluding tests, local configuration,
+ * secret files, and skills authoring documentation, with every `skills/` entry limited to
+ * `manifest.json` or a `<skill-id>/` file (PKG-038, PKG-075); the `bin`/`dist`/`skills` `files`
+ * allowlist with no `dist` archive negation (PKG-116); a packed `dist/` tree holding at most the
+ * single runtime bundle `dist/cli.js` (PKG-078); no `private: true` publication blocker
+ * (PKG-039); registry-valid package name shared by both manifests (PKG-040); the npm `prepare`
+ * lifecycle hook declared so git-source installs (develop channel
+ * `npm install -g github:...#<tag>`, REQ-171) build `dist/` into the packed tarball, keeping the
+ * installed bin executable per PRJ-020/PRJ-021 without chained dependency installs (PKG-019).
+ * Deterministic by construction: every input is a tracked, immutable-at-test-time repository file
+ * or a local child-process listing whose only variability (built `dist/**` presence) stays inside
+ * the allowlisted `dist/` prefix.
  * @note HDT level 0 (atomic): no internal call-graph dependencies; external npm child
  * invocation is isolated (offline `--dry-run`, bounded by an explicit timeout).
- * @satisfies PKG-033, PKG-034, PKG-035, PKG-036, PKG-037, PKG-038, PKG-039, PKG-040, PKG-075, PKG-116, PRJ-020, PRJ-021, REQ-171, TST-021
+ * @satisfies PKG-033, PKG-034, PKG-035, PKG-036, PKG-037, PKG-038, PKG-039, PKG-040, PKG-075, PKG-078, PKG-116, PRJ-020, PRJ-021, REQ-171, TST-021
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -58,14 +57,17 @@ const PACK_ALLOWED_INVARIANTS: ReadonlySet<string> = new Set([
   "LICENSE",
 ]);
 
-/** Pack allowlist: directory prefixes whose contents are runtime-shippable (PKG-038); docs/ is non-runtime and excluded. */
-const PACK_ALLOWED_PREFIXES: readonly string[] = ["bin/", "dist/", "src/resources/"]; // "bin/" ships the installed-bin launcher (PRJ-020, PRJ-021)
+/** Pack allowlist: directory prefixes whose contents are runtime-shippable (PKG-038). */
+const PACK_ALLOWED_PREFIXES: readonly string[] = ["bin/", "dist/", "skills/"];
 
 /** Skills-root payload prefix: only the manifest and `<skill-id>/` files are runtime payload (PKG-024, PKG-075). */
-const SKILLS_ROOT_PREFIX = "src/resources/skills/";
+const SKILLS_ROOT_PREFIX = "skills/";
 
 /** Sole file permitted directly under the skills root; every other root entry is authoring documentation. */
 const SKILLS_ROOT_MANIFEST = `${SKILLS_ROOT_PREFIX}manifest.json`;
+
+/** The single JavaScript artifact the packed `dist/` tree may hold (PKG-078). */
+const RUNTIME_BUNDLE = "dist/cli.js";
 
 /** Minimal shape of one `npm pack --json` entry. */
 interface PackEntry {
@@ -215,40 +217,37 @@ test("test_readme_license_statements_match_package_json_spdx_id", () => {
   assert.deepEqual(bareDeprecatedTokens, []);
 });
 
-test("test_exports_map_targets_built_esm_entry", () => {
-  // PKG-035: explicit ESM exports map; "." targets the built entry,
-  // "./package.json" stays readable, main is consistent with the "." target.
+test("test_package_json_declares_no_library_entry", () => {
+  // PKG-035: the package is a single-bundle CLI; no `main` and no `exports` map may
+  // advertise a library API, so no dist/index.js artifact is promised by the manifest.
   // Arrange
   const manifest = loadPackageManifest();
   // Act
-  const exportsMap = manifest.exports ?? {};
+  const hasMain = manifest.main !== undefined;
+  const hasExports = manifest.exports !== undefined;
   // Assert
-  const expected_output = {
-    dot: "./dist/index.js",
-    packageJson: "./package.json",
-    main: "./dist/index.js",
-  };
-  assert.equal(exportsMap["."], expected_output.dot);
-  assert.equal(exportsMap["./package.json"], expected_output.packageJson);
-  assert.equal(String(manifest.main ?? "").replace(/^\.\//, ""), expected_output.dot.replace(/^\.\//, ""));
+  assert.equal(hasMain, false, "package.json must not declare a main entry (PKG-035)");
+  assert.equal(hasExports, false, "package.json must not declare an exports map (PKG-035)");
+  assert.equal(typeof manifest.bin, "object", "the bin launcher remains the only runtime entry (PRJ-020)");
 });
 
 test("test_files_allowlist_ships_changelog_and_runtime_assets", () => {
-  // PKG-036/PKG-116: the files allowlist declares CHANGELOG.md plus every runtime
-  // asset prefix required by the published package, and negates the tracked release archive.
+  // PKG-036/PKG-116: the files allowlist declares CHANGELOG.md plus the bin, dist, and skills
+  // runtime prefixes required by the published package, and carries no archive negation because
+  // no release tarball ever lives in dist/.
   // Arrange
   const manifest = loadPackageManifest();
   // Act
   const files: string[] = Array.isArray(manifest.files) ? manifest.files.map(String) : [];
   // Assert
-  for (const required of ["CHANGELOG.md", "dist", "src/resources/skills"]) {
-    assert.equal(files.includes(required), true, `files allowlist must include "${required}"`);
+  for (const required of ["CHANGELOG.md", "bin", "dist", "skills"]) {
+    assert.equal(files.includes(required), true, `files allowlist must include "${required}" (PKG-116)`);
   }
   assert.equal(files.includes("docs"), false, 'files allowlist must not include "docs" (PKG-038: non-runtime)');
   assert.equal(
     files.includes("!dist/*.tgz"),
-    true,
-    'files allowlist must negate the tracked release archive with "!dist/*.tgz" (PKG-116, PKG-093)'
+    false,
+    'files allowlist must not negate a dist archive: no archive is produced in dist/ (PKG-102, PKG-116)'
   );
 });
 
@@ -362,11 +361,12 @@ test("test_prepare_lifecycle_script_builds_dist_for_git_source_packs", () => {
 });
 
 test("test_packed_tarball_contents_follow_allowlist_policy", () => {
-  // PKG-038/PKG-116: every packed path stays inside the allowlist (invariants plus
-  // runtime prefixes); invariant metadata is present; tests, local
-  // configuration, lockfile, secret-looking files, and the tracked release archive are excluded.
+  // PKG-038/PKG-075: every packed path stays inside the allowlist (invariants plus the bin, dist,
+  // and skills runtime prefixes); invariant metadata is present; tests, local configuration,
+  // lockfile, secret-looking files, repository sources, and every archive are excluded.
+  // PKG-078: any packed dist/ entry is exactly the single runtime bundle.
   // Arrange
-  const forbiddenPrefixes = ["tests/", "usereq/", "scripts/", ".github/", ".git", "docs/"];
+  const forbiddenPrefixes = ["tests/", "usereq/", "scripts/", "src/", ".github/", ".git", "docs/"];
   const forbiddenFiles = new Set([
     "package-lock.json",
     ".gitignore",
@@ -394,12 +394,12 @@ test("test_packed_tarball_contents_follow_allowlist_policy", () => {
     for (const pattern of secretPatterns) {
       assert.equal(pattern.test(path), false, `packed path "${path}" looks like a secret file (PKG-038)`);
     }
-    assert.equal(
-      path.endsWith(".tgz"),
-      false,
-      `packed path "${path}" is a package archive nested in its own payload (PKG-093, PKG-116)`
-    );
+    assert.equal(path.endsWith(".tgz"), false, `packed path "${path}" is a package archive (PKG-093)`);
     assert.equal(path.endsWith(".map"), false, `packed path "${path}" is a source map, non-runtime (PKG-038)`);
+    assert.equal(path.endsWith(".ts"), false, `packed path "${path}" is a repository source (PKG-127)`);
+    if (path.startsWith("dist/")) {
+      assert.equal(path, RUNTIME_BUNDLE, `packed dist/ entry "${path}" must be the single runtime bundle (PKG-078)`);
+    }
     if (path.startsWith(SKILLS_ROOT_PREFIX)) {
       assert.equal(
         isSkillsRuntimePayload(path),
@@ -411,7 +411,7 @@ test("test_packed_tarball_contents_follow_allowlist_policy", () => {
   for (const invariant of PACK_ALLOWED_INVARIANTS) {
     assert.equal(paths.includes(invariant), true, `tarball must ship invariant file "${invariant}"`);
   }
-  assert.equal(paths.some((path) => path.startsWith("src/resources/")), true, "tarball must ship skills");
+  assert.equal(paths.some((path) => path.startsWith(SKILLS_ROOT_PREFIX)), true, "tarball must ship skills");
   assert.equal(
     paths.includes(`${SKILLS_ROOT_PREFIX}README.md`),
     false,

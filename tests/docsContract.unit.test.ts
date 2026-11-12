@@ -9,7 +9,7 @@
  * `docs/*.md`). Level 0 (atomic static assertions over repository files; no process spawn, no
  * network, no clock). Enforced contract:
  * - README.md MUST contain no relative link target other than an in-document anchor (`#...`),
- *   so links to `docs/TOOLS.md`, `docs/CONFIGURATION.md`, `LICENSE`, or `src/resources/skills/`
+ *   so links to `docs/TOOLS.md`, `docs/CONFIGURATION.md`, `LICENSE`, or `skills/`
  *   resolve from the npm landing page (PKG-114).
  * - Every project Markdown document MUST be English: no accented Latin-extended characters and
  *   none of the tracked Italian marker words (PKG-115).
@@ -38,7 +38,7 @@ const DOCS_DIR = "docs";
 const RELATIVE_LINK_TARGETS = [
   "docs/CONFIGURATION.md",
   "docs/TOOLS.md",
-  "src/resources/skills/",
+  "skills/",
   "LICENSE",
 ];
 

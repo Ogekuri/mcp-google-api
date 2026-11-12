@@ -24,7 +24,7 @@ import {
 } from "./cliTargets.js";
 
 /**
- * @brief One manifest skill entry from `src/resources/skills/manifest.json`.
+ * @brief One manifest skill entry from `skills/manifest.json`.
  * @details `id` names the packaged `<id>/` directory holding `SKILL.md`;
  * `debugPath` is the optional debug overlay path relative to that directory
  * (REQ-152).
@@ -74,15 +74,16 @@ export function buildServerRegistration(): { command: string; args: string[] } {
 
 /**
  * @brief Resolve the packaged skills root for the running installation.
- * @details Checks `<packageRoot>/src/resources/skills` — the layout used
+ * @details Checks `<packageRoot>/skills` — the layout used
  * both by from-source runs and by the published npm package, which ships the
- * same subtree (PKG-024).
+ * same subtree at the package root (PKG-024).
  * @param packageRoot {string} Package installation root.
  * @return {string} Absolute skills resources root.
  * @throws {Error} When the skills root directory is missing.
+ * @satisfies PKG-024
  */
 export function resolveSkillsResourcesRoot(packageRoot: string): string {
-  const candidate = resolve(packageRoot, "src", "resources", "skills");
+  const candidate = resolve(packageRoot, "skills");
   if (!existsSync(candidate)) {
     throw new Error(`skills resources root not found: ${candidate}`);
   }

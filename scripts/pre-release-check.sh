@@ -11,8 +11,8 @@
 #  * 2. `npm run typecheck` - TypeScript type surface (`tsc --noEmit`).
 #  * 3. `npm test` - full unit suite (live e2e excluded, TST-010).
 #  * 4. Test build (PKG-061): `node_modules/.bin/tsup --out-dir <private temp build directory>` emits
-#  *    the production ESM bundle and its shared chunks outside the repository working tree.
-#  * 5. Temporary artifact verification (PKG-080): the emitted `index.js` and `cli.js` entries MUST
+#  *    the production ESM runtime bundle outside the repository working tree.
+#  * 5. Temporary artifact verification (PKG-080): the emitted `cli.js` entry MUST
 #  *    exist, be non-empty, and pass `node --check`.
 #  * Cleanup and integrity (EXIT trap, PKG-084..PKG-086): the final `git status --porcelain --ignored`
 #  * output is compared with the pre-run snapshot (PKG-082) and the private temporary work directory is
@@ -152,8 +152,8 @@ run_preflight() {
 
 # /**
 #  * @brief Emits the production ESM bundle into the private temporary build directory.
-#  * @details Runs the installed `tsup` binary with `--out-dir $BUILD_DIR`, so the emitted entries and
-#  * shared chunks never touch the repository working tree (PKG-061). A `{ "type": "module" }` marker is
+#  * @details Runs the installed `tsup` binary with `--out-dir $BUILD_DIR`, so the emitted entry never
+#  * touches the repository working tree (PKG-061). A `{ "type": "module" }` marker is
 #  * written first so the emitted `.js` entries are parsed as ECMAScript modules by `node --check`
 #  * (CTN-006). The repository `dist/` directory is never created, modified, or cleaned
 #  * (PKG-062, PKG-123). Failure handling is explicit because `run_stage` invokes this function as a
@@ -184,7 +184,7 @@ build_into_temp_dir() {
 
 # /**
 #  * @brief Verifies the emitted temporary build artifacts (PKG-080).
-#  * @details Requires `$BUILD_DIR/index.js` and `$BUILD_DIR/cli.js` to exist, be non-empty, and pass
+#  * @details Requires `$BUILD_DIR/cli.js` to exist, be non-empty, and pass
 #  * `node --check`. No repository entry is read or validated (PKG-123). Complexity O(entry size).
 #  * @return {void} Returns only when every emitted entry verifies.
 #  * @throws {exit 1} Via `fail` when an entry is missing, empty, or syntactically invalid.
@@ -196,7 +196,7 @@ verify_temp_build() {
   if [ -z "$BUILD_DIR" ] || [ ! -d "$BUILD_DIR" ]; then
     fail "temporary build directory is missing: ${BUILD_DIR:-<unset>}"
   fi
-  for entry in index.js cli.js; do
+  for entry in cli.js; do
     entry_path="$BUILD_DIR/$entry"
     if [ ! -f "$entry_path" ] || [ ! -s "$entry_path" ]; then
       fail "temporary build entry missing or empty: $entry_path"

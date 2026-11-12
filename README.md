@@ -267,7 +267,7 @@ mcp-google-api --uninstall                  # npm uninstall -g mcp-google-api
 
 - [docs/TOOLS.md](https://github.com/Ogekuri/mcp-google-api/blob/main/docs/TOOLS.md) — catalog and parameters of the 18 exposed tools.
 - [docs/CONFIGURATION.md](https://github.com/Ogekuri/mcp-google-api/blob/main/docs/CONFIGURATION.md) — configuration reference: settings file, commands, transports, per-request keys, registration.
-- [src/resources/skills/](https://github.com/Ogekuri/mcp-google-api/tree/main/src/resources/skills) — bundled agent skills; `eatspot-discovery` implements budget (breakfast EUR 10 / lunch EUR 30 / dinner EUR 40 defaults), quality grades A-E, category and opening-hours validation, geographic search modes (3/10/20 km), and a binding anti-fabrication rule: every published Google Maps value must originate from an executed tool call.
+- [skills/](https://github.com/Ogekuri/mcp-google-api/tree/main/skills) — bundled agent skills; `eatspot-discovery` implements budget (breakfast EUR 10 / lunch EUR 30 / dinner EUR 40 defaults), quality grades A-E, category and opening-hours validation, geographic search modes (3/10/20 km), and a binding anti-fabrication rule: every published Google Maps value must originate from an executed tool call.
 
 ## Data locations
 

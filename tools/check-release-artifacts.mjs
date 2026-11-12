@@ -1,38 +1,35 @@
 #!/usr/bin/env node
 /**
  * @file check-release-artifacts.mjs
- * @brief Release artifact validator for the npm tarball packed from the repository (PKG-075..PKG-079).
- * @details Packs the repository into a private temp directory outside `dist/` (PKG-103), then validates the packed tarball and the repository `dist/` tree offline, in this
- *          order: (1) tarball listing against the npm-invariant plus runtime-prefix allowlist, the
- *          required entry set (PKG-075), the rejection of every packed `src/` entry outside the
- *          packaged skills payload so repository sources never become release artifacts (PKG-125,
- *          PKG-127), the rejection of every packed `dist/*.tgz` entry so a
- *          repository-tracked release tarball is never nested inside a newly packed package (PKG-093),
- *          and the rejection of every `src/resources/skills/` entry that is not `manifest.json` or a
- *          file inside a `<skill-id>/` directory, so skills authoring documentation never ships
- *          (PKG-038, PKG-075);
- *          (2) extraction into a private temp directory, then the packed
- *          `package/package.json` name and version against the repository `package.json` (PKG-076);
- *          (3) every `bin`, `main`, and `exports` target present in the tarball (PKG-076); (4) every
- *          skill `path` and `debug` entry of the packed `src/resources/skills/manifest.json` present
- *          (PKG-077); (5) byte equality between every packed `dist/` file and the repository `dist/`
- *          tree, with the reverse pass reporting stale or missing files while exempting the
- *          repository release archive `dist/*.tgz` excluded from the payload by PKG-116 (PKG-078); (6) `node --check`
- *          on the packed `dist/cli.js` and `dist/index.js` (PKG-079); (7) execution of the repository
- *          `dist/cli.js --help` with exit 0 and `mcp-google-api` on stdout (PKG-079). Every failed check
- *          is collected and reported; the process exits 1 when any check fails.
+ * @brief Release artifact validator for the npm tarball packed from the built repository.
+ * @details Packs the repository into a private temp directory outside `dist/` (PKG-103), then
+ *          validates the packed tarball offline, in this order: (1) tarball listing against the
+ *          invariant plus runtime-prefix allowlist and the required entry set (PKG-075), the
+ *          rejection of every packed `src/` entry so repository sources never become release
+ *          artifacts (PKG-125, PKG-127), the rejection of every packed `*.tgz` entry so no package
+ *          archive is nested inside the packed payload (PKG-093), and the rejection of every
+ *          `skills/` entry that is not `manifest.json` or a file inside a `<skill-id>/` directory,
+ *          so skills authoring documentation never ships (PKG-038, PKG-075); (2) extraction into a
+ *          private temp directory, then the packed `package/package.json` name and version against
+ *          the repository `package.json`, the absence of a library entry (PKG-035) and every
+ *          declared `bin` target (PKG-076); (3) every skill `path` and `debug` entry of the packed
+ *          `skills/manifest.json` present (PKG-077); (4) the packed `dist/` tree holding exactly the
+ *          single runtime bundle `dist/cli.js` with no other JavaScript artifact (PKG-078);
+ *          (5) `node --check` on the packed `dist/cli.js` (PKG-079); (6) execution of the repository
+ *          `dist/cli.js --help` with exit 0 and `mcp-google-api` on stdout (PKG-079). Every failed
+ *          check is collected and reported; the process exits 1 when any check fails.
  *          Complexity: O(E + F) where E is the tarball entry count and F the packed file byte total.
- * @satisfies PKG-038, PKG-075, PKG-076, PKG-077, PKG-078, PKG-079, PKG-093, PKG-103, PKG-116, PKG-125, PKG-127
- * @note Writes only under the OS temp directory (packed tarball and extraction, removed in `finally`). No network access,
- *       no dependency installation, no publication. stdout carries per-check `ok:` lines; stderr carries
- *       `FAILED:` diagnostics.
- * @pre `npm pack` succeeds for the repository; `dist/cli.js` exists.
+ * @satisfies PKG-035, PKG-038, PKG-075, PKG-076, PKG-077, PKG-078, PKG-079, PKG-093, PKG-103, PKG-113, PKG-125, PKG-127
+ * @note Writes only under the OS temp directory (packed tarball and extraction, removed in
+ *       `finally`). No network access, no dependency installation, no publication. stdout carries
+ *       per-check `ok:` lines; stderr carries `FAILED:` diagnostics.
+ * @pre `npm run build` produced `dist/cli.js`; `npm pack` succeeds for the repository.
  * @post No repository file is modified; the temp work directory (tarball and extraction) is removed.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, posix, relative } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** Repository root resolved from this script location (cwd-independent). */
@@ -41,7 +38,7 @@ const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 /** Directory name npm uses as the root of every packed tarball entry. */
 const PACKAGE_ROOT_DIR = "package";
 
-/** Upper bound for captured `tar` stdout in bytes (dist sourcemaps are below this). */
+/** Upper bound for captured `tar` stdout in bytes. */
 const TAR_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
 /** Timeout in milliseconds for the packaged CLI smoke run. */
@@ -51,10 +48,10 @@ const CLI_SMOKE_TIMEOUT_MS = 60000;
 const INVARIANT_FILES = new Set(["package.json", "README.md", "CHANGELOG.md", "LICENSE", "LICENSE.md", "LICENSE.txt"]);
 
 /** Runtime directory prefixes permitted in the packed tarball (PKG-038); docs/ is non-runtime and excluded. */
-const ALLOWED_PREFIXES = ["bin/", "dist/", "src/resources/skills/"];
+const ALLOWED_PREFIXES = ["bin/", "dist/", "skills/"];
 
 /** Skills-root payload prefix; only the manifest and `<skill-id>/` files may live here (PKG-038, PKG-075). */
-const SKILLS_ROOT_PREFIX = "src/resources/skills/";
+const SKILLS_ROOT_PREFIX = "skills/";
 
 /** Repository source prefix whose entries are build inputs, never release artifacts (PKG-125, PKG-127). */
 const SOURCES_PREFIX = "src/";
@@ -62,19 +59,21 @@ const SOURCES_PREFIX = "src/";
 /** Sole file permitted directly under the skills root; every other skills-root entry is a skill directory (PKG-075). */
 const SKILLS_ROOT_MANIFEST = `${SKILLS_ROOT_PREFIX}manifest.json`;
 
+/** The single JavaScript artifact the packed `dist/` tree may hold (PKG-078). */
+const RUNTIME_BUNDLE = "dist/cli.js";
+
 /** Entries that MUST exist in the packed tarball (PKG-075). */
 const REQUIRED_ENTRIES = [
   "package.json",
   "README.md",
   "CHANGELOG.md",
   "bin/mcp-google-api.mjs",
-  "dist/cli.js",
-  "dist/index.js",
-  "src/resources/skills/manifest.json",
+  RUNTIME_BUNDLE,
+  SKILLS_ROOT_MANIFEST,
 ];
 
 /** Packed entries whose syntax is verified with `node --check` (PKG-079). */
-const SYNTAX_CHECKED_ENTRIES = ["dist/cli.js", "dist/index.js"];
+const SYNTAX_CHECKED_ENTRIES = [RUNTIME_BUNDLE];
 
 /** Accumulated failure diagnostics; a non-empty list makes the process exit 1. */
 const failures = [];
@@ -123,9 +122,9 @@ function runTar(args) {
 /**
  * @brief Packs the repository into a private directory with `npm pack --ignore-scripts`.
  * @details Runs `npm pack --ignore-scripts --json --pack-destination <destination>` in the repository
- * root (PKG-103); lifecycle scripts never run and no repository file is written. The packed filename
- * from the JSON result MUST equal `<name>-<version>.tgz` (PKG-070). Complexity O(package file count)
- * plus one npm child.
+ * root (PKG-103); lifecycle scripts never run, so no second build happens (PKG-111). The packed
+ * filename from the JSON result MUST equal `<name>-<version>.tgz` (PKG-045). Complexity O(package
+ * file count) plus one npm child.
  * @param repoPackage {{ name: string, version: string }} Repository `package.json` identity.
  * @param destination {string} Private absolute directory outside `dist/` receiving the tarball.
  * @return {string} Absolute path of the packed tarball inside `destination`.
@@ -148,7 +147,7 @@ function packRepository(repoPackage, destination) {
   const filename = Array.isArray(entries) && typeof entries[0]?.filename === "string" ? entries[0].filename : "";
   const expected = `${repoPackage.name}-${repoPackage.version}.tgz`;
   if (filename !== expected) {
-    throw new Error(`npm pack produced "${filename}", expected "${expected}" (PKG-070)`);
+    throw new Error(`npm pack produced "${filename}", expected "${expected}" (PKG-045)`);
   }
   return join(destination, filename);
 }
@@ -178,9 +177,9 @@ function listTarballFiles(tarballPath) {
 
 /**
  * @brief Classifies one packed skills-root path as runtime payload.
- * @details True for `src/resources/skills/manifest.json` and for any file located strictly inside a
- * `<skill-id>/` directory, i.e. at least one non-empty segment after the skill id. Root-level files such
- * as authoring guides are not runtime payload (PKG-038, PKG-075). Pure; complexity O(n) in path length.
+ * @details True for `skills/manifest.json` and for any file located strictly inside a `<skill-id>/`
+ * directory, i.e. at least one non-empty segment after the skill id. Root-level files such as
+ * authoring guides are not runtime payload (PKG-038, PKG-075). Pure; complexity O(n) in path length.
  * @param file {string} Relative packed file path.
  * @return {boolean} True when the entry is skills runtime payload.
  */
@@ -193,31 +192,15 @@ function isPackagedSkillPayload(file) {
 }
 
 /**
- * @brief Classifies one packed path as a repository source file outside the packaged skills payload.
- * @details True for every packed entry under `src/` that does not live under `src/resources/skills/`.
- * The release artifact is the npm tarball built from the `dist/` artifacts (PKG-125), so repository
- * sources MUST never enter the payload; only the packaged skills subtree is a runtime asset
- * (PKG-024, PKG-127). Pure; complexity O(n) in path length.
- * @param file {string} Relative packed file path.
- * @return {boolean} True when the entry ships a repository source file.
- * @satisfies PKG-125, PKG-127
- */
-function isUnpackagedSource(file) {
-  return file.startsWith(SOURCES_PREFIX) && !file.startsWith(SKILLS_ROOT_PREFIX);
-}
-
-/**
- * @brief Verifies the packed file set against the invariant, prefix allowlist, required entries, source exclusion, and the nested-tarball guard.
+ * @brief Verifies the packed file set against the allowlist, required entries, source and archive exclusion.
  * @details Each packed path MUST equal an invariant file or start with an allowed prefix (PKG-075).
- * Each required entry MUST be present (PKG-075). Every packed `src/` entry outside
- * `src/resources/skills/` MUST be rejected with a diagnostic naming the entry, because the release
- * artifact is the npm tarball built from `dist/` and repository sources are inputs only (PKG-125,
- * PKG-127). Every packed `src/resources/skills/` entry MUST be
- * the manifest or a file inside a `<skill-id>/` directory, so skills authoring documentation resident in
- * the repository is never published (PKG-038, PKG-075). Every packed `dist/` entry matching `*.tgz` MUST be
- * rejected: with `dist/` version-controlled (PKG-091), a stale repository-tracked release tarball could
- * otherwise be nested inside a newly packed package by a non-canonical raw `npm pack` (PKG-093).
- * Complexity O(E * P) with P = allowlist size.
+ * Each required entry MUST be present (PKG-075). Every packed `src/` entry MUST be rejected with a
+ * diagnostic naming the entry, because the release artifact is the npm tarball built from the
+ * compiled bundle and repository sources are inputs only (PKG-125, PKG-127). Every packed `skills/`
+ * entry MUST be the manifest or a file inside a `<skill-id>/` directory, so skills authoring
+ * documentation resident in the repository is never published (PKG-038, PKG-075). Every packed
+ * `*.tgz` entry MUST be rejected: no package archive may be nested inside the packed payload
+ * (PKG-093). Complexity O(E * P) with P = allowlist size.
  * @param files {string[]} Relative packed file paths.
  * @return {void}
  * @side_effect Calls `recordFailure` per violation.
@@ -227,14 +210,13 @@ function checkStructure(files) {
   const failuresBefore = failures.length;
   const fileSet = new Set(files);
   for (const file of files) {
-    const unpackagedSource = isUnpackagedSource(file);
-    if (unpackagedSource) {
+    if (file.startsWith(SOURCES_PREFIX)) {
       recordFailure(`repository source packed as a release artifact (PKG-127): ${file}`);
     } else if (!INVARIANT_FILES.has(file) && !ALLOWED_PREFIXES.some((prefix) => file.startsWith(prefix))) {
       recordFailure(`packed path outside publication allowlist (PKG-038, PKG-075): ${file}`);
     }
-    if (file.startsWith("dist/") && file.endsWith(".tgz")) {
-      recordFailure(`nested release tarball must not be packed (PKG-093): ${file}`);
+    if (file.endsWith(".tgz")) {
+      recordFailure(`nested package archive must not be packed (PKG-093): ${file}`);
     }
     if (file.startsWith(SKILLS_ROOT_PREFIX) && !isPackagedSkillPayload(file)) {
       recordFailure(`skills-root entry is not manifest.json or a <skill-id>/ file (PKG-038, PKG-075): ${file}`);
@@ -251,7 +233,7 @@ function checkStructure(files) {
 }
 
 /**
- * @brief Collects every string leaf of a `bin`, `main`, or `exports` declaration.
+ * @brief Collects every string leaf of a `bin` declaration.
  * @details Recurses through object values; non-string leaves are ignored. Pure; complexity O(n)
  * in declaration size.
  * @param value {unknown} Declaration value (string, object, array, or other).
@@ -268,16 +250,17 @@ function collectStringTargets(value) {
 }
 
 /**
- * @brief Verifies the packed `package/package.json` identity and declared entry targets.
- * @details Compares packed `name` and `version` with the repository `package.json` (PKG-076).
- * Each `main`, `exports`, and `bin` target, normalized by stripping a leading `./`, MUST exist in
- * the tarball file set (PKG-076). Complexity O(T) with T = declared target count.
- * @param repoPackage {{ name: string, version: string, main?: unknown, exports?: unknown, bin?: unknown }}
- *        Repository `package.json` contents.
+ * @brief Verifies the packed `package/package.json` identity and declared bin targets.
+ * @details Compares packed `name` and `version` with the repository `package.json` (PKG-076). Each
+ * `bin` target, normalized by stripping a leading `./`, MUST exist in the tarball file set
+ * (PKG-076). A packed `main` or `exports` field is rejected because the package declares no library
+ * entry (PKG-035). Complexity O(T) with T = declared target count.
+ * @param repoPackage {{ name: string, version: string, bin?: unknown }} Repository `package.json` contents.
  * @param packedPackageJsonPath {string} Extracted `package/package.json` path.
  * @param files {string[]} Relative packed file paths.
  * @return {void}
  * @side_effect Calls `recordFailure` per violation.
+ * @satisfies PKG-035, PKG-076
  */
 function checkIdentityAndTargets(repoPackage, packedPackageJsonPath, files) {
   const packed = JSON.parse(readFileSync(packedPackageJsonPath, "utf8"));
@@ -288,34 +271,34 @@ function checkIdentityAndTargets(repoPackage, packedPackageJsonPath, files) {
   } else {
     recordOk(`packed identity ${packed.name}@${packed.version} matches repository package.json (PKG-076)`);
   }
+  if (packed.main !== undefined || packed.exports !== undefined) {
+    recordFailure(
+      `packed manifest declares a library entry (PKG-035): main=${packed.main} exports=${JSON.stringify(packed.exports)}`,
+    );
+  }
   const fileSet = new Set(files);
-  const targets = [
-    ...collectStringTargets(repoPackage.main),
-    ...collectStringTargets(repoPackage.exports),
-    ...collectStringTargets(repoPackage.bin),
-  ].map((target) => target.replace(/^\.\//, ""));
+  const targets = collectStringTargets(repoPackage.bin).map((target) => target.replace(/^\.\//, ""));
   for (const target of targets) {
     if (!fileSet.has(target)) {
-      recordFailure(`declared target missing from tarball (PKG-076): ${target}`);
+      recordFailure(`declared bin target missing from tarball (PKG-076): ${target}`);
     }
   }
-  recordOk(`${targets.length} declared bin/main/exports targets present in tarball (PKG-076)`);
+  recordOk(`${targets.length} declared bin targets present in tarball (PKG-076)`);
 }
 
 /**
  * @brief Verifies that every skill path declared in the packed manifest exists in the tarball.
- * @details Reads `src/resources/skills/manifest.json` from the extraction. Skill `path` resolves
- * relative to the skills root; skill `debug` resolves relative to the skill directory, i.e.
- * the directory of `path` (REQ-152). Each resolved entry MUST exist in the tarball file set
- * (PKG-077). Complexity O(S).
+ * @details Reads `skills/manifest.json` from the extraction. Skill `path` resolves relative to the
+ * skills root; skill `debug` resolves relative to the skill directory, i.e. the directory of `path`
+ * (REQ-152). Each resolved entry MUST exist in the tarball file set (PKG-077). Complexity O(S).
  * @param packageDir {string} Extracted `package/` directory.
  * @param files {string[]} Relative packed file paths.
  * @return {void}
  * @side_effect Calls `recordFailure` per missing skill file.
+ * @satisfies PKG-077
  */
 function checkSkillManifest(packageDir, files) {
-  const skillsRoot = "src/resources/skills/";
-  const manifest = JSON.parse(readFileSync(join(packageDir, skillsRoot, "manifest.json"), "utf8"));
+  const manifest = JSON.parse(readFileSync(join(packageDir, SKILLS_ROOT_PREFIX, "manifest.json"), "utf8"));
   const fileSet = new Set(files);
   const skills = Array.isArray(manifest.skills) ? manifest.skills : [];
   for (const skill of skills) {
@@ -323,9 +306,9 @@ function checkSkillManifest(packageDir, files) {
       recordFailure("skill manifest entry without a string path (PKG-077)");
       continue;
     }
-    const entries = [`${skillsRoot}${skill.path}`];
+    const entries = [`${SKILLS_ROOT_PREFIX}${skill.path}`];
     if (typeof skill.debug === "string") {
-      entries.push(`${skillsRoot}${posix.join(posix.dirname(skill.path), skill.debug)}`);
+      entries.push(`${SKILLS_ROOT_PREFIX}${posix.join(posix.dirname(skill.path), skill.debug)}`);
     }
     for (const entry of entries) {
       if (!fileSet.has(entry)) {
@@ -337,62 +320,27 @@ function checkSkillManifest(packageDir, files) {
 }
 
 /**
- * @brief Lists every regular file below a directory as POSIX-relative paths.
- * @details Recursive, depth-first, lexical order from `readdirSync`. Complexity O(F).
- * @param root {string} Directory to scan.
- * @return {string[]} Paths relative to `root` with `/` separators.
- */
-function listDirectoryFiles(root) {
-  const found = [];
-  const visit = (directory) => {
-    for (const name of readdirSync(directory)) {
-      const absolute = join(directory, name);
-      if (statSync(absolute).isDirectory()) {
-        visit(absolute);
-      } else {
-        found.push(relative(root, absolute).split("\\").join("/"));
-      }
-    }
-  };
-  visit(root);
-  return found;
-}
-
-/**
- * @brief Verifies that the packed `dist/` tree and the repository `dist/` tree are byte-identical.
- * @details Forward pass: every packed `dist/` file MUST exist in the repository and match byte for
- * byte (PKG-078). Reverse pass: every repository `dist/` file MUST
- * be packed, so stale or unpacked outputs are reported (PKG-078), except the release archive
- * `dist/*.tgz` which PKG-116 deliberately excludes from the packed payload (PKG-093 keeps
- * rejecting any packed tarball). Complexity O(F) in packed bytes.
- * @param packageDir {string} Extracted `package/` directory.
+ * @brief Verifies that the packed `dist/` tree holds exactly the single runtime bundle.
+ * @details The published payload is the compiled program only: the packed `dist/` file set MUST be
+ * exactly `dist/cli.js`, so no shared chunk and no second entry ships (PKG-078). A missing or
+ * differently named `dist/` artifact is reported with the observed entry. Complexity O(E).
  * @param files {string[]} Relative packed file paths.
  * @return {void}
- * @side_effect Calls `recordFailure` per mismatch; reads repository and extracted files.
+ * @side_effect Calls `recordFailure` per violation.
+ * @satisfies PKG-078
  */
-function checkDistIdentity(packageDir, files) {
+function checkDistLayout(files) {
   const packedDist = files.filter((file) => file.startsWith("dist/"));
-  const repoDist = join(PROJECT_ROOT, "dist");
-  for (const file of packedDist) {
-    const repoFile = join(PROJECT_ROOT, file);
-    if (!existsSync(repoFile)) {
-      recordFailure(`packed dist file absent from repository dist/ (PKG-078): ${file}`);
-      continue;
-    }
-    const packedBytes = readFileSync(join(packageDir, file));
-    if (!packedBytes.equals(readFileSync(repoFile))) {
-      recordFailure(`packed dist file differs from repository dist/ (PKG-078): ${file}`);
-    }
+  const unexpected = packedDist.filter((file) => file !== RUNTIME_BUNDLE);
+  for (const file of unexpected) {
+    recordFailure(`packed dist/ entry is not the single runtime bundle (PKG-078): ${file}`);
   }
-  for (const file of listDirectoryFiles(repoDist).map((name) => `dist/${name}`)) {
-    if (file.endsWith(".tgz")) {
-      continue;
-    }
-    if (!packedDist.includes(file)) {
-      recordFailure(`repository dist/ file not packed (stale or unpacked output, PKG-078): ${file}`);
-    }
+  if (!packedDist.includes(RUNTIME_BUNDLE)) {
+    recordFailure(`runtime bundle missing from packed dist/ (PKG-078): ${RUNTIME_BUNDLE}`);
   }
-  recordOk(`${packedDist.length} packed dist/ files byte-identical to repository dist/ (PKG-078)`);
+  if (unexpected.length === 0 && packedDist.includes(RUNTIME_BUNDLE)) {
+    recordOk(`packed dist/ holds exactly ${RUNTIME_BUNDLE} (PKG-078)`);
+  }
 }
 
 /**
@@ -415,14 +363,19 @@ function checkSyntax(packageDir, entries) {
 
 /**
  * @brief Executes the repository `dist/cli.js --help` as an offline smoke run.
- * @details The repository `dist/` is byte-identical to the packed tree (checked by
- * `checkDistIdentity`), so this run exercises the shipped entry. Requires exit 0 and the
- * `mcp-google-api` name on stdout (PKG-079). Complexity O(1) plus child runtime bounded by timeout.
+ * @details The packed tarball was produced from this repository tree in the same run (PKG-110,
+ * PKG-111), so this execution exercises the shipped entry. Requires exit 0 and the `mcp-google-api`
+ * name on stdout (PKG-079). Complexity O(1) plus child runtime bounded by timeout.
  * @return {void}
  * @side_effect Spawns one Node.js child process; calls `recordFailure` on failure.
+ * @satisfies PKG-079
  */
 function checkCliSmoke() {
-  const cliEntry = join(PROJECT_ROOT, "dist", "cli.js");
+  const cliEntry = join(PROJECT_ROOT, RUNTIME_BUNDLE);
+  if (!existsSync(cliEntry)) {
+    recordFailure(`repository runtime bundle missing, run 'npm run build' first (PKG-079): ${RUNTIME_BUNDLE}`);
+    return;
+  }
   const result = spawnSync(process.execPath, [cliEntry, "--help"], {
     encoding: "utf8",
     timeout: CLI_SMOKE_TIMEOUT_MS,
@@ -444,7 +397,7 @@ function checkCliSmoke() {
  * @brief Runs every artifact check in fixed order against the generated tarball.
  * @details Reads the repository `package.json`, packs the repository into a private temp directory
  * (`packRepository`, PKG-103), lists and structurally checks the tarball, extracts it into the same
- * directory, and runs the identity, target, manifest, dist-identity, syntax, and smoke checks. The
+ * directory, and runs the identity, target, manifest, dist-layout, syntax, and smoke checks. The
  * temp directory is removed in `finally`. Complexity O(E + F).
  * @return {void}
  * @throws {Error} When `npm pack` fails, the packed name differs from `<name>-<version>.tgz`, or the listing is structurally invalid.
@@ -461,7 +414,7 @@ function main() {
     const packageDir = join(workRoot, PACKAGE_ROOT_DIR);
     checkIdentityAndTargets(repoPackage, join(packageDir, "package.json"), files);
     checkSkillManifest(packageDir, files);
-    checkDistIdentity(packageDir, files);
+    checkDistLayout(files);
     checkSyntax(packageDir, SYNTAX_CHECKED_ENTRIES);
     checkCliSmoke();
   } finally {

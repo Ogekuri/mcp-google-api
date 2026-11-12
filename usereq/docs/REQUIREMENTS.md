@@ -22,15 +22,16 @@ Project file/folder structure (evidence: repository tree):
 
 ```
 mcp-google-api/
-├── .github/workflows/           # GitHub Actions: release-npm.yml (tag release from committed dist/ artifacts)
+├── .github/workflows/           # GitHub Actions: release-npm.yml (tag release: build, pack, publish)
 ├── bin/                         # mcp-google-api.mjs installed-bin launcher
 ├── docs/                        # Usage docs (CONFIGURATION.md, TOOLS.md, SKILLS_AUTHORING.md)
-├── scripts/                     # mcp-google-api.sh launcher + build.sh release artifacts and obsolete-build cleaner + pre-release-check.sh release gate
-├── tools/                       # check-publish-version.mjs publish guard + check-release-artifacts.mjs artifact validator + build-dist-lifecycle.mjs dist/ lifecycle orchestrator + prune-generated-dist.mjs generated-output pruner
+├── scripts/                     # mcp-google-api.sh launcher + build.sh runtime-bundle generator and obsolete-build cleaner + pre-release-check.sh release gate
+├── skills/                      # Packaged LLM agent skills: manifest.json, <skill-id>/SKILL.md, <skill-id>/DEBUG.md
+├── tools/                       # check-publish-version.mjs publish guard + check-release-artifacts.mjs artifact validator
 ├── src/
 │   ├── cli.ts                   # yargs entry: doctor, exec, batch-geocode, server start
 │   ├── config.ts                # serverConfigs registry, tool annotations, filterTools()
-│   ├── index.ts                 # Logger (stderr) + public re-exports
+│   ├── index.ts                 # Logger (stderr) + internal shared exports
 │   ├── core/
 │   │   └── BaseMcpServer.ts     # MCP server: stdio + Streamable HTTP, per-session state
 │   ├── services/
@@ -40,8 +41,6 @@ mcp-google-api/
 │   │   └── toolclass.ts         # Legacy GoogleMapsTools client (other Maps APIs)
 │   ├── tools/
 │   │   └── maps/                # 18 MCP tool modules (NAME/DESCRIPTION/SCHEMA/ACTION)
-│   ├── resources/
-│   │   └── skills/              # LLM agent skills: manifest.json, <skill-id>/SKILL.md, <skill-id>/DEBUG.md
 │   └── utils/
 │       ├── apiKeyManager.ts     # ApiKeyManager singleton (key resolution priority)
 │       ├── autoUpdate.ts        # npm registry update check (stderr-only)
@@ -78,8 +77,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PRJ-015**: MUST provide CLI commands `enable <cli>`, `disable <cli>`, `install`, `uninstall`, and `show` managing MCP-server registration and packaged skill installation across supported CLI agents.
 - **PRJ-009**: MUST provide machine-readable tool/API dependency profiles covering all 18 tools, including the tool dependencies of composite tools.
 - **PRJ-010**: MUST provide a `snippet` CLI command that prints valid MCP-client registration snippets without modifying any client configuration file.
-- **PRJ-012**: MUST ship LLM agent skills as self-contained English `SKILL.md` resources under `src/resources/skills/<skill-id>/`, exactly one skill per directory, plus an optional `<skill-id>/DEBUG.md` debug overlay.
-- **PRJ-013**: MUST maintain `src/resources/skills/manifest.json` indexing every skill (id, name, version, language, path, description, optional `debug` overlay path) plus `docs/SKILLS_AUTHORING.md` authoring conventions enabling new skills without source-code changes.
+- **PRJ-012**: MUST ship LLM agent skills as self-contained English `SKILL.md` resources under `skills/<skill-id>/`, exactly one skill per directory, plus an optional `<skill-id>/DEBUG.md` debug overlay.
+- **PRJ-013**: MUST maintain `skills/manifest.json` indexing every skill (id, name, version, language, path, description, optional `debug` overlay path) plus `docs/SKILLS_AUTHORING.md` authoring conventions enabling new skills without source-code changes.
 - **PRJ-014**: MUST ship the `eatspot-discovery` skill dedicated to discovering bars, pastry shops, restaurants, cafes, and bakeries.
 - **PRJ-016**: MUST identify the distribution package, bin, CLI script name, and user-facing messages as `mcp-google-api` with no references to the superseded `mcp-google-map` name.
 - **PRJ-017**: MUST scope the server to Google APIs at large, with Google Maps as the currently implemented API family (PRJ-001).
@@ -122,7 +121,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-019**: MUST provide a single `npm run verify` pipeline (typecheck, unit tests, build) and keep helper scripts other than the PRJ-018 development launcher free of implicit chained install/build steps.
 - **PKG-022**: MUST keep every documented example consistent with supported CLI flags, headers, and transports.
 - **PKG-023**: MUST document `enable`, `disable`, `install`, `uninstall`, and `show` commands with supported CLI targets in README.md.
-- **PKG-024**: MUST ship the packaged skills payload, `src/resources/skills/manifest.json` plus every `<skill-id>/` content file and declared debug overlay, inside the published npm package so `install` and `show` resolve manifest skills from installed packages.
+- **PKG-024**: MUST ship the packaged skills payload, `skills/manifest.json` plus every `<skill-id>/` content file and declared debug overlay, inside the published npm package so `install` and `show` resolve manifest skills from installed packages.
 - **PKG-025**: MUST document the `api-key` command as the only API-key configuration path and the stdio startup key guard in README.md.
 - **PKG-026**: MUST restrict GitHub Actions to packing and publishing the release artifacts committed in the tagged commit, triggered by a version tag passing the branch gate (PKG-008, PKG-009).
 - **PKG-027**: MUST run the release pipeline (branch gate, artifact packing, publish, changelog, GitHub Release) in exactly one workflow job with no parallel or separate release jobs.
@@ -133,10 +132,10 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-032**: MUST run the release `npm publish` step on the pinned release Node.js runtime bundling npm >= 11.5.1, the minimum version supporting OIDC Trusted Publishing.
 - **PKG-033**: MUST declare the `package.json` `license` field as the SPDX expression `GPL-3.0-only`, not the deprecated SPDX identifier `GPL-3.0`.
 - **PKG-034**: MUST state SPDX identifier `GPL-3.0-only` in the README.md license badge and License section, matching the `package.json` `license` value.
-- **PKG-035**: MUST define a `package.json` `exports` map with `.` targeting `./dist/index.js` and `./package.json` targeting `./package.json`, keeping `main` consistent with the `.` target.
+- **PKG-035**: MUST declare no `package.json` `main` or `exports` library entry; the only runtime entry is the `bin` launcher forwarding to `dist/cli.js` (PRJ-020).
 - **PKG-036**: MUST include `CHANGELOG.md` in the published tarball via the `package.json` `files` allowlist.
 - **PKG-037**: MUST keep the `package-lock.json` root `name` and `version` fields identical to the `package.json` values.
-- **PKG-038**: MUST restrict packed tarball contents to allowlisted runtime paths plus npm-invariant metadata files, excluding tests, local configuration, secret files, and skills authoring documentation.
+- **PKG-038**: MUST restrict packed tarball contents to the runtime paths `bin/`, `dist/`, and `skills/` plus npm-invariant metadata files, excluding tests, local configuration, secret files, and skills authoring documentation.
 - **PKG-039**: MUST NOT declare `"private": true` in `package.json`, keeping the package publishable under npm registry policy.
 - **PKG-040**: MUST declare one registry-valid package name (lowercase, URL-safe, max 214 characters) in `package.json` and `package-lock.json`.
 - **PKG-041**: MUST run GitHub Actions workflow steps on the Node.js 24 runner runtime using action versions built for Node.js 24.
@@ -166,19 +165,18 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-064**: README.md MUST document the `--upgrade` command with its `--develop`/`--dev` channel options and its `--force` forced-reinstall option.
 - **PKG-065**: MUST ship `scripts/build.sh` as the standalone release artifact generator and obsolete-build cleaner, runnable without any prior execution of `scripts/pre-release-check.sh`.
 - **PKG-066**: `scripts/build.sh` MUST resolve the repository root from its own location and MUST produce identical outputs regardless of the invocation working directory.
-- **PKG-067**: `scripts/build.sh` MUST abort non-zero before any build step when Node.js major version is below 24, when `node`, `npm`, or `tar` is absent, or when `node_modules/.bin/tsup` is absent, naming the missing prerequisite.
+- **PKG-067**: `scripts/build.sh` MUST abort non-zero before any build step when Node.js major version is below 24, when `node` or `npm` is absent, or when `node_modules/.bin/tsup` is absent, naming the missing prerequisite.
 - **PKG-068**: `scripts/build.sh` MUST NOT install dependencies and MUST NOT publish packages.
-- **PKG-069**: `scripts/build.sh` MUST generate the ESM runtime bundle and its shared chunks through the `build` npm script, writing every output into `dist/`.
-- **PKG-070**: `scripts/build.sh` MUST name the npm tarball `<name>-<version>.tgz` derived from `package.json` (PKG-045) and MUST verify that it is non-empty and readable by `tar`.
+- **PKG-069**: `scripts/build.sh` MUST generate the single ESM runtime bundle through the `build` npm script, writing `dist/cli.js` and no other JavaScript artifact.
 - **PKG-071**: `scripts/build.sh` MUST remove before the first build step every generated output of earlier builds in `dist/`, including every `*.tgz` tarball of any version, without removing non-generated entries.
 - **PKG-072**: `scripts/build.sh` MUST classify as generated every file in `dist/` matching `*.js`, `*.js.map`, `*.d.ts`, `*.d.ts.map`, `*.tgz`, `*.tsbuildinfo`, or `*.tmp`; every other entry is non-generated.
-- **PKG-073**: `scripts/build.sh` MUST restore the pre-run content of `dist/` and exit non-zero when any build phase fails, so a failed build never leaves a partial output set.
-- **PKG-074**: `scripts/build.sh` MUST print the path and byte size of every artifact in `dist/` on success, and MUST exit 0 only after every generation and verification step passes.
-- **PKG-075**: `tools/check-release-artifacts.mjs` MUST validate the packed tarball contents: every entry MUST be an npm invariant file or lie under an allowlisted runtime prefix (PKG-038), and `src/resources/skills/` entries MUST be `manifest.json` or files inside a `<skill-id>/` directory; required entries MUST exist.
-- **PKG-076**: `tools/check-release-artifacts.mjs` MUST verify that the tarball `package/package.json` `name` and `version` equal the repository `package.json` values and that every `bin`, `main`, and `exports` target exists in the tarball.
-- **PKG-077**: `tools/check-release-artifacts.mjs` MUST verify that every skill `path` and `debug` entry of the packed `src/resources/skills/manifest.json` resolves to an existing packed file.
-- **PKG-078**: `tools/check-release-artifacts.mjs` MUST verify that every packed `dist/` file is byte-identical to its counterpart in the repository `dist/` directory.
-- **PKG-079**: `tools/check-release-artifacts.mjs` MUST verify syntax of the packed `dist/cli.js` and `dist/index.js` and MUST execute the repository `dist/cli.js --help` with exit code 0 and `mcp-google-api` on stdout.
+- **PKG-073**: `scripts/build.sh` MUST exit non-zero naming the failing phase when any build phase fails.
+- **PKG-074**: `scripts/build.sh` MUST print the path and byte size of every generated artifact in `dist/` on success, and MUST exit 0 only after every generation and verification step passes.
+- **PKG-075**: `tools/check-release-artifacts.mjs` MUST validate the packed tarball contents: every entry MUST be an npm invariant file or lie under `bin/`, `dist/`, or `skills/` (PKG-038), and `skills/` entries MUST be `manifest.json` or files inside a `<skill-id>/` directory; required entries MUST exist.
+- **PKG-076**: `tools/check-release-artifacts.mjs` MUST verify that the tarball `package/package.json` `name` and `version` equal the repository `package.json` values and that every `bin` target exists in the tarball.
+- **PKG-077**: `tools/check-release-artifacts.mjs` MUST verify that every skill `path` and `debug` entry of the packed `skills/manifest.json` resolves to an existing packed file.
+- **PKG-078**: `tools/check-release-artifacts.mjs` MUST verify that the packed `dist/` tree holds exactly the single runtime bundle `dist/cli.js` and no other JavaScript artifact.
+- **PKG-079**: `tools/check-release-artifacts.mjs` MUST verify syntax of the packed `dist/cli.js` and MUST execute the repository `dist/cli.js --help` with exit code 0 and `mcp-google-api` on stdout.
 - **PKG-080**: `scripts/pre-release-check.sh` MUST verify the temporary build artifacts after the build stage: each emitted entry exists, is non-empty, and passes `node --check`.
 - **PKG-081**: `scripts/pre-release-check.sh` MUST validate the toolchain before the first stage: Node.js >= 24, `git`, `npm`, `diff`, `cmp`, and the installed binaries `node_modules/.bin/tsc`, `tsup`, and `tsx`, naming each missing item.
 - **PKG-082**: `scripts/pre-release-check.sh` MUST snapshot `git status --porcelain --ignored` before the first stage and MUST exit non-zero when the post-run snapshot differs, covering tracked, untracked, and git-ignored leftovers.
@@ -189,35 +187,32 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-087**: `scripts/pre-release-check.sh` MUST handle SIGINT, SIGTERM, and SIGHUP by exiting through the EXIT trap with status 130, 143, and 129 respectively.
 - **PKG-088**: `scripts/pre-release-check.sh` MUST NOT invoke destructive git commands (`git clean`, `git reset`, `git stash`, `git checkout`, `git restore`).
 - **PKG-089**: `scripts/pre-release-check.sh` MUST print a final result line naming `PASS` on success, or `FAILED` with the failing phase name and exit status otherwise.
-- **PKG-090**: `.gitignore` MUST NOT exclude the `dist/` directory as a whole; the `dist/` rule MUST be replaced by the inverse re-inclusions `!dist/` and `!dist/**/*`.
-- **PKG-091**: MUST distribute the `scripts/build.sh` release artifacts through the git repository by version-controlling every `dist/` entry; `.gitignore` MUST NOT define any active rule excluding the `dist/` directory or its files.
-- **PKG-092**: `.gitignore` MUST place the `!dist/` and `!dist/**/*` re-inclusions before the CTN-009 `!tools/` and CTN-010 `!bin/` exceptions so those exceptions remain at the tail of the included-paths section.
-- **PKG-093**: `tools/check-release-artifacts.mjs` MUST reject every packed `dist/` entry matching `*.tgz`, so a repository-tracked release tarball is never nested inside a newly packed package.
-- **PKG-102**: `scripts/build.sh` MUST pack the npm tarball in a private OS-temp work directory and then place the verified archive at `dist/<name>-<version>.tgz` as a release artifact (PKG-117).
+- **PKG-090**: `.gitignore` MUST exclude the `dist/` build output directory so no compiled artifact is version-controlled.
+- **PKG-091**: MUST NOT version-control any `dist/` entry; the runtime bundle is produced on demand by `npm run build` (PKG-069).
+- **PKG-092**: `.gitignore` MUST keep the CTN-009 `!tools/` and CTN-010 `!bin/` exceptions at the tail of the included-paths section.
+- **PKG-093**: `tools/check-release-artifacts.mjs` MUST reject every packed `*.tgz` entry at any path, so no package archive is nested inside the packed package.
+- **PKG-102**: `scripts/build.sh` MUST NOT create, move, or retain any `*.tgz` archive inside `dist/`.
 - **PKG-103**: `tools/check-release-artifacts.mjs` MUST create the packed tarball from the repository in a private OS-temp directory outside `dist/` and remove it before exit.
-- **PKG-104**: `scripts/build.sh` MUST run the obsolete-build cleanup of `dist/` as the first phase after the pre-run snapshot and before any compile step.
+- **PKG-104**: `scripts/build.sh` MUST run the obsolete-build cleanup of `dist/` as the first phase, before any compile step.
 - **PKG-105**: The `scripts/build.sh` cleanup phase MUST remove every `dist/` file classified as generated by PKG-072, covering all package version numbers of earlier builds.
 - **PKG-106**: The `scripts/build.sh` cleanup phase MUST prune emptied ancestor directories of removed artifacts, including `dist/` itself when empty, preserving every directory that still holds any entry.
 - **PKG-107**: `scripts/build.sh` MUST exit non-zero with a `FAILED` diagnostic naming the failed entry when the cleanup phase cannot enumerate or remove a generated artifact.
-- **PKG-108**: After every generation and verification step, `scripts/build.sh` MUST keep the current `dist/<name>-<version>.tgz` archive, remove stale `*.tgz` archives of other versions plus `*.tsbuildinfo` and `*.tmp` files, and delete its private work directory.
-- **PKG-109**: `scripts/build.sh` MUST exit non-zero when `dist/` holds any intermediate artifact beyond the current release archive or when its private work directory survives the final cleanup.
-- **PKG-110**: The release workflow MUST pack the npm tarball exclusively from the `dist/` artifacts committed in the tagged release commit, executing no build step.
-- **PKG-111**: The release workflow MUST run `npm pack --ignore-scripts` and publish without installing dependencies or running build-preparatory checks.
+- **PKG-108**: After every generation and verification step, `scripts/build.sh` MUST remove every `*.tsbuildinfo` and `*.tmp` file from `dist/` and delete its private work directory.
+- **PKG-109**: `scripts/build.sh` MUST exit non-zero when `dist/` holds any generated artifact beyond `dist/cli.js` or when its private work directory survives the final cleanup.
+- **PKG-110**: The release workflow MUST install dependencies from the lockfile and build the runtime bundle inside the release job before packing.
+- **PKG-111**: The release workflow MUST run `npm ci`, `npm run build`, then `npm pack --ignore-scripts`, packing no pre-committed artifact and triggering no second build.
 - **PKG-112**: The release workflow MUST publish with lifecycle scripts disabled, so no `prepublishOnly` or `prepare` build runs during publication.
-- **PKG-113**: The release workflow MUST validate the packed tarball against the committed `dist/` tree via `tools/check-release-artifacts.mjs` before publication and release creation.
+- **PKG-113**: The release workflow MUST validate the packed tarball against the freshly built `dist/` tree via `tools/check-release-artifacts.mjs` before publication and release creation.
 - **PKG-114**: `README.md` MUST resolve every documentation link from the published package by referencing absolute repository URLs for documents excluded from the tarball (PKG-038).
 - **PKG-115**: Every Markdown document of the project (`README.md`, `CHANGELOG.md`, `docs/**`) MUST be written in English.
-- **PKG-116**: `package.json` MUST exclude the `dist/` release archive from the packed payload through the `files` negation `!dist/*.tgz`, keeping PKG-093 satisfied.
-- **PKG-117**: The `prepare` and `build` lifecycles MUST NOT delete, overwrite, or invalidate the committed release archive `dist/<name>-<version>.tgz` (PKG-102).
-- **PKG-118**: The `prepare` and `build` lifecycles MUST NOT delete or modify any tracked `dist/` entry other than generated `dist/*.js` build outputs.
-- **PKG-119**: The `build` lifecycle MUST prune every stale generated `dist/` output classified by PKG-072 before compiling, excluding every `*.tgz` archive from removal.
-- **PKG-120**: The `build` and `prepare` lifecycles MUST abort non-zero before removing any `dist/` entry when `node_modules/.bin/tsup` is absent.
-- **PKG-121**: The `build` and `prepare` lifecycles MUST restore the pre-run generated `dist/` outputs and exit non-zero when the compile step fails.
-- **PKG-122**: The `build` and `prepare` lifecycles MUST NOT leave the tracked `dist/` runtime bundle absent after any run.
-- **PKG-125**: The release pipeline MUST execute the ordered chain repository sources, `scripts/build.sh`, verified `dist/` artifacts, `npm pack` tarball, then published package.
-- **PKG-126**: The GitHub Release MUST attach exactly one asset, the packed npm tarball `dist/<name>-<version>.tgz` built from the repository sources.
-- **PKG-127**: `tools/check-release-artifacts.mjs` MUST report a release failure naming every packed `src/` entry outside `src/resources/skills/`, because repository sources are not release artifacts.
+- **PKG-116**: `package.json` `files` MUST allowlist `bin`, `dist`, and `skills` so the published payload is exactly the runtime program and its packaged assets.
+- **PKG-125**: The release pipeline MUST execute the ordered chain repository sources, `npm ci`, `npm run build`, verified `dist/` artifacts, `npm pack` tarball, then published package.
+- **PKG-126**: The GitHub Release MUST attach exactly one asset, the packed npm tarball built from the repository sources inside the release job.
+- **PKG-127**: `tools/check-release-artifacts.mjs` MUST report a release failure naming every packed entry outside the publication allowlist, because repository sources are not release artifacts.
 - **PKG-128**: The release workflow MUST verify exactly one packed `*.tgz` artifact and zero source-archive artifacts before creating the GitHub Release.
+- **PKG-129**: `package.json` `build` MUST invoke the installed `tsup` compiler directly for the single runtime entry `src/cli.ts`, emitting only `dist/cli.js`.
+- **PKG-130**: The `build` lifecycle MUST remove every stale output of an earlier build from `dist/` before compiling.
+- **PKG-131**: The `build` lifecycle MUST exit non-zero when the compile step fails.
 
 ## 3. Requirements
 
@@ -420,7 +415,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 #### Skill Resources
 - **REQ-097**: Each skill MUST provide a `SKILL.md` with YAML front matter `name` (1-64 lowercase ASCII letters, digits, hyphens, matching the directory name) and non-empty `description`.
 - **REQ-098**: Each `SKILL.md` MUST be written in English, be self-contained, and reference only mcp-google-api tool names defined by PRJ-001.
-- **REQ-099**: Adding a skill MUST require only a new `src/resources/skills/<skill-id>/SKILL.md` directory plus one synchronized `manifest.json` entry.
+- **REQ-099**: Adding a skill MUST require only a new `skills/<skill-id>/SKILL.md` directory plus one synchronized `manifest.json` entry.
 - **REQ-100**: The `eatspot-discovery` skill MUST mandate that every Google Maps data value originates from an executed mcp-google-api tool call and MUST forbid presenting fabricated, simulated, or reconstructed data as API-verified.
 - **REQ-101**: The `eatspot-discovery` skill MUST assign a defined workflow role to each of the 18 mcp-google-api tools across discovery, enrichment, routing, context, composite, and audit support.
 - **REQ-102**: The `eatspot-discovery` skill MUST define default meal budgets (breakfast EUR 10, lunch EUR 30, dinner EUR 40), user-amount precedence, cumulative `priceLevels` mapping, and numeric `price_range.endPrice` priority over `price_level`.
@@ -528,16 +523,16 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-017**: MUST verify REQ-079/REQ-129/REQ-130/REQ-131/REQ-165/REQ-191/REQ-224 by running `npm test` (`tests/cliSpawn.unit.test.ts`): spawned CLI asserts `start` boots the HTTP server from flag-and-settings configuration with the `MCP Google API server` startup banner and orderly SIGTERM shutdown, and no command prints help with the version header, management commands, and the `--force` upgrade option on stdout with exit 0, and the help text contains no token split across a line break.
 - **TST-018**: MUST verify REQ-152/REQ-154/REQ-155/REQ-156/REQ-157/REQ-158 by running `npm test` (`tests/skillDebugInstall.unit.test.ts`): temp-directory installs assert plain mode excludes the debug file, debug mode appends it once across reruns, and `show` reports OK for both modes.
 - **TST-019**: MUST verify REQ-153/REQ-160 by running `npm test` (`tests/eatspotSkillContract.unit.test.ts`): the packaged `SKILL.md` carries no debug section while the packaged debug file carries the register, capture, and provenance rules.
-- **TST-020**: MUST verify PKG-008/PKG-009/PKG-010/PKG-012/PKG-026/PKG-027/PKG-028/PKG-029/PKG-030/PKG-031/PKG-032/PKG-042/PKG-043/PKG-110/PKG-111/PKG-112/PKG-113 by running `npm test` (`tests/ciContract.unit.test.ts`): `.github/workflows/ci.yml` is absent, the single release job resolves master and develop reachability before any pack or publish step, fails on neither-branch tags, executes no dependency install, no build command, no build script, no pre-release gate, and no typecheck or test stage, packs the committed `dist/` artifacts with lifecycle scripts disabled, validates them before publish and release creation, gates `npm publish` on master reachability while develop-only tags pack and release without publishing, and publish authenticates via OIDC Trusted Publishing with `id-token: write`, no `NPM_TOKEN`/`NODE_AUTH_TOKEN`, and npm >= 11.5.1 on the pinned Node runtime.
-- **TST-021**: MUST verify PKG-033/PKG-034/PKG-035/PKG-036/PKG-037/PKG-038/PKG-039/PKG-040/PKG-075/PKG-116 by running `npm test` (`tests/npmPublishContract.unit.test.ts`): metadata, lockfile identity, and `npm pack --dry-run` tarball-list assertions pass, including the `!dist/*.tgz` `files` negation, the absence of any packed `dist/*.tgz` entry, rejection of any skills-root file other than `manifest.json`, and exclusion of every skills authoring document; pass when all assertions hold.
+- **TST-020**: MUST verify PKG-008/PKG-009/PKG-010/PKG-012/PKG-026/PKG-027/PKG-028/PKG-029/PKG-030/PKG-031/PKG-032/PKG-042/PKG-043/PKG-110/PKG-111/PKG-112/PKG-113 by running `npm test` (`tests/ciContract.unit.test.ts`): `.github/workflows/ci.yml` is absent, the single release job resolves master and develop reachability before any build, pack, or publish step, fails on neither-branch tags, installs dependencies from the lockfile and builds the runtime bundle before packing, packs with lifecycle scripts disabled, validates the tarball before publish and release creation, gates `npm publish` on master reachability while develop-only tags pack and release without publishing, and publish authenticates via OIDC Trusted Publishing with `id-token: write`, no `NPM_TOKEN`/`NODE_AUTH_TOKEN`, and npm >= 11.5.1 on the pinned Node runtime.
+- **TST-021**: MUST verify PKG-033/PKG-034/PKG-035/PKG-036/PKG-037/PKG-038/PKG-039/PKG-040/PKG-075/PKG-116 by running `npm test` (`tests/npmPublishContract.unit.test.ts`): metadata, lockfile identity, and `npm pack --dry-run` tarball-list assertions pass, including the absence of `main`/`exports`, the `bin`/`dist`/`skills` `files` allowlist, the single packed `dist/cli.js`, rejection of any skills-root file other than `manifest.json`, exclusion of every skills authoring document, and exclusion of every `.ts`, `*.tgz`, and source map entry; pass when all assertions hold.
 - **TST-023**: MUST verify REQ-170/REQ-171/REQ-172/REQ-173/REQ-177/REQ-178/REQ-187/REQ-188/REQ-189/REQ-190 by running `npm test` (`tests/upgradeManager.unit.test.ts`): injected fetch and spawn stubs assert the develop channel probes only the GitHub releases endpoint, always installs the raw `tag_name` ref even when equal to the installed version, fails fast on probe error without spawning, reports the probed version in the summary, `--force` appends the npm force flag to both channel update commands while its absence runs the standard unforced command, and the management parser accepts `--force` only beside `--upgrade`.
 - **TST-024**: MUST verify PKG-058/PKG-059/PKG-060/PKG-061/PKG-062/PKG-123/PKG-124 by running `npm test` (`tests/preReleaseCheck.unit.test.ts`): stage order, fail-fast wiring, repository-root execution, no install/publish commands, temporary-directory build output, and no executable `dist/` reference; sandbox runs assert fail-fast exit 1 and a byte-identical pre-existing `dist/`.
 - **TST-025**: MUST verify REQ-209/REQ-210/REQ-211/REQ-212 by running `npm test` (`tests/configRenderer.unit.test.ts`): golden comparisons cover one root child, two root siblings, nested first/middle/last nodes, detail prefixes, section badges, and requested subtrees byte for byte.
 - **TST-026**: MUST verify REQ-209/REQ-210/REQ-211 by running `npm test` (`tests/configRenderer.unit.test.ts`): a structural validator parses real `--print` and `--info` output and rejects orphan connectors, extra continuation segments, and misplaced markers.
 - **TST-027**: MUST verify REQ-217/REQ-218 by running `npm test` (`tests/configTableRenderer.unit.test.ts`): border alignment, wide-character widths, escaped control characters, and empty-collection table omission are asserted.
 - **TST-028**: MUST verify REQ-193-REQ-208 and REQ-213-REQ-222 by running `npm test` (`tests/configCommands.unit.test.ts`): get/set/unset/print/info/print-raw behavior, exit codes, stream separation, resets, bounds, and no mutation on rejection are asserted.
-- **TST-029**: MUST verify PKG-090/PKG-091/PKG-092/PKG-093 by running `npm test` (`tests/gitignoreDist.unit.test.ts`): static contract asserts the `!dist/` and `!dist/**/*` re-inclusions in the included-paths section, their placement before the `!tools/` and `!bin/` tail exceptions, the absence of any active `.gitignore` rule excluding `dist/` entries, and the validator nested-tarball rejection guard; pass when all assertions hold.
+- **TST-029**: MUST verify PKG-090/PKG-091/PKG-092/PKG-093 by running `npm test` (`tests/gitignoreDist.unit.test.ts`): static contract asserts the active `.gitignore` `dist/` exclusion, the absence of any `dist/` re-inclusion rule, the `!tools/` and `!bin/` tail exceptions, and the validator nested-tarball rejection guard; pass when all assertions hold.
 - **TST-030**: MUST verify PKG-114/PKG-115 by running `npm test` (`tests/docsContract.unit.test.ts`): every `README.md` documentation link that targets an excluded `docs/` document is an absolute repository URL, and every project Markdown document (`README.md`, `CHANGELOG.md`, `docs/**`) contains no non-English marker; pass when all assertions hold.
-- **TST-031**: MUST verify PKG-102/PKG-108/PKG-109 by running `npm test` (`tests/releaseBuildScript.unit.test.ts`): a sandboxed build MUST leave `dist/<name>-<version>.tgz` as the only `*.tgz` in `dist/`, must keep it readable by `tar`, and must preserve it while removing the private work directory; pass when all assertions hold.
-- **TST-032**: MUST verify PKG-117/PKG-118/PKG-119 by running `npm test` (`tests/buildArchivePreservation.unit.test.ts`): a sandboxed `build` lifecycle MUST leave a pre-existing `dist/<name>-<version>.tgz` byte-identical, prune stale generated outputs, and keep `tsup.config.ts` from cleaning `dist/`; pass when all assertions hold.
-- **TST-033**: MUST verify PKG-120/PKG-121/PKG-122 by running `npm test` (`tests/buildArchivePreservation.unit.test.ts`): a sandboxed lifecycle MUST abort non-zero leaving `dist/` untouched when `node_modules/.bin/tsup` is absent, MUST restore pre-run generated outputs byte-identically when the compiler fails, and keep the archive intact in both cases; pass when all assertions hold.
+- **TST-031**: MUST verify PKG-102/PKG-108/PKG-109 by running `npm test` (`tests/releaseBuildScript.unit.test.ts`): a sandboxed build MUST leave `dist/cli.js` as the only `dist/` artifact, MUST create no `*.tgz` archive, and MUST remove its private work directory; pass when all assertions hold.
+- **TST-032**: MUST verify PKG-129/PKG-130 by running `npm test` (`tests/buildOutputContract.unit.test.ts`): a sandboxed `build` lifecycle MUST emit only `dist/cli.js` and MUST remove every stale generated output of an earlier build; pass when all assertions hold.
+- **TST-033**: MUST verify PKG-131 by running `npm test` (`tests/buildOutputContract.unit.test.ts`): a sandboxed lifecycle MUST exit non-zero when the compiler fails; pass when all assertions hold.
