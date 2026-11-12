@@ -7,20 +7,24 @@
  *          (`*.js`, `*.js.map`, `*.d.ts`, `*.d.ts.map`, `*.tsbuildinfo`, `*.tmp`) while excluding
  *          every `*.tgz` archive, because the committed release archive
  *          `dist/<name>-<version>.tgz` is a tracked release artifact owned exclusively by
- *          `scripts/build.sh` (PKG-102, PKG-117, PKG-119). Non-generated entries, symbolic links,
+ *          `scripts/build.sh` (PKG-102, PKG-117, PKG-119). A preflight guard aborts before the first
+ *          removal when `node_modules/.bin/tsup` is absent, so a toolchain-less invocation never
+ *          destroys the tracked runtime bundle (PKG-120). Non-generated entries, symbolic links,
  *          and directories are never removed; directories left empty by a removal are pruned
  *          deepest-first, `dist/` itself only when it ends up empty. An absent `dist/` is a
  *          successful no-op (fresh checkout, `prepare` of a git-ref install).
- * @requires node:fs (readdirSync, lstatSync, rmSync, rmdirSync), node:path (join, dirname), node:url
- * @satisfies PKG-117, PKG-118, PKG-119
- * @note Exit code 0 when the pruner removed nothing or every stale output, 1 when `dist/` is not a
- *       directory or a removal fails. stdout carries `[prune-generated-dist]` diagnostics only.
- * @warning Called by `package.json` `scripts.build`; never call it from `scripts/build.sh`, whose
+ * @requires node:fs (existsSync, readdirSync, lstatSync, rmSync, rmdirSync), node:path (join, dirname), node:url
+ * @satisfies PKG-117, PKG-118, PKG-119, PKG-120
+ * @note Exit code 0 when the pruner removed nothing or every stale output; 1 when `dist/` is not a
+ *       directory, when the compiler binary is absent (no removal is then performed, PKG-120), or
+ *       when a removal fails. stdout carries `[prune-generated-dist]` diagnostics only.
+ * @warning Called by `tools/build-dist-lifecycle.mjs`, the `package.json` `scripts.build` orchestrator
+ *          that owns the PKG-121 restore-on-failure step; never call it from `scripts/build.sh`, whose
  *          cleanup phase (PKG-071, PKG-105, PKG-106) already owns the full generated set including
  *          every `*.tgz`.
- * @see tsup.config.ts (`clean: false`), scripts/build.sh, package.json `scripts.build`
+ * @see tsup.config.ts (`clean: false`), scripts/build.sh, tools/build-dist-lifecycle.mjs
  */
-import { lstatSync, readdirSync, rmdirSync, rmSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, rmdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -56,6 +60,15 @@ const ARCHIVE_SUFFIX = ".tgz";
  * @type {string}
  */
 const TAG = "[prune-generated-dist]";
+
+/**
+ * Installed compiler binary whose absence forbids every removal (PKG-120).
+ * @details The pruner runs immediately before the compiler in the `build` lifecycle, so a missing
+ *          compiler would leave `dist/` without its tracked runtime bundle; the guard aborts before
+ *          the first `rmSync` call instead.
+ * @type {string}
+ */
+const TSUP_BIN = join(PROJECT_ROOT, "node_modules", ".bin", process.platform === "win32" ? "tsup.cmd" : "tsup");
 
 /**
  * @brief Reports one informational line on stdout.
@@ -136,14 +149,17 @@ function collectRemovalPlan(directory, relativePrefix, plan) {
 
 /**
  * @brief Removes every stale generated output from `dist/` and prunes emptied directories.
- * @details No-op when `dist/` is absent; aborts with exit code 1 when `dist/` is not a directory or
- *          when a removal fails. Removed artifacts and pruned directories are reported on stdout.
- *          Complexity O(n) in `dist/` entry count.
- * @return {number} Exit code: 0 on success, 1 on an unusable `dist/` or a failed removal.
+ * @details No-op when `dist/` is absent; aborts with exit code 1 when the compiler binary is absent
+ *          (no removal performed, PKG-120), when `dist/` is not a directory, or when a removal
+ *          fails. Removed artifacts and pruned directories are reported on stdout. Complexity O(n)
+ *          in `dist/` entry count.
+ * @return {number} Exit code: 0 on success; 1 on an unusable `dist/`, a missing compiler, or a
+ *         failed removal.
  * @throws {NodeJS.ErrnoException} Propagated by `readdirSync`/`rmSync` before the caller maps it to
  *         exit code 1.
- * @satisfies PKG-117, PKG-118, PKG-119
- * @post Every removable generated output is gone and every `*.tgz` archive is untouched.
+ * @satisfies PKG-117, PKG-118, PKG-119, PKG-120
+ * @post Every removable generated output is gone and every `*.tgz` archive is untouched, or no entry
+ *       was removed when the preflight aborted.
  */
 function pruneGeneratedDist() {
   let rootStats;
@@ -155,6 +171,12 @@ function pruneGeneratedDist() {
   }
   if (!rootStats.isDirectory()) {
     process.stderr.write(`${TAG} FAILED: ${DIST_DIR} is not a directory\n`);
+    return 1;
+  }
+  if (!existsSync(TSUP_BIN)) {
+    process.stderr.write(
+      `${TAG} FAILED: ${TSUP_BIN} missing; no generated output removed (PKG-120); install dependencies with 'npm ci' first\n`,
+    );
     return 1;
   }
   /** @type {{ files: string[], directories: string[] }} */

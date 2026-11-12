@@ -26,7 +26,7 @@ mcp-google-api/
 ├── bin/                         # mcp-google-api.mjs installed-bin launcher
 ├── docs/                        # Usage docs (CONFIGURATION.md, TOOLS.md, SKILLS_AUTHORING.md)
 ├── scripts/                     # mcp-google-api.sh launcher + build.sh release artifacts and obsolete-build cleaner + pre-release-check.sh release gate
-├── tools/                       # check-publish-version.mjs publish guard + check-release-artifacts.mjs artifact validator
+├── tools/                       # check-publish-version.mjs publish guard + check-release-artifacts.mjs artifact validator + build-dist-lifecycle.mjs dist/ lifecycle orchestrator + prune-generated-dist.mjs generated-output pruner
 ├── src/
 │   ├── cli.ts                   # yargs entry: doctor, exec, batch-geocode, server start
 │   ├── config.ts                # serverConfigs registry, tool annotations, filterTools()
@@ -209,6 +209,9 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-117**: The `prepare` and `build` lifecycles MUST NOT delete, overwrite, or invalidate the committed release archive `dist/<name>-<version>.tgz` (PKG-102).
 - **PKG-118**: The `prepare` and `build` lifecycles MUST NOT delete or modify any tracked `dist/` entry other than generated `dist/*.js` build outputs.
 - **PKG-119**: The `build` lifecycle MUST prune every stale generated `dist/` output classified by PKG-072 before compiling, excluding every `*.tgz` archive from removal.
+- **PKG-120**: The `build` and `prepare` lifecycles MUST abort non-zero before removing any `dist/` entry when `node_modules/.bin/tsup` is absent.
+- **PKG-121**: The `build` and `prepare` lifecycles MUST restore the pre-run generated `dist/` outputs and exit non-zero when the compile step fails.
+- **PKG-122**: The `build` and `prepare` lifecycles MUST NOT leave the tracked `dist/` runtime bundle absent after any run.
 
 ## 3. Requirements
 
@@ -531,3 +534,4 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-030**: MUST verify PKG-114/PKG-115 by running `npm test` (`tests/docsContract.unit.test.ts`): every `README.md` documentation link that targets an excluded `docs/` document is an absolute repository URL, and every project Markdown document (`README.md`, `CHANGELOG.md`, `docs/**`) contains no non-English marker; pass when all assertions hold.
 - **TST-031**: MUST verify PKG-102/PKG-108/PKG-109 by running `npm test` (`tests/releaseBuildScript.unit.test.ts`): a sandboxed build MUST leave `dist/<name>-<version>.tgz` as the only `*.tgz` in `dist/`, must keep it readable by `tar`, and must preserve it while removing the private work directory; pass when all assertions hold.
 - **TST-032**: MUST verify PKG-117/PKG-118/PKG-119 by running `npm test` (`tests/buildArchivePreservation.unit.test.ts`): a sandboxed `build` lifecycle MUST leave a pre-existing `dist/<name>-<version>.tgz` byte-identical, prune stale generated outputs, and keep `tsup.config.ts` from cleaning `dist/`; pass when all assertions hold.
+- **TST-033**: MUST verify PKG-120/PKG-121/PKG-122 by running `npm test` (`tests/buildArchivePreservation.unit.test.ts`): a sandboxed lifecycle MUST abort non-zero leaving `dist/` untouched when `node_modules/.bin/tsup` is absent, MUST restore pre-run generated outputs byte-identically when the compiler fails, and keep the archive intact in both cases; pass when all assertions hold.

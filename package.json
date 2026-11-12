@@ -20,7 +20,7 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "node tools/prune-generated-dist.mjs && tsup",
+    "build": "node tools/build-dist-lifecycle.mjs",
     "dev": "tsup --watch",
     "start": "node dist/cli.js",
     "typecheck": "tsc --noEmit",

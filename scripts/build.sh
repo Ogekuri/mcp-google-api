@@ -12,10 +12,12 @@
 #  *    every package version number (including any `<name>-<version>.tgz` tarball); emptied ancestor
 #  *    directories are pruned deepest-first, `dist/` itself only when empty, and non-generated entries
 #  *    are never touched. An absent `dist/` is a successful no-op.
-#  * 4. Compile (PKG-069): `npm run build` runs the generated-only pruner
-#  *    (`tools/prune-generated-dist.mjs`, PKG-119) and then tsup (ESM runtime bundle and shared
-#  *    chunks). tsup runs with `clean: false` so the committed release archive in `dist/` is never
-#  *    wiped by the compiler (PKG-117, PKG-118).
+#  * 4. Compile (PKG-069): `npm run build` runs the `dist/` lifecycle orchestrator
+#  *    (`tools/build-dist-lifecycle.mjs`), which preflights the compiler (PKG-120), snapshots the
+#  *    generated outputs, runs the generated-only pruner (`tools/prune-generated-dist.mjs`, PKG-119),
+#  *    then tsup (ESM runtime bundle and shared chunks), and restores the snapshot when the compile
+#  *    fails (PKG-121, PKG-122). tsup runs with `clean: false` so the committed release archive in
+#  *    `dist/` is never wiped by the compiler (PKG-117, PKG-118).
 #  * 5. Compile verification (PKG-069, PKG-074): `dist/cli.js` and `dist/index.js` must exist and be
 #  *    non-empty; both must pass `node --check`; every relative import target of both entries must
 #  *    exist and be non-empty.
@@ -41,7 +43,7 @@
 #  *       and the private work directory is removed; on failure `dist/` equals its pre-run state.
 #  * @note Runnable from any working directory (PKG-066); writes only under `dist/` and the OS temp directory.
 #  * @satisfies PKG-065, PKG-066, PKG-067, PKG-068, PKG-069, PKG-070, PKG-071, PKG-072, PKG-073, PKG-074,
-#  *            PKG-102, PKG-104, PKG-105, PKG-106, PKG-107, PKG-108, PKG-109
+#  *            PKG-102, PKG-104, PKG-105, PKG-106, PKG-107, PKG-108, PKG-109, PKG-120, PKG-121, PKG-122
 #  */
 set -euo pipefail
 cd "$(dirname "$0")/.."

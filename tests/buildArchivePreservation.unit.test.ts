@@ -3,7 +3,9 @@
  *
  * @brief Verifies that the build lifecycle never destroys the committed release archive in `dist/`
  * (PKG-117), never removes other tracked `dist/` entries besides generated `dist/*.js` outputs
- * (PKG-118), and prunes stale generated outputs before compiling (PKG-119).
+ * (PKG-118), prunes stale generated outputs before compiling (PKG-119), aborts before any removal
+ * when the compiler binary is absent (PKG-120), restores the pre-run generated outputs when the
+ * compile fails (PKG-121), and never leaves the tracked runtime bundle absent after a run (PKG-122).
  * @details UUT: the `package.json` `scripts.build` command chain, executed from a temp-directory
  * sandbox that holds the tracked `tools/prune-generated-dist.mjs` and a stub `tsup` emulating the
  * `clean: false` compiler configuration. Reproduced defect: the former `tsup` `clean: true`
@@ -16,7 +18,7 @@
  * repository tree.
  * @note HDT level 1 (composed): external boundaries are the shell runtime (`bash`) and the Node.js
  * runtime. Test cases are independent and each owns its sandbox.
- * @satisfies PKG-117, PKG-118, PKG-119, TST-032
+ * @satisfies PKG-117, PKG-118, PKG-119, PKG-120, PKG-121, PKG-122, TST-032, TST-033
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -41,6 +43,9 @@ const PROJECT_ROOT: string = join(dirname(fileURLToPath(import.meta.url)), "..")
 /** Tracked generated-output pruner invoked by the `build` lifecycle (PKG-119). */
 const PRUNER_SCRIPT: string = join(PROJECT_ROOT, "tools", "prune-generated-dist.mjs");
 
+/** Tracked `dist/` orchestration of the `build` lifecycle: preflight, prune, compile, restore (PKG-120, PKG-121). */
+const LIFECYCLE_SCRIPT: string = join(PROJECT_ROOT, "tools", "build-dist-lifecycle.mjs");
+
 /** Upper bound in milliseconds for one sandboxed lifecycle run. */
 const BUILD_TIMEOUT_MS = 120000;
 
@@ -60,6 +65,24 @@ const TSUP_STUB: string = [
   `printf 'export { value } from "./${FIXTURE_CHUNK}";\\n' > dist/index.js`,
   "",
 ].join("\n");
+
+/** Stub `tsup` source emulating a failing compile that already emitted partial outputs (PKG-121). */
+const TSUP_FAILING_STUB: string = [
+  "#!/usr/bin/env bash",
+  "set -euo pipefail",
+  "mkdir -p dist",
+  `printf 'export const partial = 1;\\n' > dist/${FIXTURE_CHUNK}`,
+  "printf 'console.log(\"partial\");\\n' > dist/cli.js",
+  "printf 'simulated compile failure\\n' >&2",
+  "exit 1",
+  "",
+].join("\n");
+
+/** Pre-run generated output seeded before a failing compile (PKG-121 byte-identity control). */
+const PRE_RUN_CLI = "console.log('pre-run cli');\n";
+
+/** Second pre-run generated output seeded before a failing compile (PKG-121 byte-identity control). */
+const PRE_RUN_INDEX = "export const preRun = 1;\n";
 
 /** Temp-directory sandbox handles for one lifecycle run. */
 interface LifecycleSandbox {
@@ -105,15 +128,22 @@ function loadRepositoryManifest(): {
 /**
  * @brief Creates an isolated `build`-lifecycle sandbox.
  * @details Creates a temp directory under the OS temp root containing a fixture `package.json`
- * that carries the tracked `scripts.build` command, a copy of the tracked
- * `tools/prune-generated-dist.mjs`, and the stub compiler under `node_modules/.bin/tsup`.
- * Complexity O(1) filesystem operations plus two file copies.
+ * that carries the tracked `scripts.build` command, copies of the tracked
+ * `tools/prune-generated-dist.mjs` and `tools/build-dist-lifecycle.mjs`, and the stub compiler under
+ * `node_modules/.bin/tsup` (omitted when `includeCompiler` is false, PKG-120 scenario).
+ * Complexity O(1) filesystem operations plus three file copies.
  * @param buildCommand {string} Tracked `scripts.build` command chain under test.
+ * @param includeCompiler {boolean} True to install the stub compiler; false to emulate a missing toolchain.
+ * @param compilerStub {string} Stub compiler source written under `node_modules/.bin/tsup`.
  * @return {LifecycleSandbox} Sandbox handles; the caller MUST remove `root` in a `finally` block.
  * @throws {Error} When directories or files cannot be created.
  * @side_effect Creates one directory tree under the OS temp root.
  */
-function createSandbox(buildCommand: string): LifecycleSandbox {
+function createSandbox(
+  buildCommand: string,
+  includeCompiler = true,
+  compilerStub: string = TSUP_STUB,
+): LifecycleSandbox {
   const manifest = loadRepositoryManifest();
   const root = mkdtempSync(join(tmpdir(), "build-archive-contract-"));
   mkdirSync(join(root, "tools"), { recursive: true });
@@ -127,7 +157,10 @@ function createSandbox(buildCommand: string): LifecycleSandbox {
     )}\n`,
   );
   copyFileSync(PRUNER_SCRIPT, join(root, "tools", "prune-generated-dist.mjs"));
-  writeExecutable(join(root, "node_modules", ".bin", "tsup"), TSUP_STUB);
+  copyFileSync(LIFECYCLE_SCRIPT, join(root, "tools", "build-dist-lifecycle.mjs"));
+  if (includeCompiler) {
+    writeExecutable(join(root, "node_modules", ".bin", "tsup"), compilerStub);
+  }
   return {
     root,
     buildCommand,
@@ -256,23 +289,29 @@ test("test_release_compiler_config_does_not_clean_dist", () => {
 });
 
 /**
- * @brief Wiring guard: the `build` script must prune generated outputs before the compiler runs.
- * @details Static inspection of `package.json` `scripts.build`: requires the tracked pruner invocation
- * ahead of the compiler and the presence of the pruner script file (PKG-119). Pure.
+ * @brief Wiring guard: the `build` script must orchestrate the pruner before the compiler.
+ * @details Static inspection of `package.json` `scripts.build` (the tracked lifecycle orchestrator)
+ * and of `tools/build-dist-lifecycle.mjs`: requires the lifecycle invocation as the only build step
+ * and the tracked pruner invocation ahead of the compiler inside it (PKG-119, PKG-121). Pure.
  * @return {void} No value; assertions throw on an incomplete wiring.
- * @throws {AssertionError} When the pruner is not invoked first or the script file is absent.
- * @satisfies PKG-119
+ * @throws {AssertionError} When the lifecycle is not wired, the pruner is not invoked first, or a
+ *         script file is absent.
+ * @satisfies PKG-119, PKG-121
  */
 test("test_build_script_runs_generated_pruner_before_compiler", () => {
   // Arrange
   const buildCommand = loadRepositoryManifest().scripts.build;
-  const prunerPosition = buildCommand.indexOf("node tools/prune-generated-dist.mjs");
-  const compilerPosition = buildCommand.indexOf("tsup");
+  const lifecycleSource = readFileSync(LIFECYCLE_SCRIPT, "utf8");
+  const prunerPosition = lifecycleSource.indexOf("prune-generated-dist.mjs");
+  const compilerPosition = lifecycleSource.indexOf("TSUP_BIN");
   // Act
+  const lifecycleWired = buildCommand.includes("node tools/build-dist-lifecycle.mjs");
   const prunerRunsFirst = prunerPosition >= 0 && compilerPosition > prunerPosition;
   // Assert
-  assert.equal(prunerRunsFirst, true, `scripts.build must run the generated pruner before tsup (PKG-119): ${buildCommand}`);
+  assert.equal(lifecycleWired, true, `scripts.build must run the tracked dist lifecycle orchestrator (PKG-121): ${buildCommand}`);
+  assert.equal(prunerRunsFirst, true, "the lifecycle must run the generated pruner before the compiler (PKG-119)");
   assert.equal(existsSync(PRUNER_SCRIPT), true, "tools/prune-generated-dist.mjs must exist (PKG-119)");
+  assert.equal(existsSync(LIFECYCLE_SCRIPT), true, "tools/build-dist-lifecycle.mjs must exist (PKG-121)");
 });
 
 /**
@@ -296,6 +335,73 @@ test("test_build_lifecycle_fails_when_dist_is_not_a_directory", () => {
     assert.notEqual(result.status, 0, "a non-directory dist/ must abort the lifecycle (PKG-119)");
     assert.equal(result.stderr.includes("is not a directory"), true, "diagnostic must name the unusable dist/ path (PKG-119)");
     assert.equal(readFileSync(distPath, "utf8"), "not a directory\n", "the offending entry must not be modified (PKG-118)");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * @brief Preflight contract: a missing compiler aborts the lifecycle without touching `dist/`.
+ * @details Creates a sandbox without `node_modules/.bin/tsup`, seeds a tracked runtime bundle plus
+ * the release archive, runs the tracked lifecycle, and asserts a non-zero exit with a diagnostic
+ * naming the compiler and a byte-identical, still-complete `dist/` tree (PKG-120, PKG-122).
+ * Complexity O(build) plus one bash child.
+ * @return {void} No value; assertions throw when the lifecycle removes or rewrites any entry.
+ * @throws {AssertionError} When the lifecycle exits 0, drops a runtime artifact, or rewrites bytes.
+ * @satisfies PKG-120, PKG-122
+ */
+test("test_build_lifecycle_aborts_without_touching_dist_when_compiler_missing", () => {
+  // Arrange
+  const sandbox = createSandbox(loadRepositoryManifest().scripts.build, false);
+  const archivePath = seedDistFile(sandbox, sandbox.archiveName, ARCHIVE_CONTENT);
+  const cliPath = seedDistFile(sandbox, "cli.js", PRE_RUN_CLI);
+  const indexPath = seedDistFile(sandbox, "index.js", PRE_RUN_INDEX);
+  try {
+    // Act
+    const result = runBuildLifecycle(sandbox);
+    // Assert
+    assert.notEqual(result.status, 0, "a missing compiler must abort the lifecycle (PKG-120)");
+    assert.equal(
+      result.stderr.includes("node_modules/.bin/tsup"),
+      true,
+      `diagnostic must name the missing compiler (PKG-120); stderr: ${result.stderr}`,
+    );
+    assert.equal(result.stderr.includes("dist/ was not modified"), true, "diagnostic must state that dist/ was not modified (PKG-120)");
+    assert.equal(readFileSync(cliPath, "utf8"), PRE_RUN_CLI, "tracked dist/cli.js must stay byte-identical (PKG-122)");
+    assert.equal(readFileSync(indexPath, "utf8"), PRE_RUN_INDEX, "tracked dist/index.js must stay byte-identical (PKG-122)");
+    assert.equal(readFileSync(archivePath, "utf8"), ARCHIVE_CONTENT, "release archive must stay byte-identical (PKG-117)");
+  } finally {
+    rmSync(sandbox.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * @brief Recovery contract: a failing compile restores the pre-run generated outputs.
+ * @details Seeds the tracked runtime bundle plus the release archive, installs a stub compiler that
+ * emits partial outputs and fails, runs the tracked lifecycle, and asserts a non-zero exit with the
+ * pre-run generated outputs restored byte-identically, the partial output removed, and the archive
+ * untouched (PKG-121, PKG-122, PKG-117). Complexity O(build) plus one bash child.
+ * @return {void} No value; assertions throw when the lifecycle leaves a partial output set.
+ * @throws {AssertionError} When the lifecycle exits 0, keeps partial outputs, or rewrites entries.
+ * @satisfies PKG-117, PKG-121, PKG-122
+ */
+test("test_build_lifecycle_restores_generated_outputs_when_compiler_fails", () => {
+  // Arrange
+  const sandbox = createSandbox(loadRepositoryManifest().scripts.build, true, TSUP_FAILING_STUB);
+  const archivePath = seedDistFile(sandbox, sandbox.archiveName, ARCHIVE_CONTENT);
+  const cliPath = seedDistFile(sandbox, "cli.js", PRE_RUN_CLI);
+  const indexPath = seedDistFile(sandbox, "index.js", PRE_RUN_INDEX);
+  const partialChunkPath = join(sandbox.root, "dist", FIXTURE_CHUNK);
+  try {
+    // Act
+    const result = runBuildLifecycle(sandbox);
+    // Assert
+    assert.notEqual(result.status, 0, "a failing compile must abort the lifecycle (PKG-121)");
+    assert.equal(result.stderr.includes("dist/ restored"), true, `diagnostic must report the restore (PKG-121); stderr: ${result.stderr}`);
+    assert.equal(readFileSync(cliPath, "utf8"), PRE_RUN_CLI, "pre-run dist/cli.js must be restored byte-identically (PKG-121)");
+    assert.equal(readFileSync(indexPath, "utf8"), PRE_RUN_INDEX, "pre-run dist/index.js must be restored byte-identically (PKG-121)");
+    assert.equal(existsSync(partialChunkPath), false, "partial compile output must not survive the restore (PKG-121)");
+    assert.equal(readFileSync(archivePath, "utf8"), ARCHIVE_CONTENT, "release archive must stay byte-identical (PKG-117)");
   } finally {
     rmSync(sandbox.root, { recursive: true, force: true });
   }
