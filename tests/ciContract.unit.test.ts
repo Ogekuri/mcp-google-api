@@ -57,8 +57,17 @@ const FORBIDDEN_WORKFLOW_TOKENS = [
 /** Resolved pre-built release artifact path output of the resolution step (PKG-110, PKG-111). */
 const ARTIFACT_PATH_OUTPUT = "${{ steps.prebuilt.outputs.artifact_path }}";
 
+/**
+ * Path-anchored publish argument of the committed tarball (PKG-113).
+ * @details npm parses a bare relative spec (`dist/<package>-<version>.tgz`) as a
+ * hosted git shorthand (`github:dist/<package>-<version>.tgz`), runs
+ * `git ls-remote ssh://git@github.com/...` and aborts with exit 128 before any
+ * publication. The `./` prefix forces local-file spec resolution.
+ */
+const PUBLISH_FILE_SPEC = `./${ARTIFACT_PATH_OUTPUT}`;
+
 /** Publish command consuming the committed tarball (PKG-113). */
-const PUBLISH_COMMAND = `run: npm publish "${ARTIFACT_PATH_OUTPUT}" --ignore-scripts --provenance --access public`;
+const PUBLISH_COMMAND = `run: npm publish "${PUBLISH_FILE_SPEC}" --ignore-scripts --provenance --access public`;
 
 /**
  * @brief Loads a GitHub Actions workflow definition as text for contract assertions.
@@ -153,6 +162,16 @@ test("Release workflow publishes to npm only for master-reachable tags", () => {
   assert.equal(publishIfIdx < publishRunIdx, true);
   assert.equal(gateOutputIdx < publishIfIdx, true);
   assert.notEqual(releaseAssetIdx, -1);
+});
+
+test("Release workflow publishes the committed tarball through an explicit relative file spec", () => {
+  // PKG-113: a bare relative argument makes npm resolve a hosted git shorthand
+  // (`dist/mcp-google-api-<version>.tgz` -> `github:dist/mcp-google-api-<version>.tgz`)
+  // and fail in `git ls-remote` with exit 128, so the publish argument MUST stay
+  // `./`-prefixed and resolve as a local file spec of the committed tarball.
+  const workflow = readWorkflow(RELEASE_WORKFLOW_PATH);
+  assert.equal(workflow.includes(PUBLISH_COMMAND), true);
+  assert.equal(workflow.includes(`run: npm publish "${ARTIFACT_PATH_OUTPUT}"`), false);
 });
 
 test("Release workflow publishes via npm OIDC Trusted Publishing and attaches the committed tarball", () => {

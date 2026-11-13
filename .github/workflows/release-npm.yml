@@ -138,10 +138,14 @@ jobs:
       # no publish-token secret and no publish-token environment variable are
       # configured (PKG-031). The pinned Node.js runtime bundles
       # npm >= 11.5.1, the minimum version supporting OIDC Trusted Publishing
-      # (PKG-032, PKG-014).
+      # (PKG-032, PKG-014). The publish argument keeps its explicit `./` path
+      # anchor: npm parses a bare relative spec (`dist/<file>.tgz`) as a hosted
+      # git shorthand (`github:dist/<file>.tgz`), runs `git ls-remote` and aborts
+      # with exit 128, whereas `./dist/<file>.tgz` resolves as the local file
+      # spec of the committed tarball (PKG-113).
       - name: Publish package to npm
         if: steps.branch_gate.outputs.on_master == 'true'
-        run: npm publish "${{ steps.prebuilt.outputs.artifact_path }}" --ignore-scripts --provenance --access public
+        run: npm publish "./${{ steps.prebuilt.outputs.artifact_path }}" --ignore-scripts --provenance --access public
 
       - name: Build Changelog
         id: build_changelog
