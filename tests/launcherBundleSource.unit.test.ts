@@ -18,10 +18,13 @@
  *   `dist/` entry is created, modified, or deleted;
  * - cleanup (PRJ-027, PRJ-028): every run leaves no `mcp-google-api-run.*` directory behind and
  *   argument forwarding plus exit-code propagation match PRJ-022.
+ * - packaged skills materialization (PRJ-018, PKG-024): the private temporary package root exposes
+ *   the repository `skills/` payload, so bundle commands that resolve `<packageRoot>/skills`
+ *   (`show`, `install`, `uninstall`, `api-key`) execute instead of aborting.
  * @note HDT level 1: one static ordering assertion plus sandboxed child-process runs in private
  * temporary directories. Offline and deterministic: the fixture compiler, the fixture release
  * tarball, and the fixture runtime bundle are created by this suite.
- * @satisfies PRJ-019, PRJ-022, PRJ-024, PRJ-025, PRJ-026, PRJ-027, PRJ-028, PRJ-029, TST-035
+ * @satisfies PRJ-018, PRJ-019, PRJ-022, PRJ-024, PRJ-025, PRJ-026, PRJ-027, PRJ-028, PRJ-029, PKG-024, TST-035
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -72,6 +75,46 @@ function fixtureBundle(source: string): string {
 }
 
 /**
+ * @brief Fixture runtime bundle reading the packaged skills manifest from its package root.
+ * @details Mirrors the production bundle layout contract: the emitted entry sits in
+ * `<packageRoot>/build/cli.js` and every skills-consuming command resolves
+ * `<packageRoot>/skills/manifest.json` (PKG-024). The fixture prints the resolved skill count so a
+ * sandboxed run proves the private temporary package root exposes the repository skills payload.
+ * @param source {string} Bundle-source marker printed on stdout.
+ * @return {string} ESM fixture bundle body.
+ */
+function skillsProbeBundle(source: string): string {
+  return [
+    'import { readFileSync } from "node:fs";',
+    'import { dirname, join } from "node:path";',
+    'import { fileURLToPath } from "node:url";',
+    'const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..");',
+    'const manifest = JSON.parse(readFileSync(join(packageRoot, "skills", "manifest.json"), "utf8"));',
+    `console.log("${SOURCE_MARKER_PREFIX}${source}:skills=" + manifest.skills.length);`,
+    "",
+  ].join("\n");
+}
+
+/**
+ * @brief Seeds a tracked-layout skills payload in the sandbox repository root.
+ * @details Writes `<sandbox>/skills/manifest.json` with one skill entry, the layout the published
+ * package ships at its package root (PKG-024).
+ * @param sandbox {string} Sandbox repository root.
+ * @return {string} Absolute seeded skills root.
+ */
+function writeSkillsFixture(sandbox: string): string {
+  const skillsRoot = join(sandbox, "skills");
+  mkdirSync(join(skillsRoot, "demo-skill"), { recursive: true });
+  writeFileSync(
+    join(skillsRoot, "manifest.json"),
+    `${JSON.stringify({ version: 1, skills: [{ id: "demo-skill", path: "demo-skill/SKILL.md" }] }, null, 2)}\n`,
+    "utf8",
+  );
+  writeFileSync(join(skillsRoot, "demo-skill", "SKILL.md"), "---\nname: demo-skill\ndescription: demo\n---\n", "utf8");
+  return skillsRoot;
+}
+
+/**
  * @brief Loads the tracked launcher script.
  * @details Synchronous read of the repository-root script; comment lines are preserved so the
  * static assertions can inspect the documented bundle-source ordering.
@@ -111,7 +154,7 @@ function createSandbox(): string {
  * @param sandbox {string} Sandbox repository root.
  * @return {string} Absolute compiler stub path.
  */
-function writeCompilerStub(sandbox: string): string {
+function writeCompilerStub(sandbox: string, bundleBody: string = fixtureBundle("compiler")): string {
   const compilerPath = join(sandbox, COMPILER_RELATIVE_PATH);
   mkdirSync(dirname(compilerPath), { recursive: true });
   const stub = [
@@ -129,7 +172,7 @@ function writeCompilerStub(sandbox: string): string {
     "  exit 1",
     "fi",
     'mkdir -p "$out_dir"',
-    `printf '%s' '${fixtureBundle("compiler")}' >"$out_dir/cli.js"`,
+    `printf '%s' '${bundleBody}' >"$out_dir/cli.js"`,
     "",
   ].join("\n");
   writeFileSync(compilerPath, stub, "utf8");
@@ -285,6 +328,30 @@ test("test_launcher_falls_back_to_committed_release_tarball", () => {
     assert.deepEqual(JSON.parse(lines[1]), args, "arguments were not forwarded unchanged (PRJ-022)");
     assert.deepEqual(snapshotDistDir(sandbox), distBefore, "fallback modified dist/ (PRJ-025, PRJ-026)");
     assert.deepEqual(readFileSync(tarballPath), tarballBefore, "fallback modified the release tarball (PRJ-025)");
+    assert.deepEqual(listLauncherRunDirs(), runDirsBefore, "temporary build directory survived (PRJ-027)");
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("test_launcher_materializes_packaged_skills_root_for_bundle_commands", () => {
+  // PRJ-018/PKG-024: the private temporary package root must expose the repository skills payload,
+  // so `show` and the install-kind commands resolve `<packageRoot>/skills` instead of aborting.
+  // Arrange
+  const sandbox = createSandbox();
+  try {
+    writeSkillsFixture(sandbox);
+    writeCompilerStub(sandbox, skillsProbeBundle("compiler"));
+    const distBefore = snapshotDistDir(sandbox);
+    const runDirsBefore = listLauncherRunDirs();
+
+    // Act
+    const run = runLauncher(sandbox, ["show"], 0);
+
+    // Assert
+    assert.equal(run.status, 0, `bundle could not resolve the packaged skills root: ${run.stderr}`);
+    assert.match(run.stdout, /launcher-source=compiler:skills=1/, "packaged skills payload was not materialized (PKG-024)");
+    assert.deepEqual(snapshotDistDir(sandbox), distBefore, "skills materialization modified dist/ (PRJ-025, PRJ-026)");
     assert.deepEqual(listLauncherRunDirs(), runDirsBefore, "temporary build directory survived (PRJ-027)");
   } finally {
     rmSync(sandbox, { recursive: true, force: true });

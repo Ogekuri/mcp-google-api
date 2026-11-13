@@ -22,13 +22,16 @@
 #  * 3. Dual-source abort (PRJ-024): when neither source is available, the launcher aborts non-zero
 #  *    naming both missing bundle sources and the manual remediation commands.
 #  * An ESM `package.json` marker is written after source resolution because the compiler cleans its
-#  * output directory. Compiler and extraction diagnostics are routed to stderr so stdout stays
-#  * reserved for the CLI (CTN-003). The emitted `cli.js` entry MUST exist, be non-empty, and pass
-#  * `node --check`. `node <temp>/cli.js "$@"` forwards every argument unchanged and the child exit
-#  * code becomes the script exit code (PRJ-022). The EXIT trap removes the private temporary build
-#  * directory on success and on failure while preserving the original exit status (PRJ-027) and the
-#  * repository working tree and index stay byte-identical (PRJ-028); signals HUP, INT, and TERM exit
-#  * through the same trap with status 129, 130, and 143.
+#  * output directory. The repository `skills/` tree is linked at the private package root, the parent
+#  * of the emitted bundle directory, so skills-consuming commands resolve `<packageRoot>/skills`
+#  * exactly like the installed distribution (PKG-024, PRJ-018); the link is read-only and never
+#  * copies or rewrites repository content. Compiler and extraction diagnostics are routed to stderr
+#  * so stdout stays reserved for the CLI (CTN-003). The emitted `cli.js` entry MUST exist, be
+#  * non-empty, and pass `node --check`. `node <temp>/cli.js "$@"` forwards every argument unchanged
+#  * and the child exit code becomes the script exit code (PRJ-022). The EXIT trap removes the private
+#  * temporary build directory on success and on failure while preserving the original exit status
+#  * (PRJ-027) and the repository working tree and index stay byte-identical (PRJ-028); signals HUP,
+#  * INT, and TERM exit through the same trap with status 129, 130, and 143.
 #  * Dependency installation stays an explicit manual step: run `npm ci` once to link the compiler;
 #  * this script never installs dependencies (PKG-019).
 #  * @return Exit code of the launched CLI; non-zero when no bundle source resolves or verification fails.
@@ -36,8 +39,9 @@
 #  * @post No repository artifact was created or modified and the private temporary build directory
 #  *       is removed.
 #  * @note Writes only under the OS temporary directory and reads at most the committed release
-#  *       tarball; no network access, no dependency installation, and no package publication.
-#  * @satisfies PRJ-018, PRJ-019, PRJ-022, PRJ-024, PRJ-025, PRJ-026, PRJ-027, PRJ-028, PRJ-029
+#  *       tarball and the repository `skills/` tree; no network access, no dependency installation,
+#  *       and no package publication.
+#  * @satisfies PRJ-018, PRJ-019, PRJ-022, PRJ-024, PRJ-025, PRJ-026, PRJ-027, PRJ-028, PRJ-029, PKG-024
 #  */
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -142,6 +146,17 @@ ENTRY_PATH="$BUILD_DIR/$RUNTIME_BUNDLE"
 if [ -d "$REPO_ROOT/node_modules" ]; then
   if ! ln -s "$REPO_ROOT/node_modules" "$WORKDIR/node_modules"; then
     fail "could not link the repository dependency tree into the temporary directory: $WORKDIR/node_modules"
+  fi
+fi
+
+# Packaged skills payload linked at the private package root (PKG-024, PRJ-018): every bundle command
+# consuming packaged skills (`show`, `install`, `uninstall`, `api-key`) resolves
+# `<packageRoot>/skills`, where `<packageRoot>` is the parent of the emitted bundle directory. The
+# tree is linked, never copied, so the repository `skills/` content stays read-only and unmodified
+# (PRJ-025, PRJ-028), and the EXIT trap removes only the private temporary directory (PRJ-027).
+if [ -d "$REPO_ROOT/skills" ]; then
+  if ! ln -s "$REPO_ROOT/skills" "$WORKDIR/skills"; then
+    fail "could not link the packaged skills tree into the temporary directory: $WORKDIR/skills"
   fi
 fi
 
