@@ -11,7 +11,6 @@
  */
 
 import { join } from "node:path";
-import { relative, resolve } from "node:path";
 import { loadCliSettings, MCP_SERVER_NAME } from "./cliSettings.js";
 import {
   CLI_TARGETS,
@@ -25,6 +24,7 @@ import {
   compareServerRegistration,
   formatServerRegistration,
   resolveInstalledLauncher,
+  toHomeReference,
   type InstalledLauncherDeps,
 } from "./installedLauncher.js";
 
@@ -121,22 +121,21 @@ export function renderAsciiTable(headers: string[], rows: string[][], maxWidth =
  * @brief Build the CLI Configuration table rows.
  * @details One row per supported CLI in alphabetical registry order
  * (antigravity, claude, codex, copilot, openclaw, opencode, pi; REQ-117):
- * enabled yes/no, home-relative MCP configuration path, and home-relative
- * skills directory.
+ * enabled yes/no, `~/`-rooted MCP configuration path, and `~/`-rooted skills
+ * directory (REQ-240).
  * @param home {string | undefined} Home-directory override.
  * @return {string[][]} `(CLI, Enabled, MCP Config Path, Skills Config Path)` rows.
- * @satisfies REQ-117
+ * @satisfies REQ-117, REQ-240
  */
 function buildCliRows(home?: string): string[][] {
-  const root = home ?? (process.env.HOME ?? process.cwd());
   const enabled = new Set(loadCliSettings(home).enabled);
   return (Object.keys(CLI_TARGETS) as CliTargetId[]).map((id) => {
     const target = CLI_TARGETS[id];
     return [
       target.id,
       enabled.has(id) ? "yes" : "no",
-      relative(resolve(root), resolve(target.mcpConfigPath(home))).split("\\").join("/"),
-      relative(resolve(root), resolve(target.skillsDir(home))).split("\\").join("/"),
+      toHomeReference(target.mcpConfigPath(home), home),
+      toHomeReference(target.skillsDir(home), home),
     ];
   });
 }
@@ -147,14 +146,14 @@ function buildCliRows(home?: string): string[][] {
  * managed `mcp-google-api` entry plus one `Skill` row per manifest skill,
  * each with OK / MISSING / STALE detection. The server row compares the
  * stored launcher with the resolved global launcher and renders the stored
- * command line in the `Launcher` column (REQ-118, REQ-237). Skill comparison
- * accepts both the plain and the debug-overlay-extended installed `SKILL.md`
- * (REQ-158).
+ * command line in the `Launcher` column with `~/`-rooted home references
+ * (REQ-118, REQ-237, REQ-240). Skill comparison accepts both the plain and the
+ * debug-overlay-extended installed `SKILL.md` (REQ-158).
  * @param home {string | undefined} Home-directory override.
  * @param resourcesRoot {string} Packaged skills resources root.
  * @param expected {McpServerRegistration | undefined} Resolved global launcher; omitted when unresolvable.
  * @return {string[][]} `(Type, Name, CLI, Enabled, Installed, Launcher)` rows.
- * @satisfies REQ-118, REQ-158, REQ-237
+ * @satisfies REQ-118, REQ-158, REQ-237, REQ-240, REQ-241
  */
 function buildInstallRows(
   home: string | undefined,
@@ -173,8 +172,8 @@ function buildInstallRows(
       MCP_SERVER_NAME,
       target.id,
       "yes",
-      compareServerRegistration(binding, expected),
-      formatServerRegistration(binding),
+      compareServerRegistration(binding, expected, home),
+      formatServerRegistration(binding, home),
     ]);
     for (const skill of manifest) {
       rows.push([

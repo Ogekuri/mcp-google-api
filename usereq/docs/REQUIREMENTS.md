@@ -127,7 +127,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-018**: MUST document in `README.md` the migration of the HTTP default bind from `0.0.0.0` to loopback `127.0.0.1`, including the `--host 0.0.0.0` opt-in.
 - **PKG-019**: MUST provide a single `npm run verify` pipeline (typecheck, unit tests, build) and keep helper scripts other than the PRJ-018 development launcher free of implicit chained install/build steps.
 - **PKG-022**: MUST keep every documented example, including the registered stdio launcher entry, consistent with supported CLI flags, headers, and transports.
-- **PKG-023**: MUST document `enable`, `disable`, `install`, `uninstall`, and `show` commands with supported CLI targets and the absolute registered launcher in README.md.
+- **PKG-023**: MUST document `enable`, `disable`, `install`, `uninstall`, and `show` commands with supported CLI targets and the home-referenced registered launcher in README.md.
 - **PKG-024**: MUST ship the packaged skills payload, `skills/manifest.json` plus every `<skill-id>/` content file and declared debug overlay, inside the published npm package so `install` and `show` resolve manifest skills from installed packages.
 - **PKG-025**: MUST document the `api-key` command as the only API-key configuration path and the stdio startup key guard in README.md.
 - **PKG-026**: MUST restrict GitHub Actions to packing and publishing the release artifacts committed in the tagged commit, triggered by a version tag passing the branch gate (PKG-008, PKG-009).
@@ -226,7 +226,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-135**: `scripts/build.sh` MUST validate the packed tarball through `tools/check-release-artifacts.mjs` before removing the compiled bundle and reporting success.
 - **PKG-136**: `scripts/build.sh` MUST remove the compiled `dist/cli.js` bundle after packing so `dist/` holds only the release tarball.
 - **PKG-137**: `tools/check-release-artifacts.mjs` MUST reject a tarball whose basename differs from `<package name>-<package version>.tgz`.
-- **PKG-138**: MUST document in `README.md` and `docs/CONFIGURATION.md` the absolute stdio launcher entry, its migration from the former `npx` entry, and the client reconnection step.
+- **PKG-138**: MUST document in `README.md` and `docs/CONFIGURATION.md` the home-referenced stdio launcher entry, its migration from the former `npx` entry, and the client reconnection step.
 - **PKG-139**: MUST document in `docs/CONFIGURATION.md` that `install` refuses registration from a source checkout or `_npx` cache and names the global-refresh remediation.
 - **PKG-140**: `scripts/pre-release-check.sh` MUST accept an explicit `--install` flag that provisions the dependency toolchain with `npm ci` before the first stage.
 - **PKG-141**: The `--install` provisioning MUST be disabled by default and MUST execute no dependency install when the flag is absent.
@@ -268,6 +268,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **DES-028**: MUST implement configuration CLI argument parsing, tree view building, and command handlers in dedicated modules (`src/utils/configCli.ts`, `src/utils/configView.ts`) dispatched before yargs parsing.
 - **DES-029**: MUST build every `--print` and `--info` tree from schema nodes and typed values, never from rendered strings hard-coded tree fragments, or display column widths.
 - **DES-030**: MUST implement one injectable launcher resolver, reusing the `npm prefix -g` probe, shared by `install`, `api-key`, the post-upgrade refresh, and `show` launcher comparison.
+- **DES-031**: MUST resolve the user home root from the `HOME` environment variable, falling back to `os.homedir()`, in one home-reference helper shared by registration and reports.
 
 ### 3.2 Functions
 
@@ -469,14 +470,18 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-111**: `enable <cli>` MUST add and `disable <cli>` MUST remove the resolved CLI name in the persisted enabled set; both MUST be idempotent.
 - **REQ-112**: MUST resolve MCP configuration files: pi `~/.pi/agent/mcp.json`, openclaw `~/.openclaw/openclaw.json`, codex `~/.codex/config.toml` (`mcp_servers` table), antigravity `~/.gemini/settings.json`, claude `~/.claude.json`, copilot `~/.copilot/mcp.json` (JSON `mcpServers` map), opencode `~/.config/opencode/opencode.json` (JSON `mcp` map).
 - **REQ-113**: MUST resolve skills directories: pi `~/.pi/agent/skills`, openclaw `~/.openclaw/workspace/skills`, codex `~/.codex/skills`, antigravity `~/.gemini/config/skills`, claude `~/.claude/skills`, copilot `~/.copilot/skills`, opencode `~/.config/opencode/skills`.
-- **REQ-114**: `install` MUST register per enabled CLI the stdio entry `mcp-google-api` launching the absolute Node.js executable plus the absolute global launcher path with `start --stdio`, embedding no key or environment payload.
+- **REQ-114**: `install` MUST register per enabled CLI the stdio entry `mcp-google-api` launching the Node.js executable plus the global launcher path with `start --stdio`, embedding no key or environment payload.
 - **REQ-231**: `install` MUST install every manifest skill for each enabled CLI after registering the stdio entry.
-- **REQ-232**: `install`, `api-key`, and the post-`--upgrade` install refresh MUST overwrite any existing `npx`-based entry with the resolved absolute launcher.
+- **REQ-232**: `install`, `api-key`, and the post-`--upgrade` install refresh MUST overwrite any existing `npx`-based entry with the resolved home-referenced launcher.
 - **REQ-233**: The registered launcher MUST execute the global installation regardless of the client launch directory, including a same-name local project directory.
 - **REQ-234**: `install` MUST resolve the global launcher through `npm prefix -g` and MUST NOT persist a name-only spec resolved at client launch time.
 - **REQ-235**: When the running entrypoint is a source checkout or an npm `_npx` cache directory, `install` MUST persist no registration and MUST exit non-zero naming `npm install -g mcp-google-api@latest`.
 - **REQ-236**: When the global launcher cannot be resolved or is absent, `install` MUST persist no registration and MUST exit non-zero with remediation guidance.
 - **REQ-237**: `show` MUST report each registered launcher and MUST mark its server row `STALE` when it differs from the resolved global launcher.
+- **REQ-238**: `install` MUST express every registered launcher executable or script path located inside the user home directory as a `~/`-rooted home reference.
+- **REQ-239**: `install` MUST keep every registered launcher path outside the user home directory absolute.
+- **REQ-240**: `show` MUST render every home-rooted MCP configuration path, skills directory path, and launcher path as a `~/`-rooted home reference.
+- **REQ-241**: `show` MUST classify a stored launcher as `OK` when its home-referenced paths equal the resolved global launcher in either spelling.
 - **REQ-115**: `uninstall` MUST remove per enabled CLI the `mcp-google-api` MCP entry and managed skill directories; absent entries MUST count as removed without failure.
 - **REQ-116**: `install` and `uninstall` MUST process enabled CLIs only, report per-CLI counts, continue on per-CLI failures, and exit 1 when any failure occurs.
 - **REQ-117**: `show` MUST print a CLI Configuration table with columns CLI, Enabled, MCP Config Path, Skills Config Path covering all seven supported CLIs in alphabetical order.
@@ -537,6 +542,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **LIM-007**: `maps_search_places` `pageToken` is copied into the request but silently dropped by `@googlemaps/places` SDK protos (verified up to v3.1.0), so pagination requests have no server-side effect.
 - **LIM-008**: npm's nested `prepare` install for a global git-ref install reifies the destination tree twice, yielding `spawn sh ENOENT`; the develop channel installs the REQ-171 release tarball asset instead.
 - **LIM-009**: `--set Settings:enabled` and `--set Settings:apiKey` update the settings file only; MCP registrations and packaged skills refresh only when `install` or `api-key` runs.
+- **LIM-010**: A `~/`-rooted registered launcher path spawns only in MCP clients that expand a leading `~/` in command or arguments; a client passing arguments literally cannot resolve it.
 
 ## 4. Test Requirements
 - **TST-001**: MUST verify REQ-073/REQ-074/REQ-075 by running `npm test` (`tests/cliExec.unit.test.ts`): injected runners assert stdout JSON on success, stderr JSON plus exit code 1 on failure responses, thrown errors, and canonical tool-name resolution; pass when all assertions hold.

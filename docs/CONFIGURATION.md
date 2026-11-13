@@ -88,19 +88,19 @@ mcp-google-api start            # Streamable HTTP at http://<host>:<port>/mcp
 
 ## Registering in MCP clients
 
-The standard registration path is the configuration flow documented in [README.md](../README.md#quick-start): `enable <cli>` + `install` writes the stdio entry `mcp-google-api` (absolute Node.js executable plus the absolute global launcher `bin/mcp-google-api.mjs`, no embedded key) into each enabled CLI and installs the bundled skills. The absolute entry executes the global installation regardless of the client working directory and replaces any legacy `npx` entry (PKG-138, PKG-139).
+The standard registration path is the configuration flow documented in [README.md](../README.md#quick-start): `enable <cli>` + `install` writes the stdio entry `mcp-google-api` (Node.js executable plus the global launcher `bin/mcp-google-api.mjs`, no embedded key) into each enabled CLI and installs the bundled skills. Every registered path inside the user home is written as a `~/`-rooted home reference; a path outside the home stays absolute. The entry executes the global installation regardless of the client working directory and replaces any legacy `npx` entry (PKG-138, PKG-139).
 
 - **pi**: `~/.pi/agent/mcp.json` (user) — run `/reload` in the session after external changes; `/mcp` inspects the connection.
 - **OpenClaw**: `~/.openclaw/openclaw.json` — reload the gateway or restart the agent session after installation.
 
-Manual registration snippet (JSON, no key embedded; substitute the real Node.js executable and global launcher paths reported by `mcp-google-api show`):
+Manual registration snippet (JSON, no key embedded; home references are `~/`-rooted as reported by `mcp-google-api show`, absolute paths stay as resolved):
 
 ```json
 {
   "mcpServers": {
     "mcp-google-api": {
-      "command": "/path/to/node",
-      "args": ["/path/to/global/node_modules/mcp-google-api/bin/mcp-google-api.mjs", "start", "--stdio"]
+      "command": "~/.nvm/versions/node/v24/bin/node",
+      "args": ["~/.npm-global/lib/node_modules/mcp-google-api/bin/mcp-google-api.mjs", "start", "--stdio"]
     }
   }
 }
@@ -116,26 +116,31 @@ mcp-google-api show               # CLI configuration and installation status ta
 
 ### Registration binding and `MCP connection closed`
 
-The registered entry binds the absolute Node.js executable plus the absolute
-launcher of the globally installed package. This binding is invariant to the
-client working directory, so a checkout hosting a same-name `package.json` can
-no longer be executed in place of the installed package.
+The registered entry binds the Node.js executable plus the launcher of the
+globally installed package, with every path inside the user home written as a
+`~/`-rooted home reference (`$HOME` resolved at install time) and every path
+outside the home left absolute. Home references are user-name independent, and
+an MCP client that expands a leading `~/` in `command` and `args` resolves the
+same global installation in every working directory, so a checkout hosting a
+same-name `package.json` can no longer be executed in place of the installed
+package. A client that passes arguments literally does not expand `~/` and
+cannot resolve the launcher (LIM-010).
 
 Legacy registrations used `npx -y mcp-google-api start --stdio`. `npm exec`
 prefers the bin of a same-name local project, so a client spawned inside such a
 checkout ran that checkout's own `dist/cli.js`; a stale or dependency-less build
 then exited before answering the MCP handshake and the client reported
 `MCP connection closed`. `install`, `api-key`, and the post-`--upgrade` refresh
-rewrite every legacy entry with the absolute launcher, and `show` marks a
-server row `STALE` while the stored binding differs from the resolved global
-launcher.
+rewrite every legacy entry with the home-referenced launcher, and `show`
+marks a server row `STALE` while the stored binding differs from the resolved
+global launcher.
 
 `install` refuses to register from a source checkout or an npm `_npx` cache
 copy, persisting nothing and naming the remediation (PKG-139):
 
 ```bash
 npm install -g mcp-google-api@latest   # install the global package
-mcp-google-api install                 # rewrite registrations with absolute paths
+mcp-google-api install                 # rewrite registrations with home-referenced paths
 ```
 
 Reconnect the MCP client after the rewrite (pi: `/reload`) so the new entry is

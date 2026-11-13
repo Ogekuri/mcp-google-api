@@ -1718,7 +1718,7 @@ flushing, or replacement fails; the temporary file is best-effort removed.
 
 ---
 
-# cliShow.ts | TypeScript | 248L | 8 symbols | 6 imports | 11 comments
+# cliShow.ts | TypeScript | 247L | 8 symbols | 5 imports | 11 comments
 > Path: `src/utils/cliShow.ts`
 - @brief Render the CLI Configuration and Installation Status report tables.
 - @details Builds the human-readable `show` output: a CLI Configuration
@@ -1732,7 +1732,6 @@ OK / MISSING / STALE detection. Both tables render as box-drawing grids
 ## Imports
 ```
 import { join } from "node:path";
-import { relative, resolve } from "node:path";
 import { loadCliSettings, MCP_SERVER_NAME } from "./cliSettings.js";
 import {
 import { loadSkillsManifest } from "./cliInstaller.js";
@@ -1766,32 +1765,32 @@ padded to the row height (REQ-185, REQ-186).
 
 ### fn `const renderRow = (cells: string[]): string[] =>` (L102-111)
 
-### fn `function buildCliRows(home?: string): string[][]` (L130-142)
+### fn `function buildCliRows(home?: string): string[][]` (L130-141)
 - @brief Build the CLI Configuration table rows.
 - @details One row per supported CLI in alphabetical registry order
 (antigravity, claude, codex, copilot, openclaw, opencode, pi; REQ-117):
-enabled yes/no, home-relative MCP configuration path, and home-relative
-skills directory.
+enabled yes/no, `~/`-rooted MCP configuration path, and `~/`-rooted skills
+directory (REQ-240).
 - @param home {string | undefined} Home-directory override.
 - @return {string[][]} `(CLI, Enabled, MCP Config Path, Skills Config Path)` rows.
-- @satisfies REQ-117
+- @satisfies REQ-117, REQ-240
 
-### fn `function buildInstallRows(` (L159-193)
+### fn `function buildInstallRows(` (L158-192)
 - @brief Build the Installation Status table rows.
 - @details Emits rows only for enabled CLIs: one `Server` row for the
 managed `mcp-google-api` entry plus one `Skill` row per manifest skill,
 each with OK / MISSING / STALE detection. The server row compares the
 stored launcher with the resolved global launcher and renders the stored
-command line in the `Launcher` column (REQ-118, REQ-237). Skill comparison
-accepts both the plain and the debug-overlay-extended installed `SKILL.md`
-(REQ-158).
+command line in the `Launcher` column with `~/`-rooted home references
+(REQ-118, REQ-237, REQ-240). Skill comparison accepts both the plain and the
+debug-overlay-extended installed `SKILL.md` (REQ-158).
 - @param home {string | undefined} Home-directory override.
 - @param resourcesRoot {string} Packaged skills resources root.
 - @param expected {McpServerRegistration | undefined} Resolved global launcher; omitted when unresolvable.
 - @return {string[][]} `(Type, Name, CLI, Enabled, Installed, Launcher)` rows.
-- @satisfies REQ-118, REQ-158, REQ-237
+- @satisfies REQ-118, REQ-158, REQ-237, REQ-240, REQ-241
 
-### fn `function resolveExpectedLauncher(options:` (L205-214)
+### fn `function resolveExpectedLauncher(options:` (L204-213)
 - @brief Resolve the launcher `show` compares stored bindings against.
 - @details Returns the injected launcher unchanged, otherwise resolves the
 global installation tolerantly: an unresolvable root yields undefined so
@@ -1801,7 +1800,7 @@ the table degrades to presence-only status instead of failing (REQ-237).
 - @note Complexity O(1) plus one child round-trip on the resolution path.
 - @satisfies REQ-237
 
-### fn `export function buildCliShowReport(options:` (L229-246)
+### fn `export function buildCliShowReport(options:` (L228-245)
 - @brief Build the complete `show` report text.
 - @details Renders the CLI Configuration table (always, REQ-119) and the
 Installation Status table (empty when no CLI is enabled), in this order,
@@ -1821,10 +1820,10 @@ propagate so the command handler reports a JSON error.
 |`renderAsciiTable`|fn||95-118|export function renderAsciiTable(headers: string[], rows:...|
 |`borderLine`|fn||100-111|const borderLine = (left: string, middle: string, right: ...|
 |`renderRow`|fn||102-111|const renderRow = (cells: string[]): string[] =>|
-|`buildCliRows`|fn||130-142|function buildCliRows(home?: string): string[][]|
-|`buildInstallRows`|fn||159-193|function buildInstallRows(|
-|`resolveExpectedLauncher`|fn||205-214|function resolveExpectedLauncher(options:|
-|`buildCliShowReport`|fn||229-246|export function buildCliShowReport(options:|
+|`buildCliRows`|fn||130-141|function buildCliRows(home?: string): string[][]|
+|`buildInstallRows`|fn||158-192|function buildInstallRows(|
+|`resolveExpectedLauncher`|fn||204-213|function resolveExpectedLauncher(options:|
+|`buildCliShowReport`|fn||228-245|export function buildCliShowReport(options:|
 
 
 ---
@@ -3130,7 +3129,7 @@ directly and yield a diagnostic naming the documented path (REQ-198).
 
 ---
 
-# installedLauncher.ts | TypeScript | 192L | 7 symbols | 5 imports | 13 comments
+# installedLauncher.ts | TypeScript | 259L | 10 symbols | 6 imports | 16 comments
 > Path: `src/utils/installedLauncher.ts`
 - @brief Resolve the absolute stdio launcher of the globally installed package.
 - @details Single resolver (DES-030) turning the npm global root into the
@@ -3147,6 +3146,7 @@ stored registration with the expected launcher for `show` (REQ-237).
 ## Imports
 ```
 import { existsSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { MCP_SERVER_NAME } from "./cliSettings.js";
 import type { McpServerRegistration } from "./cliTargets.js";
@@ -3155,7 +3155,7 @@ import { resolveGlobalPackageDir, type PackageManagerDeps } from "./upgradeManag
 
 ## Definitions
 
-### iface `export interface InstalledLauncherDeps extends PackageManagerDeps` : PackageManagerDeps (L39-46)
+### iface `export interface InstalledLauncherDeps extends PackageManagerDeps` : PackageManagerDeps (L40-49)
 - @brief Dependency surface of the launcher resolver and entrypoint classifier.
 - @details Extends the package-manager injection surface (spawner, platform,
 logger) with the filesystem probes used to verify the launcher script and to
@@ -3163,30 +3163,59 @@ compare real paths, plus the Node.js executable reported in the registration
 (REQ-114, REQ-235). Every field is optional; production calls pass none.
 - @satisfies DES-030, REQ-114, REQ-235
 
-- type `export type InstalledLauncherResolution =` (L56)
+### fn `export function resolveUserHome(home?: string): string` (L62-66)
+- @brief Resolve the user home root used by every home reference.
+- @details Priority: explicit override -> `HOME` environment variable ->
+`os.homedir()`. An empty override or empty `HOME` falls through, so a
+stripped environment still yields a usable root. The returned root carries
+no trailing separator (DES-031).
+- @param home {string | undefined} Home-directory override.
+- @return {string} Home root without a trailing separator.
+- @note Complexity O(1). Pure; no filesystem access.
+- @satisfies DES-031, REQ-238, REQ-240
+
+### fn `export function toHomeReference(value: string, home?: string): string` (L82-90)
+- @brief Render one path as a `~/`-rooted home reference when it lies inside the user home.
+- @details Normalizes both sides to `/` separators and matches on a
+path-segment boundary, so `/home/userX` is never treated as inside
+`/home/user`. The home root itself renders as `~`, every deeper path as
+`~/<rest>`; paths outside the home and plain tokens such as `start` are
+returned verbatim (REQ-238, REQ-239, REQ-240).
+- @param value {string} Absolute path or plain token to encode.
+- @param home {string | undefined} Home-directory override; defaults to `resolveUserHome()`.
+- @return {string} Home reference or the unchanged value.
+- @note Complexity O(n) in path length. Pure; no filesystem access.
+- @see resolveUserHome
+- @satisfies DES-031, REQ-238, REQ-239, REQ-240
+
+- type `export type InstalledLauncherResolution =` (L101)
 - @brief Discriminated outcome of one global launcher resolution.
-- @details `ok: true` carries the absolute registration entry together with
-the resolved global package directory and launcher path, which callers reuse
-for entrypoint classification (REQ-235); `ok: false` carries an English
-remediation diagnostic (REQ-236).
-- @satisfies REQ-114, REQ-236
-### fn `export function resolveInstalledLauncher(` (L81-82)
+- @details `ok: true` carries the home-referenced registration entry together
+with the resolved absolute global package directory and launcher path, which
+callers reuse for the existence probe and entrypoint classification
+(REQ-235, REQ-238); `ok: false` carries an English remediation diagnostic
+(REQ-236).
+- @satisfies REQ-114, REQ-236, REQ-238
+### fn `export function resolveInstalledLauncher(` (L129-130)
 - @brief Resolve the absolute stdio launcher of the globally installed package.
 - @details Resolution order: `resolveGlobalPackageDir(deps)` (captured
 `npm prefix -g`, POSIX `<prefix>/lib/node_modules`, win32
 `<prefix>/node_modules`) -> `<global package dir>/bin/mcp-google-api.mjs`
 existence probe -> registration `{ command: <node executable>, args:
-[<absolute launcher>, "start", "--stdio"] }`. Every failure returns
-`{ ok: false }` with the GLOBAL_INSTALL_REMEDIATION command; no name-only
-spec and no cwd-relative path is ever produced (REQ-232, REQ-234, REQ-236).
-- @param deps {InstalledLauncherDeps} Optional spawner, platform, filesystem, and executable overrides.
-- @return {InstalledLauncherResolution} Absolute launcher resolution or remediation diagnostic.
+[<global launcher>, "start", "--stdio"] }`, where every home-rooted path is
+rendered as a `~/`-rooted home reference (REQ-238) and every path outside
+the home stays absolute (REQ-239). Every failure returns `{ ok: false }`
+with the GLOBAL_INSTALL_REMEDIATION command; no name-only spec and no
+cwd-relative path is ever produced (REQ-232, REQ-234, REQ-236).
+- @param deps {InstalledLauncherDeps} Optional spawner, platform, filesystem, executable, and home overrides.
+- @return {InstalledLauncherResolution} Home-referenced launcher resolution or remediation diagnostic.
 - @note Complexity O(1) plus one child round-trip. No configuration write.
 - @see resolveGlobalPackageDir
+- @see toHomeReference
 - @see describeEntrypointBinding
-- @satisfies DES-030, REQ-114, REQ-234, REQ-236
+- @satisfies DES-030, DES-031, REQ-114, REQ-234, REQ-236, REQ-238, REQ-239
 
-### fn `export function describeEntrypointBinding(` (L124-127)
+### fn `export function describeEntrypointBinding(` (L172-175)
 - @brief Classify a running package root against the global package directory.
 - @details Resolves both sides through the injected `realpathSync` (tolerant:
 an unresolvable side keeps its literal path) and compares them. A differing
@@ -3200,40 +3229,54 @@ undefined when the paths match, i.e. the global installation is running.
 - @note Complexity O(1) plus two filesystem metadata lookups. Pure; no side effects.
 - @satisfies REQ-235
 
-### fn `const real = (value: string): string =>` (L130-136)
+### fn `const real = (value: string): string =>` (L178-184)
 
-### fn `export function compareServerRegistration(` (L160-176)
+### fn `export function compareServerRegistration(` (L212-233)
 - @brief Compare one stored registration with the expected global launcher.
 - @details Classifies the binding for `show` (REQ-237): absent entry ->
 `MISSING`; no expected launcher (unresolvable global root) -> `OK` because no
 comparison is possible; otherwise equal `command` plus element-wise equal
-`args` -> `OK`, any difference -> `STALE`. An expected entry is never
-subset-matched: extra or reordered arguments are stale.
+`args` -> `OK`, any difference -> `STALE`. Both sides are normalized through
+`toHomeReference` first, so a stored absolute home-prefixed binding and the
+resolved `~/`-rooted launcher compare equal (REQ-241). An expected entry is
+never subset-matched: extra or reordered arguments are stale.
 - @param binding {McpServerRegistration | undefined} Stored client registration.
 - @param expected {McpServerRegistration | undefined} Resolved global launcher, when available.
+- @param home {string | undefined} Home-directory override used for home-reference normalization (DES-031).
 - @return {"OK" | "MISSING" | "STALE"} Binding classification.
 - @note Complexity O(arguments). Pure; no side effects.
-- @satisfies REQ-237
+- @see toHomeReference
+- @satisfies REQ-237, REQ-241
 
-### fn `export function formatServerRegistration(entry: McpServerRegistration | undefined): string` (L187-192)
+### fn `const normalizeEntry = (entry: McpServerRegistration): { command: string; args: string[] } => (` (L223-226)
+
+### fn `export function formatServerRegistration(` (L249-259)
 - @brief Render one registration entry as a single display line.
-- @details Joins `command` and every argument with one space; empty entries
-render as the empty string so table cells stay compact (REQ-118, REQ-237).
+- @details Joins `command` and every argument with one space after rendering
+every home-rooted token through `toHomeReference`, so the `show` Launcher
+column shows `~/...` instead of an absolute home-prefixed path (REQ-240).
+Empty entries render as the empty string so table cells stay compact
+(REQ-118, REQ-237).
 - @param entry {McpServerRegistration | undefined} Registration to render.
+- @param home {string | undefined} Home-directory override used for home references (DES-031).
 - @return {string} Display text; empty when no entry is given.
 - @note Complexity O(arguments). Pure; no side effects.
-- @satisfies REQ-237
+- @see toHomeReference
+- @satisfies REQ-118, REQ-237, REQ-240
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`InstalledLauncherDeps`|iface||39-46|export interface InstalledLauncherDeps extends PackageMan...|
-|`InstalledLauncherResolution`|type||56||
-|`resolveInstalledLauncher`|fn||81-82|export function resolveInstalledLauncher(|
-|`describeEntrypointBinding`|fn||124-127|export function describeEntrypointBinding(|
-|`real`|fn||130-136|const real = (value: string): string =>|
-|`compareServerRegistration`|fn||160-176|export function compareServerRegistration(|
-|`formatServerRegistration`|fn||187-192|export function formatServerRegistration(entry: McpServer...|
+|`InstalledLauncherDeps`|iface||40-49|export interface InstalledLauncherDeps extends PackageMan...|
+|`resolveUserHome`|fn||62-66|export function resolveUserHome(home?: string): string|
+|`toHomeReference`|fn||82-90|export function toHomeReference(value: string, home?: str...|
+|`InstalledLauncherResolution`|type||101||
+|`resolveInstalledLauncher`|fn||129-130|export function resolveInstalledLauncher(|
+|`describeEntrypointBinding`|fn||172-175|export function describeEntrypointBinding(|
+|`real`|fn||178-184|const real = (value: string): string =>|
+|`compareServerRegistration`|fn||212-233|export function compareServerRegistration(|
+|`normalizeEntry`|fn||223-226|const normalizeEntry = (entry: McpServerRegistration): { ...|
+|`formatServerRegistration`|fn||249-259|export function formatServerRegistration(|
 
 
 ---
