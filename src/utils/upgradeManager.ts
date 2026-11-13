@@ -429,8 +429,9 @@ export async function checkVersionIdle(deps: IdleCheckDeps = {}): Promise<IdleCh
       logger.error(red(`Version check error: ${probe.message}`));
       break;
     case "current":
-      // Not an error: the running version is already the latest published
-      // one. REQ-124 forbids output here; only the idle window refreshes.
+      // Not an error: the running version is already at or beyond the latest
+      // published one. REQ-124 forbids output here; only the idle window
+      // refreshes. The manual report renders `probe.latestVersion` instead.
       lastSuccess = now();
       result.currentVersion = probe.currentVersion;
       break;
@@ -1029,21 +1030,21 @@ export function renderUpgradeSummary(
 
 /**
  * @brief Maps one registry probe outcome to its latest-version text.
- * @details `newer` -> `latestVersion`; `current` -> `currentVersion`;
- * every other outcome (`disabled`, `unknown-version`, `error`) -> `unknown`
- * (REQ-164). Pure; never throws.
+ * @details Both registry-reached outcomes (`newer`, `current`) map to the
+ * probe `latestVersion` — the version actually published on the registry —
+ * so manual version reporting never substitutes the running version when the
+ * published latest version is equal to, or older than, the installed one
+ * (REQ-162, REQ-134). Every other outcome (`disabled`, `unknown-version`,
+ * `error`) maps to `unknown` (REQ-164). Pure; never throws.
  * @param probe {LatestVersionProbe} Logging-free registry probe outcome.
  * @return {string} Latest npm-published version text, or `unknown`.
- * @satisfies REQ-164
+ * @satisfies REQ-134, REQ-162, REQ-164
  * @note Complexity: O(1). Pure; no side effects.
  * @see probeLatestVersion
  */
 function resolveProbeLatestVersion(probe: LatestVersionProbe): string {
-  if (probe.status === "newer") {
+  if (probe.status === "newer" || probe.status === "current") {
     return probe.latestVersion;
-  }
-  if (probe.status === "current") {
-    return probe.currentVersion;
   }
   return "unknown";
 }
@@ -1082,8 +1083,9 @@ function renderVersionReportLine(label: string, value: string): string {
  * @details Runs one logging-free `probeLatestVersion` registry probe after the
  * upgrade child succeeds, forwarding the injected idle-check dependencies, and
  * delegates the outcome-to-version mapping to `resolveProbeLatestVersion`:
- * `newer` maps to the registry latest version, `current` to the running
- * version, and every other outcome to `unknown` (REQ-134). Never throws.
+ * both `newer` and `current` map to the probed registry latest version (the
+ * version installed by `npm install -g mcp-google-api@latest`, including a
+ * downgrade), and every other outcome to `unknown` (REQ-134). Never throws.
  * Invoked by `runUpgradeCommand` after the package-update child succeeds.
  * @param options {ManagementCommandOptions} Options carrying `currentVersion`.
  * @param deps {ManagementCommandDeps} Optional idle-check dependency overrides.

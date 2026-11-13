@@ -87,12 +87,16 @@ export interface AutoUpdateResult {
  * notice contract, TST-011) and by the idle-gated `checkVersionIdle` wrapper
  * (`src/utils/upgradeManager.ts`) which needs to distinguish "registry
  * reached, no newer version" from failure paths to pick its idle window.
+ * The `current` variant carries the probed `latestVersion` alongside
+ * `currentVersion` so manual version reporting always renders the published
+ * latest version, including when it is equal to or older than the running
+ * version (REQ-162, REQ-134, REQ-164).
  */
 export type LatestVersionProbe =
   | { status: "disabled" }
   | { status: "unknown-version" }
   | { status: "error"; message: string }
-  | { status: "current"; currentVersion: string }
+  | { status: "current"; currentVersion: string; latestVersion: string }
   | { status: "newer"; currentVersion: string; latestVersion: string };
 
 /**
@@ -147,7 +151,7 @@ export async function probeLatestVersion(
       };
     }
     if (!isNewerVersion(payload.version, currentVersion)) {
-      return { status: "current", currentVersion };
+      return { status: "current", currentVersion, latestVersion: payload.version };
     }
     return { status: "newer", currentVersion, latestVersion: payload.version };
   } catch (error: unknown) {
@@ -215,7 +219,7 @@ export async function probeLatestManifestVersion(
       };
     }
     if (!isNewerVersion(latest, currentVersion)) {
-      return { status: "current", currentVersion };
+      return { status: "current", currentVersion, latestVersion: latest };
     }
     return { status: "newer", currentVersion, latestVersion: latest };
   } catch (error: unknown) {

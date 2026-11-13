@@ -33,6 +33,7 @@ import {
   runPackageManagerCommand,
   runUpgradeCommand,
   runUninstallCommand,
+  runVersionCommand,
   UPGRADE_FORCE_OPTION,
   type GlobalPackageTreeFs,
   type ManagementCommandDeps,
@@ -49,6 +50,42 @@ interface RecordedSpawn {
   /** Spawn options; `stdio` distinguishes inherited vs captured streams. */
   options: { stdio?: unknown; shell?: boolean; cwd?: unknown; encoding?: unknown };
 }
+
+/**
+ * @brief Builds a fetch stub answering the npm registry and GitHub release probes.
+ * @details Route discrimination follows the probe URL shapes: `api.github.com`
+ * yields `{ tag_name }`; an npm `/latest` document yields `{ version }`; the
+ * packument manifest URL yields `{ "dist-tags": { latest } }`. Every response
+ * is `ok`, so the suite stays network-free and deterministic (REQ-162,
+ * REQ-163, REQ-134).
+ * @param npmLatest {string} Version published as the npm `latest` dist-tag.
+ * @param githubTag {string} GitHub `tag_name` of the latest release.
+ * @return {typeof fetch} Stub fetch implementation.
+ */
+function createRegistryFetchStub(npmLatest: string, githubTag: string): typeof fetch {
+  return (async (input: string | URL | Request): Promise<Response> => {
+    const url = String(input);
+    const payload = url.includes("api.github.com")
+      ? { tag_name: githubTag }
+      : url.endsWith("/latest")
+        ? { version: npmLatest }
+        : { "dist-tags": { latest: npmLatest } };
+    return { ok: true, status: 200, json: async () => payload } as unknown as Response;
+  }) as unknown as typeof fetch;
+}
+
+/**
+ * @brief Builds a capturing stdout sink collecting everything written to it.
+ * @param chunks {string[]} Accumulator receiving each written chunk.
+ * @return {NodeJS.WritableStream} Minimal write-only stream stub.
+ */
+function createStdoutStub(chunks: string[]): NodeJS.WritableStream {
+  return { write: (data: string | Uint8Array) => void chunks.push(String(data)) } as NodeJS.WritableStream;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers shared by the management-command cases below
+// ---------------------------------------------------------------------------
 
 /**
  * @brief Builds a spawn stub that records every child process and returns scripted results.
@@ -137,6 +174,60 @@ function buildDeps(
     idleCheck: { env: { MCP_AUTO_UPDATE_DISABLED: "1" } },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Level 0 — published-version reporting (REQ-162, REQ-163, REQ-134)
+// ---------------------------------------------------------------------------
+
+test("runVersionCommand_reports_published_npm_latest_when_not_newer_than_installed", async () => {
+  const chunks: string[] = [];
+  const fetchImpl = createRegistryFetchStub("0.26.6", "v0.26.7");
+  const deps: ManagementCommandDeps = {
+    stdout: createStdoutStub(chunks),
+    idleCheck: { fetchImpl },
+    githubCheck: { fetchImpl },
+  };
+
+  // Act: --ver over an installed version AHEAD of the published npm latest.
+  const exitCode = await runVersionCommand({ currentVersion: "0.26.7" }, deps);
+
+  // Assert: the npm line carries the registry-published latest, never the
+  // installed version (REQ-162), while the GitHub line carries the latest
+  // GitHub release (REQ-163) and the separators stay column-aligned (REQ-120).
+  assert.equal(exitCode, 0);
+  const lines = chunks.join("").trimEnd().split("\n");
+  assert.equal(lines[0], "Current Installed : 0.26.7");
+  assert.equal(lines[1], "Latest @ NPMjs    : 0.26.6");
+  assert.equal(lines[2], "Latest @ GitHub   : 0.26.7");
+});
+
+test("runUpgradeCommand_reports_probed_npm_latest_as_updated_version_on_downgrade", async () => {
+  const home = createFakeHome([]);
+  try {
+    const { spawnStub, calls } = createSpawnStub([{ status: 0 }]);
+    const { logger } = createLoggerStub();
+    const chunks: string[] = [];
+    const deps: ManagementCommandDeps = {
+      spawn: spawnStub,
+      logger,
+      stdout: createStdoutStub(chunks),
+      idleCheck: { fetchImpl: createRegistryFetchStub("0.26.6", "v0.26.7") },
+    };
+
+    // Act: default-channel --upgrade from an installed version ahead of npm.
+    const exitCode = await runUpgradeCommand({ currentVersion: "0.26.7", home }, deps);
+
+    // Assert: the unconditional npm update child ran, and the summary reports
+    // the probed registry latest (the version just installed by the downgrade)
+    // instead of the starting version (REQ-134, REQ-146).
+    assert.equal(exitCode, 0);
+    assert.equal(calls.length, 1);
+    assert.deepEqual([...calls[0].args], [...PACKAGE_UPGRADE_COMMAND.slice(1)]);
+    assert.ok(chunks.join("").includes("0.26.7 -> 0.26.6"));
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Level 0 — parseManagementCommand (pure dispatch matcher)
