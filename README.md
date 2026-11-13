@@ -43,7 +43,7 @@
 
 `install` registers the server and its agent skills in every enabled CLI agent; one configuration file holds every setting.
 
-- **18 Google Maps tools** — geocoding, Places API (New) search and details, directions, distance matrix, weather, air quality, timezone, elevation, static maps, batch geocode, plus composite tools that chain geocoding, search, details, and routing (full catalog: [docs/TOOLS.md](https://github.com/Ogekuri/mcp-google-api/blob/main/docs/TOOLS.md)).
+- **18 Google Maps tools** — geocoding, Places API (New) search and details, directions, distance matrix, weather, air quality, timezone, elevation, static maps, batch geocode, plus composite tools that chain geocoding, search, details, and routing (full catalog: [docs/TOOLS.md](https://github.com/Ogekuri/mcp-google-api/blob/master/docs/TOOLS.md)).
 - **Two transports** — stdio for locally registered MCP clients and Streamable HTTP at `/mcp` with per-session isolation.
 - **CLI agent integration** — `enable` selects agents (`antigravity`, `claude`, `codex`, `copilot`, `openclaw`, `opencode`, `pi`); `install` registers the server and synchronizes the bundled skills with a per-CLI activity report; `show` reports OK, MISSING, or STALE status.
 - **Single-file configuration** — the Google Maps API key, enabled agents, exposed tools, HTTP host and port, and the update check live in `~/.config/mcp-google-api/config.json`, managed through dedicated commands or the configuration interface; no environment variables.
@@ -266,10 +266,10 @@ mcp-google-api --uninstall                  # npm uninstall -g mcp-google-api
 
 ## Reference documents
 
-- [docs/TOOLS.md](https://github.com/Ogekuri/mcp-google-api/blob/main/docs/TOOLS.md) — catalog and parameters of the 18 exposed tools.
-- [docs/CONFIGURATION.md](https://github.com/Ogekuri/mcp-google-api/blob/main/docs/CONFIGURATION.md) — configuration reference: settings file, commands, transports, per-request keys, registration.
-- [docs/SKILLS_AUTHORING.md](https://github.com/Ogekuri/mcp-google-api/blob/main/docs/SKILLS_AUTHORING.md) — conventions for adding a packaged skill with a `manifest.json` entry and no source change.
-- [skills/](https://github.com/Ogekuri/mcp-google-api/tree/main/skills) — bundled agent skills; `eatspot-discovery` implements budget (breakfast EUR 10 / lunch EUR 30 / dinner EUR 40 defaults), quality grades A-E, category and opening-hours validation, geographic search modes (3/10/20 km), and a binding anti-fabrication rule: every published Google Maps value must originate from an executed tool call.
+- [docs/TOOLS.md](https://github.com/Ogekuri/mcp-google-api/blob/master/docs/TOOLS.md) — catalog and parameters of the 18 exposed tools.
+- [docs/CONFIGURATION.md](https://github.com/Ogekuri/mcp-google-api/blob/master/docs/CONFIGURATION.md) — configuration reference: settings file, commands, transports, per-request keys, registration.
+- [docs/SKILLS_AUTHORING.md](https://github.com/Ogekuri/mcp-google-api/blob/master/docs/SKILLS_AUTHORING.md) — conventions for adding a packaged skill with a `manifest.json` entry and no source change.
+- [skills/](https://github.com/Ogekuri/mcp-google-api/tree/master/skills) — bundled agent skills; `eatspot-discovery` implements budget (breakfast EUR 10 / lunch EUR 30 / dinner EUR 40 defaults), quality grades A-E, category and opening-hours validation, geographic search modes (3/10/20 km), and a binding anti-fabrication rule: every published Google Maps value must originate from an executed tool call.
 
 ## Data locations
 
@@ -286,7 +286,7 @@ mcp-google-api --uninstall                  # npm uninstall -g mcp-google-api
 
 # License
 
-GPL-3.0-only — see [LICENSE](https://github.com/Ogekuri/mcp-google-api/blob/main/LICENSE). The SPDX identifier `GPL-3.0-only` matches the `package.json` `license` field.
+GPL-3.0-only — see [LICENSE](https://github.com/Ogekuri/mcp-google-api/blob/master/LICENSE). The SPDX identifier `GPL-3.0-only` matches the `package.json` `license` field.
 
 # Acknowledgments
 
