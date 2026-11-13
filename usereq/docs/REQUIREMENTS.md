@@ -84,16 +84,17 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PRJ-016**: MUST identify the distribution package, bin, CLI script name, and user-facing messages as `mcp-google-api` with no references to the superseded `mcp-google-map` name.
 - **PRJ-017**: MUST scope the server to Google APIs at large, with Google Maps as the currently implemented API family (PRJ-001).
 - **PRJ-018**: MUST ship `scripts/mcp-google-api.sh`, named after the installed `mcp-google-api` distribution bin, launching the local repository copy.
-- **PRJ-019**: `scripts/mcp-google-api.sh` MUST rebuild the runtime bundle from the current repository sources into a private temporary build directory outside the repository before every execution.
+- **PRJ-019**: `scripts/mcp-google-api.sh` MUST rebuild the runtime bundle from the current repository sources into a private temporary build directory outside the repository working tree when `node_modules/.bin/tsup` is executable.
 - **PRJ-020**: The installed `mcp-google-api` bin MUST execute the packaged `dist/cli.js` Node entry, forwarding every argument unchanged with no implicit install or build steps.
 - **PRJ-021**: When the packaged `dist/cli.js` artifact is missing, the installed `mcp-google-api` bin MUST print JSON build-remediation guidance on stderr and exit non-zero.
-- **PRJ-022**: `scripts/mcp-google-api.sh` MUST forward every argument unchanged to the rebuilt temporary runtime bundle and propagate its exit code.
+- **PRJ-022**: `scripts/mcp-google-api.sh` MUST forward every argument unchanged to the resolved temporary runtime bundle and propagate its exit code.
 - **PRJ-023**: MUST expose the persisted configuration through the command flags `--print [Path]`, `--info [Path]`, `--print-raw`, `--get Path`, `--set Path Value`, and `--unset Path`.
-- **PRJ-024**: `scripts/mcp-google-api.sh` MUST abort non-zero before any build step when `node_modules/.bin/tsup` is absent, naming the missing prerequisite.
+- **PRJ-024**: When neither the linked compiler nor the committed release tarball is available, `scripts/mcp-google-api.sh` MUST abort non-zero naming every missing bundle source and the manual remediation commands.
 - **PRJ-025**: `scripts/mcp-google-api.sh` MUST NOT create, modify, or delete any `dist/` entry, including the committed release tarball.
-- **PRJ-026**: The `scripts/mcp-google-api.sh` outcome MUST be independent of the repository `dist/` content in every state: absent, empty, and populated.
+- **PRJ-026**: `scripts/mcp-google-api.sh` MUST ignore every repository `dist/` entry other than the committed `<package name>-<version>.tgz` release artifact.
 - **PRJ-027**: `scripts/mcp-google-api.sh` MUST remove its private temporary build directory on exit, on success and failure, preserving the original exit status.
 - **PRJ-028**: `scripts/mcp-google-api.sh` MUST leave the repository working tree and index unchanged after execution.
+- **PRJ-029**: When `node_modules/.bin/tsup` is not executable, `scripts/mcp-google-api.sh` MUST materialize the runtime bundle from the committed `dist/<package name>-<version>.tgz` release artifact into the private temporary build directory.
 
 ### 2.2 Project Constraints
 - **CTN-001**: MUST declare all tools read-only, non-destructive, idempotent, and open-world via MCP tool annotations (evidence: `MAPS_TOOL_ANNOTATIONS`, `src/config.ts`).
@@ -555,3 +556,4 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-031**: MUST verify PKG-071/PKG-102/PKG-108/PKG-109/PKG-132/PKG-133/PKG-134/PKG-135/PKG-136 by running `npm test` (`tests/releaseBuildScript.unit.test.ts`): a sandboxed build MUST leave the version-stamped release tarball as the only `dist/` artifact, MUST invoke the artifact validator on that tarball, MUST remove the compiled bundle, MUST remove every foreign-version token entry while preserving version-free non-generated entries, MUST remove its private work directory, and MUST run the cleanup before the compile; pass when all assertions hold.
 - **TST-032**: MUST verify PKG-129/PKG-130 by running `npm test` (`tests/buildOutputContract.unit.test.ts`): a sandboxed `build` lifecycle MUST emit only `dist/cli.js` and MUST remove every stale generated output of an earlier build; pass when all assertions hold.
 - **TST-033**: MUST verify PKG-131 by running `npm test` (`tests/buildOutputContract.unit.test.ts`): a sandboxed lifecycle MUST exit non-zero when the compiler fails; pass when all assertions hold.
+- **TST-035**: MUST verify PRJ-019/PRJ-024/PRJ-026/PRJ-029 by running `npm test` (`tests/launcherBundleSource.unit.test.ts`): sandboxed launcher runs assert compiler-preferred build, committed-tarball fallback, dual-source abort, `dist/` byte identity, and temporary-directory cleanup.
