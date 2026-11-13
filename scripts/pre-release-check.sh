@@ -7,7 +7,8 @@
 #  *    installed `node_modules/.bin/{tsc,tsup,tsx}`; git work tree; a private temporary work directory
 #  *    located outside the repository working tree (PKG-061); the `git status --porcelain --ignored`
 #  *    snapshot (PKG-082). Every missing toolchain item is collected first and named together in one
-#  *    aggregated diagnostic, so a single run reports each missing prerequisite (PKG-081). Never installs.
+#  *    aggregated diagnostic that also names the `npm ci` remediation command, so a single run reports
+#  *    each missing prerequisite and how to restore it (PKG-081). Never installs.
 #  * 1. `npm run check:publish-version` - publish version guard (PKG-017, PKG-057).
 #  * 2. `npm run typecheck` - TypeScript type surface (`tsc --noEmit`).
 #  * 3. `npm test` - full unit suite (live e2e excluded, TST-010).
@@ -133,15 +134,16 @@ collect_node_engine() {
 }
 
 # /**
-#  * @brief Aborts the preflight naming every collected missing prerequisite.
+#  * @brief Aborts the preflight naming every collected missing prerequisite and its remediation.
 #  * @details Prints one `MISSING` line per collected item on stderr, then aborts through `fail` with a
-#  * single FAILED header carrying the item count, so one run reports each missing item (PKG-081) and
-#  * the EXIT trap still removes the private work directory (PKG-084, PKG-085). Returns without output
-#  * when nothing is missing. Complexity O(items).
+#  * single FAILED header carrying the item count plus the `npm ci` remediation command, so one run
+#  * reports each missing item (PKG-081) and the operator's restore path without the script itself ever
+#  * installing anything (PKG-060). The EXIT trap still removes the private work directory
+#  * (PKG-084, PKG-085). Returns without output when nothing is missing. Complexity O(items).
 #  * @return {void} Returns when every collected prerequisite is present.
 #  * @throws {exit 1} Via `fail` when at least one prerequisite is missing.
 #  * @side_effect Writes diagnostics to stderr and terminates the process on failure.
-#  * @satisfies PKG-081
+#  * @satisfies PKG-060, PKG-081
 #  */
 report_missing_prerequisites() {
   if [ "${#MISSING_PREREQUISITES[@]}" -eq 0 ]; then
@@ -151,7 +153,7 @@ report_missing_prerequisites() {
   for item in "${MISSING_PREREQUISITES[@]}"; do
     printf '[pre-release-check] %s: MISSING: %s\n' "$CURRENT_PHASE" "$item" >&2
   done
-  fail "${#MISSING_PREREQUISITES[@]} missing prerequisite(s); install the declared dependencies beforehand"
+  fail "${#MISSING_PREREQUISITES[@]} missing prerequisite(s); run 'npm ci' to install the declared dependencies and rerun this gate"
 }
 
 # /**

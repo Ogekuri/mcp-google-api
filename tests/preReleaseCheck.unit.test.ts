@@ -41,8 +41,30 @@ const REQUIRED_STAGE_LINES: readonly string[] = [
   "run_stage 'artifact verification' verify_temp_build",
 ];
 
-/** Commands that MUST NOT appear anywhere in the script (PKG-060). */
-const FORBIDDEN_COMMANDS: readonly string[] = ["npm install", "npm ci", "npm publish", "npx "];
+/** Remediation command that restores the missing toolchain binaries (PKG-081). */
+const DEPENDENCY_INSTALL_COMMAND = "npm ci";
+
+/**
+ * @brief Collects executable statements that invoke a dependency install or publication command.
+ * @details A command runs only in command position: every executable line is trimmed, leading shell
+ * keywords and negations are stripped, and the remainder is matched against the `npm install`,
+ * `npm ci`, `npm publish`, and `npx` prefixes. Command text that merely appears inside a diagnostic
+ * string literal — for example the PKG-081 remediation hint printed by
+ * `report_missing_prerequisites` — is not an invocation, so the PKG-060 guard keeps rejecting real
+ * executions while allowing the failure message to name the operator's restore command.
+ * @param script {string} Raw script content.
+ * @return {string[]} Offending executable statements; empty when the pipeline never installs.
+ * @note Complexity O(lines). Pure.
+ * @satisfies PKG-060
+ */
+function installInvocations(script: string): string[] {
+  const invocationPattern =
+    /^(?:(?:if|then|else|elif|while|do)\s+|!\s+|\{\s+)*(?:npm\s+(?:ci|install|publish)\b|npx\s)/;
+  return executableStatements(script)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => invocationPattern.test(line));
+}
 
 /** Tokens that MUST NOT appear in any executable statement (PKG-062, PKG-123, PKG-124). */
 const FORBIDDEN_EXECUTABLE_TOKENS: readonly string[] = [
@@ -193,12 +215,38 @@ test("test_pre_release_check_preflight_names_every_missing_prerequisite", () => 
   }
 });
 
+test("test_pre_release_check_preflight_names_the_toolchain_remediation", () => {
+  // PKG-081: a toolchain-gate failure must name the command that restores the prerequisites.
+  // Arrange
+  const sandbox = writeSandboxScript([]);
+  try {
+    // Act
+    const run = spawnSync("bash", [sandbox.scriptPath], {
+      encoding: "utf8",
+      timeout: SANDBOX_TIMEOUT_MS,
+      cwd: sandbox.dir,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stderr = run.stderr ?? "";
+    // Assert
+    const expected_output = { status: 1, namesInstallCommand: true };
+    assert.equal(run.status, expected_output.status);
+    assert.equal(
+      stderr.includes(DEPENDENCY_INSTALL_COMMAND),
+      expected_output.namesInstallCommand,
+      `the preflight failure must name the remediation command "${DEPENDENCY_INSTALL_COMMAND}" (PKG-081)`,
+    );
+  } finally {
+    rmSync(sandbox.dir, { recursive: true, force: true });
+  }
+});
+
 test("test_pre_release_check_never_installs_or_publishes", () => {
-  // PKG-060: no dependency install and no package publication anywhere in the pipeline.
+  // PKG-060: no dependency install and no package publication is ever executed by the pipeline.
   // Arrange
   const script = loadPreReleaseCheckScript();
   // Act
-  const forbiddenHits = FORBIDDEN_COMMANDS.filter((forbidden) => script.includes(forbidden));
+  const forbiddenHits = installInvocations(script);
   // Assert
   const expected_output: string[] = [];
   assert.deepEqual(forbiddenHits, expected_output);
