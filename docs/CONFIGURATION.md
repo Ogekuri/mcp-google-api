@@ -88,19 +88,19 @@ mcp-google-api start            # Streamable HTTP at http://<host>:<port>/mcp
 
 ## Registering in MCP clients
 
-The standard registration path is the configuration flow documented in [README.md](../README.md#quick-start): `enable <cli>` + `install` writes the stdio entry `mcp-google-api` (`npx -y mcp-google-api start --stdio`, no embedded key) into each enabled CLI and installs the bundled skills.
+The standard registration path is the configuration flow documented in [README.md](../README.md#quick-start): `enable <cli>` + `install` writes the stdio entry `mcp-google-api` (absolute Node.js executable plus the absolute global launcher `bin/mcp-google-api.mjs`, no embedded key) into each enabled CLI and installs the bundled skills. The absolute entry executes the global installation regardless of the client working directory and replaces any legacy `npx` entry (PKG-138, PKG-139).
 
 - **pi**: `~/.pi/agent/mcp.json` (user) — run `/reload` in the session after external changes; `/mcp` inspects the connection.
 - **OpenClaw**: `~/.openclaw/openclaw.json` — reload the gateway or restart the agent session after installation.
 
-Manual registration snippet (JSON, no key embedded):
+Manual registration snippet (JSON, no key embedded; substitute the real Node.js executable and global launcher paths reported by `mcp-google-api show`):
 
 ```json
 {
   "mcpServers": {
     "mcp-google-api": {
-      "command": "npx",
-      "args": ["-y", "mcp-google-api", "start", "--stdio"]
+      "command": "/path/to/node",
+      "args": ["/path/to/global/node_modules/mcp-google-api/bin/mcp-google-api.mjs", "start", "--stdio"]
     }
   }
 }
@@ -114,24 +114,29 @@ mcp-google-api doctor --live      # billable probes against Geocoding, Places (N
 mcp-google-api show               # CLI configuration and installation status tables
 ```
 
-### MCP connection closed after a rename or upgrade
+### Registration binding and `MCP connection closed`
 
-The registered entry launches `npx -y mcp-google-api start --stdio`. When the
-MCP client spawns this command from a directory that hosts a same-name local
-project (for example a repository checkout), `npm exec` prefers that local
-project's own `dist/cli.js` over the installed package. A stale `dist/` build
-from before a distribution rename then launches old code that silently exits
-without answering the MCP handshake, and the client reports
-`MCP connection closed`.
+The registered entry binds the absolute Node.js executable plus the absolute
+launcher of the globally installed package. This binding is invariant to the
+client working directory, so a checkout hosting a same-name `package.json` can
+no longer be executed in place of the installed package.
 
-Remediation (run inside that checkout, then reconnect the MCP client):
+Legacy registrations used `npx -y mcp-google-api start --stdio`. `npm exec`
+prefers the bin of a same-name local project, so a client spawned inside such a
+checkout ran that checkout's own `dist/cli.js`; a stale or dependency-less build
+then exited before answering the MCP handshake and the client reported
+`MCP connection closed`. `install`, `api-key`, and the post-`--upgrade` refresh
+rewrite every legacy entry with the absolute launcher, and `show` marks a
+server row `STALE` while the stored binding differs from the resolved global
+launcher.
+
+`install` refuses to register from a source checkout or an npm `_npx` cache
+copy, persisting nothing and naming the remediation (PKG-139):
 
 ```bash
-npm run verify        # typecheck + unit tests + fresh dist/ build
-# or, to ignore the local checkout and use the published package only:
-npm install -g mcp-google-api@latest
+npm install -g mcp-google-api@latest   # install the global package
+mcp-google-api install                 # rewrite registrations with absolute paths
 ```
 
-Since 0.22.0 the CLI prints a JSON diagnostic on stderr naming this exact
-condition and the remediation commands instead of exiting silently, so a
-stale-artifact launch is visible in MCP client logs.
+Reconnect the MCP client after the rewrite (pi: `/reload`) so the new entry is
+spawned.

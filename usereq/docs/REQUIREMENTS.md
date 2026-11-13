@@ -126,8 +126,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-017**: MUST fail `npm publish` via the `prepublishOnly` guard when the `package.json` version is `0.0.0`-based or carries a prerelease or build suffix.
 - **PKG-018**: MUST document in `README.md` the migration of the HTTP default bind from `0.0.0.0` to loopback `127.0.0.1`, including the `--host 0.0.0.0` opt-in.
 - **PKG-019**: MUST provide a single `npm run verify` pipeline (typecheck, unit tests, build) and keep helper scripts other than the PRJ-018 development launcher free of implicit chained install/build steps.
-- **PKG-022**: MUST keep every documented example consistent with supported CLI flags, headers, and transports.
-- **PKG-023**: MUST document `enable`, `disable`, `install`, `uninstall`, and `show` commands with supported CLI targets in README.md.
+- **PKG-022**: MUST keep every documented example, including the registered stdio launcher entry, consistent with supported CLI flags, headers, and transports.
+- **PKG-023**: MUST document `enable`, `disable`, `install`, `uninstall`, and `show` commands with supported CLI targets and the absolute registered launcher in README.md.
 - **PKG-024**: MUST ship the packaged skills payload, `skills/manifest.json` plus every `<skill-id>/` content file and declared debug overlay, inside the published npm package so `install` and `show` resolve manifest skills from installed packages.
 - **PKG-025**: MUST document the `api-key` command as the only API-key configuration path and the stdio startup key guard in README.md.
 - **PKG-026**: MUST restrict GitHub Actions to packing and publishing the release artifacts committed in the tagged commit, triggered by a version tag passing the branch gate (PKG-008, PKG-009).
@@ -226,6 +226,8 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **PKG-135**: `scripts/build.sh` MUST validate the packed tarball through `tools/check-release-artifacts.mjs` before removing the compiled bundle and reporting success.
 - **PKG-136**: `scripts/build.sh` MUST remove the compiled `dist/cli.js` bundle after packing so `dist/` holds only the release tarball.
 - **PKG-137**: `tools/check-release-artifacts.mjs` MUST reject a tarball whose basename differs from `<package name>-<package version>.tgz`.
+- **PKG-138**: MUST document in `README.md` and `docs/CONFIGURATION.md` the absolute stdio launcher entry, its migration from the former `npx` entry, and the client reconnection step.
+- **PKG-139**: MUST document in `docs/CONFIGURATION.md` that `install` refuses registration from a source checkout or `_npx` cache and names the global-refresh remediation.
 
 ## 3. Requirements
 
@@ -259,6 +261,7 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **DES-027**: MUST implement one recursive tree renderer and one display-width-based table formatter in a module shared by `--print` and `--info` (`src/utils/configRenderer.ts`).
 - **DES-028**: MUST implement configuration CLI argument parsing, tree view building, and command handlers in dedicated modules (`src/utils/configCli.ts`, `src/utils/configView.ts`) dispatched before yargs parsing.
 - **DES-029**: MUST build every `--print` and `--info` tree from schema nodes and typed values, never from rendered strings hard-coded tree fragments, or display column widths.
+- **DES-030**: MUST implement one injectable launcher resolver, reusing the `npm prefix -g` probe, shared by `install`, `api-key`, the post-upgrade refresh, and `show` launcher comparison.
 
 ### 3.2 Functions
 
@@ -460,11 +463,18 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **REQ-111**: `enable <cli>` MUST add and `disable <cli>` MUST remove the resolved CLI name in the persisted enabled set; both MUST be idempotent.
 - **REQ-112**: MUST resolve MCP configuration files: pi `~/.pi/agent/mcp.json`, openclaw `~/.openclaw/openclaw.json`, codex `~/.codex/config.toml` (`mcp_servers` table), antigravity `~/.gemini/settings.json`, claude `~/.claude.json`, copilot `~/.copilot/mcp.json` (JSON `mcpServers` map), opencode `~/.config/opencode/opencode.json` (JSON `mcp` map).
 - **REQ-113**: MUST resolve skills directories: pi `~/.pi/agent/skills`, openclaw `~/.openclaw/workspace/skills`, codex `~/.codex/skills`, antigravity `~/.gemini/config/skills`, claude `~/.claude/skills`, copilot `~/.copilot/skills`, opencode `~/.config/opencode/skills`.
-- **REQ-114**: `install` MUST register per enabled CLI the stdio entry `mcp-google-api` launching `npx -y mcp-google-api start --stdio` with no embedded API key or environment payload, and install every manifest skill.
+- **REQ-114**: `install` MUST register per enabled CLI the stdio entry `mcp-google-api` launching the absolute Node.js executable plus the absolute global launcher path with `start --stdio`, embedding no key or environment payload.
+- **REQ-231**: `install` MUST install every manifest skill for each enabled CLI after registering the stdio entry.
+- **REQ-232**: `install`, `api-key`, and the post-`--upgrade` install refresh MUST overwrite any existing `npx`-based entry with the resolved absolute launcher.
+- **REQ-233**: The registered launcher MUST execute the global installation regardless of the client launch directory, including a same-name local project directory.
+- **REQ-234**: `install` MUST resolve the global launcher through `npm prefix -g` and MUST NOT persist a name-only spec resolved at client launch time.
+- **REQ-235**: When the running entrypoint is a source checkout or an npm `_npx` cache directory, `install` MUST persist no registration and MUST exit non-zero naming `npm install -g mcp-google-api@latest`.
+- **REQ-236**: When the global launcher cannot be resolved or is absent, `install` MUST persist no registration and MUST exit non-zero with remediation guidance.
+- **REQ-237**: `show` MUST report each registered launcher and MUST mark its server row `STALE` when it differs from the resolved global launcher.
 - **REQ-115**: `uninstall` MUST remove per enabled CLI the `mcp-google-api` MCP entry and managed skill directories; absent entries MUST count as removed without failure.
 - **REQ-116**: `install` and `uninstall` MUST process enabled CLIs only, report per-CLI counts, continue on per-CLI failures, and exit 1 when any failure occurs.
 - **REQ-117**: `show` MUST print a CLI Configuration table with columns CLI, Enabled, MCP Config Path, Skills Config Path covering all seven supported CLIs in alphabetical order.
-- **REQ-118**: `show` MUST print an Installation Status table with columns Type, Name, CLI, Enabled, Installed listing the server and each manifest skill per enabled CLI with OK, MISSING, or STALE status.
+- **REQ-118**: `show` MUST print an Installation Status table with columns Type, Name, CLI, Enabled, Installed, Launcher listing the server and each manifest skill per enabled CLI with OK, MISSING, or STALE status.
 - **REQ-119**: `install` and `uninstall` with zero enabled CLIs MUST print the enable hint and exit 0; `show` MUST always print the CLI Configuration table.
 - **REQ-136**: `api-key <key>` MUST persist the supplied Google Maps API key into the DES-018 user settings file before running any install operation.
 - **REQ-137**: `api-key` MUST reject empty, whitespace-only, or REQ-020-invalid keys with a human-readable stderr error and non-zero exit, persisting nothing.
@@ -557,3 +567,5 @@ Components and libraries (evidence: `package.json` `dependencies`/`devDependenci
 - **TST-032**: MUST verify PKG-129/PKG-130 by running `npm test` (`tests/buildOutputContract.unit.test.ts`): a sandboxed `build` lifecycle MUST emit only `dist/cli.js` and MUST remove every stale generated output of an earlier build; pass when all assertions hold.
 - **TST-033**: MUST verify PKG-131 by running `npm test` (`tests/buildOutputContract.unit.test.ts`): a sandboxed lifecycle MUST exit non-zero when the compiler fails; pass when all assertions hold.
 - **TST-035**: MUST verify PRJ-019/PRJ-024/PRJ-026/PRJ-029 by running `npm test` (`tests/launcherBundleSource.unit.test.ts`): sandboxed launcher runs assert compiler-preferred build, committed-tarball fallback, dual-source abort, `dist/` byte identity, and temporary-directory cleanup.
+- **TST-036**: MUST verify REQ-114/REQ-231-REQ-234/REQ-236/REQ-237 by running `npm test` (`tests/registrationBinding.unit.test.ts`): the resolver returns absolute Node and global launcher paths, install rewrites a legacy `npx` entry, unresolved roots persist nothing, and `show` marks a legacy entry STALE.
+- **TST-037**: MUST verify REQ-235 by running `npm test` (`tests/registrationBinding.unit.test.ts`): a source-checkout or `_npx` entrypoint yields a refusal naming `npm install -g mcp-google-api@latest` and no registration write.

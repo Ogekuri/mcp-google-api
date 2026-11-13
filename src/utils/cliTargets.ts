@@ -451,6 +451,102 @@ export function hasTomlMcpServerSection(configPath: string, serverName: string):
 }
 
 /**
+ * @brief Decode one TOML basic-string token produced by `tomlString`.
+ * @details Reverses the `\\` and `\"` escapes emitted by the writer only.
+ * @param value {string} Escaped token body without surrounding quotes.
+ * @return {string} Decoded text.
+ * @note Complexity O(n). Pure; no side effects.
+ */
+function unescapeTomlString(value: string): string {
+  return value.replace(/\\(["\\])/g, "$1");
+}
+
+/**
+ * @brief Parse the body of one TOML string-array literal.
+ * @details Extracts every quoted item in order; malformed items are skipped so
+ * a hand-edited table degrades to fewer arguments instead of throwing.
+ * @param raw {string} Text between `[` and `]` of an `args` line.
+ * @return {string[]} Decoded array items in file order.
+ * @note Complexity O(n). Pure; no side effects.
+ */
+function parseTomlStringArray(raw: string): string[] {
+  const items: string[] = [];
+  const pattern = /"((?:[^"\\]|\\.)*)"/g;
+  let match: RegExpExecArray | null = pattern.exec(raw);
+  while (match !== null) {
+    items.push(unescapeTomlString(match[1]));
+    match = pattern.exec(raw);
+  }
+  return items;
+}
+
+/**
+ * @brief Read one managed server table from raw TOML content.
+ * @details Locates the `[mcp_servers.<name>]` header, then reads only the
+ * `command` and `args` lines emitted by `registrationToTomlLines` up to the
+ * next table header. `env` is ignored because managed registrations never
+ * carry one (REQ-114).
+ * @param content {string} Raw TOML document content.
+ * @param serverName {string} Server key inside `mcp_servers`.
+ * @return {McpServerRegistration | undefined} Parsed entry; undefined when absent or commandless.
+ * @note Complexity O(n). Pure; no side effects.
+ */
+function readTomlSection(content: string, serverName: string): McpServerRegistration | undefined {
+  const lines = content.split("\n");
+  const header = tomlSectionHeader(serverName);
+  const start = lines.findIndex((line) => line.trim() === header);
+  if (start < 0) return undefined;
+  let command: string | undefined;
+  let args: string[] | undefined;
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (line.startsWith("[")) break;
+    const commandMatch = /^command\s*=\s*"((?:[^"\\]|\\.)*)"$/.exec(line);
+    if (commandMatch !== null) {
+      command = unescapeTomlString(commandMatch[1]);
+      continue;
+    }
+    const argsMatch = /^args\s*=\s*\[(.*)\]$/.exec(line);
+    if (argsMatch !== null) {
+      args = parseTomlStringArray(argsMatch[1]);
+    }
+  }
+  if (command === undefined) return undefined;
+  const entry: McpServerRegistration = { command };
+  if (args !== undefined) entry.args = args;
+  return entry;
+}
+
+/**
+ * @brief Read the managed server entry of one CLI target in either config format.
+ * @details JSON targets delegate to `readJsonMcpServerEntry`; TOML targets
+ * parse the managed table through `readTomlSection`. Missing files and
+ * unparseable content yield undefined so `show` reports MISSING instead of failing.
+ * @param target {CliTarget} CLI adapter.
+ * @param serverName {string} Managed server key.
+ * @param home {string | undefined} Home-directory override.
+ * @return {McpServerRegistration | undefined} Stored registration entry, when present.
+ * @note Complexity O(file size). Read-only.
+ * @satisfies REQ-237
+ */
+export function readServerRegistration(
+  target: CliTarget,
+  serverName: string,
+  home?: string
+): McpServerRegistration | undefined {
+  const configPath = target.mcpConfigPath(home);
+  if (target.configFormat === "toml") {
+    if (!existsSync(configPath)) return undefined;
+    try {
+      return readTomlSection(readFileSync(configPath, "utf-8"), serverName);
+    } catch {
+      return undefined;
+    }
+  }
+  return readJsonMcpServerEntry(configPath, serverName, target.jsonMcpMapKey);
+}
+
+/**
  * @brief Recursively list relative file paths under a directory.
  * @param root {string} Directory to scan.
  * @return {string[]} POSIX-style relative file paths; empty when the directory is absent.

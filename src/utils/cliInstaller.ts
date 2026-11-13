@@ -15,9 +15,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { loadCliSettings, MCP_SERVER_NAME } from "./cliSettings.js";
 import {
+  resolveInstalledLauncher,
+  type InstalledLauncherDeps,
+} from "./installedLauncher.js";
+import {
   applyServerRegistration,
   CLI_TARGETS,
   type CliTargetId,
+  type McpServerRegistration,
   type SkillContentLayout,
   removeSkillDir,
   syncSkillTree,
@@ -61,15 +66,32 @@ export interface CliOperationResult {
 
 /**
  * @brief Build the stdio MCP-server registration entry.
- * @details Launcher `npx -y mcp-google-api start --stdio` with no `env`
- * payload: the registered server resolves its API key from its own
- * configuration file at startup (REQ-142), so CLI registrations never embed
- * keys or environment setup (REQ-114).
- * @return {object} Registration entry consumed by every supported CLI.
- * @satisfies REQ-114
+ * @details Returns the injected absolute launcher when supplied, otherwise
+ * resolves the global installation through `resolveInstalledLauncher`
+ * (DES-030). The entry carries no `env` payload: the registered server reads
+ * its API key from its own configuration file at startup (REQ-142), so CLI
+ * registrations never embed keys or environment setup (REQ-114). Resolution
+ * failures propagate the remediation diagnostic so no name-only spec is ever
+ * persisted (REQ-234, REQ-236).
+ * @param launcher {McpServerRegistration | undefined} Pre-resolved absolute launcher; resolution runs when omitted.
+ * @param deps {InstalledLauncherDeps} Optional resolver dependency overrides.
+ * @return {McpServerRegistration} Absolute stdio registration entry.
+ * @throws {Error} When the global launcher cannot be resolved (REQ-236).
+ * @see resolveInstalledLauncher
+ * @satisfies REQ-114, REQ-231, REQ-234, REQ-236
  */
-export function buildServerRegistration(): { command: string; args: string[] } {
-  return { command: "npx", args: ["-y", MCP_SERVER_NAME, "start", "--stdio"] };
+export function buildServerRegistration(
+  launcher?: McpServerRegistration,
+  deps: InstalledLauncherDeps = {}
+): McpServerRegistration {
+  if (launcher !== undefined) {
+    return launcher;
+  }
+  const resolution = resolveInstalledLauncher(deps);
+  if (!resolution.ok) {
+    throw new Error(resolution.error);
+  }
+  return resolution.launcher;
 }
 
 /**
@@ -170,18 +192,21 @@ export function resolveSkillContentLayout(skill: ManifestSkill, includeDebug: bo
  * debug overlay is excluded as a standalone file and appended to the installed
  * `SKILL.md` only when `includeDebugSkills` is true.
  * Failures are collected per CLI and remaining CLIs still run.
- * @param options {object} `{ home?, resourcesRoot, includeDebugSkills? }`.
+ * @param options {object} `{ home?, resourcesRoot, includeDebugSkills?, launcher?, launcherResolutionDeps? }`.
  * @return {CliOperationResult} Per-CLI summaries and failure diagnostics.
- * @throws {Error} When the skills manifest cannot be loaded (all CLIs fail).
- * @satisfies REQ-114, REQ-116, REQ-155, REQ-156, REQ-157
+ * @throws {Error} When the skills manifest cannot be loaded (all CLIs fail) or
+ * when the absolute launcher cannot be resolved (REQ-236).
+ * @satisfies REQ-114, REQ-116, REQ-155, REQ-156, REQ-157, REQ-231, REQ-234, REQ-236
  */
 export function installEnabledCliResources(options: {
   home?: string;
   resourcesRoot: string;
   includeDebugSkills?: boolean;
+  launcher?: McpServerRegistration;
+  launcherResolutionDeps?: InstalledLauncherDeps;
 }): CliOperationResult {
   const manifest = loadSkillsManifest(options.resourcesRoot);
-  const entry = buildServerRegistration();
+  const entry = buildServerRegistration(options.launcher, options.launcherResolutionDeps ?? {});
   const result: CliOperationResult = { summaries: [], errors: [] };
   for (const cli of loadCliSettings(options.home).enabled) {
     const target = CLI_TARGETS[cli as CliTargetId];

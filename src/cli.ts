@@ -25,13 +25,18 @@ import { describeToolsProfile } from "./utils/toolProfiles.js";
 import { renderClientSnippet, type SnippetClient, type SnippetOptions } from "./utils/clientSnippets.js";
 import { ApiKeyManager } from "./utils/apiKeyManager.js";
 import { loadCliSettings, loadConfiguredApiKey, saveCliSettings } from "./utils/cliSettings.js";
-import { resolveCliTarget, supportedCliNames } from "./utils/cliTargets.js";
+import { resolveCliTarget, supportedCliNames, type McpServerRegistration } from "./utils/cliTargets.js";
 import {
   installEnabledCliResources,
   resolveSkillsResourcesRoot,
   uninstallEnabledCliResources,
   type CliOperationResult,
 } from "./utils/cliInstaller.js";
+import {
+  describeEntrypointBinding,
+  GLOBAL_INSTALL_REMEDIATION,
+  resolveInstalledLauncher,
+} from "./utils/installedLauncher.js";
 import { buildCliShowReport } from "./utils/cliShow.js";
 import { CONFIG_CLI_USAGE, runConfigCommandIfMatched } from "./utils/configCli.js";
 
@@ -712,7 +717,7 @@ export function runEnableDisableCliCommand(
  */
 export function runApiKeyCommand(
   key: string | undefined,
-  options: { home?: string; resourcesRoot: string; streams?: ExecStreams }
+  options: { home?: string; resourcesRoot: string; streams?: ExecStreams; launcher?: McpServerRegistration }
 ): number {
   const streams = options.streams ?? { stdout: process.stdout, stderr: process.stderr };
   const trimmed = (key ?? "").trim();
@@ -735,7 +740,11 @@ export function runApiKeyCommand(
   streams.stdout.write(`API key configured (${maskSecret(trimmed)}).\n`);
   let install: CliOperationResult;
   try {
-    install = installEnabledCliResources({ home: options.home, resourcesRoot: options.resourcesRoot });
+    install = installEnabledCliResources({
+      home: options.home,
+      resourcesRoot: options.resourcesRoot,
+      ...(options.launcher === undefined ? {} : { launcher: options.launcher }),
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     streams.stderr.write(`api-key: install failed: ${message}\n`);
@@ -934,6 +943,46 @@ export function runPortCommand(
 }
 
 /**
+ * @brief Resolve the absolute global launcher required by install-kind commands.
+ * @details Runs `resolveInstalledLauncher` and then classifies the running
+ * package root (`<module dir>/..`) through `describeEntrypointBinding`: a
+ * source checkout or an npm `_npx` cache copy refuses registration
+ * (REQ-235), and an unresolvable or absent global root refuses as well
+ * (REQ-236). Every refusal names `npm install -g mcp-google-api@latest`.
+ * @return {{ launcher?: McpServerRegistration; error?: string }} Absolute launcher or refusal diagnostic.
+ * @note Complexity O(1) plus one child round-trip. Pure decision logic.
+ * @see resolveInstalledLauncher
+ * @see describeEntrypointBinding
+ * @satisfies REQ-235, REQ-236
+ */
+function resolveGlobalInstallLauncher(): { launcher?: McpServerRegistration; error?: string } {
+  const resolution = resolveInstalledLauncher();
+  if (!resolution.ok) {
+    return { error: resolution.error };
+  }
+  const bindingError = describeEntrypointBinding(resolve(__dirname, ".."), resolution.globalPackageDir);
+  if (bindingError !== undefined) {
+    return { error: bindingError };
+  }
+  return { launcher: resolution.launcher };
+}
+
+/**
+ * @brief Report an install-kind launcher refusal on stderr.
+ * @details Writes exactly one JSON object carrying the diagnostic and the
+ * global-refresh remediation command, reserving stdout for the normal report,
+ * and returns exit code 1 (REQ-235, REQ-236).
+ * @param error {string} Refusal diagnostic produced by the launcher resolution.
+ * @return {number} Exit code 1.
+ * @note Complexity O(n) in message length.
+ * @satisfies REQ-235, REQ-236
+ */
+function reportLauncherRefusal(error: string): number {
+  process.stderr.write(JSON.stringify({ error, remediation: GLOBAL_INSTALL_REMEDIATION }, null, 2) + "\n");
+  return 1;
+}
+
+/**
  * @brief Shared handler for the `install` and `uninstall` commands.
  * @details Runs the requested operation over every enabled CLI and prints a
  * human-readable per-CLI activity report on stdout (REQ-166): one header
@@ -953,7 +1002,13 @@ export function runPortCommand(
  */
 export function runInstallUninstallCommand(
   operation: "install" | "uninstall",
-  options: { home?: string; resourcesRoot: string; includeDebugSkills?: boolean; streams?: ExecStreams }
+  options: {
+    home?: string;
+    resourcesRoot: string;
+    includeDebugSkills?: boolean;
+    streams?: ExecStreams;
+    launcher?: McpServerRegistration;
+  }
 ): number {
   const streams = options.streams ?? { stdout: process.stdout, stderr: process.stderr };
   if (loadCliSettings(options.home).enabled.length === 0) {
@@ -968,6 +1023,7 @@ export function runInstallUninstallCommand(
             home: options.home,
             resourcesRoot: options.resourcesRoot,
             includeDebugSkills: options.includeDebugSkills === true,
+            ...(options.launcher === undefined ? {} : { launcher: options.launcher }),
           })
         : uninstallEnabledCliResources({ home: options.home, resourcesRoot: options.resourcesRoot });
   } catch (error: unknown) {
@@ -1002,7 +1058,7 @@ export function runInstallUninstallCommand(
  * @satisfies REQ-117, REQ-118, REQ-119
  */
 export function runShowCommand(
-  options: { home?: string; resourcesRoot: string; streams?: ExecStreams }
+  options: { home?: string; resourcesRoot: string; streams?: ExecStreams; launcher?: McpServerRegistration }
 ): number {
   const streams = options.streams ?? { stdout: process.stdout, stderr: process.stderr };
   try {
@@ -1641,9 +1697,15 @@ if (isMainModule) {
             })
             .example([["$0 api-key AIzaSy...", "Save the key and reinstall every enabled CLI"]]),
         (argv) => {
+          const resolution = resolveGlobalInstallLauncher();
+          if (resolution.error !== undefined) {
+            process.exitCode = reportLauncherRefusal(resolution.error);
+            return;
+          }
           process.exitCode = runApiKeyCommand(argv.key as string | undefined, {
             home: argv.home as string | undefined,
             resourcesRoot: resolveSkillsResourcesRoot(resolve(__dirname, "..")),
+            ...(resolution.launcher === undefined ? {} : { launcher: resolution.launcher }),
           });
         }
       )
@@ -1666,12 +1728,20 @@ if (isMainModule) {
               ["$0 install --debug-skills", "Also append the packaged debug overlay to every installed skill"],
             ]),
         (argv) => {
-          // REQ-114: registrations carry no key or environment setup; the
-          // registered server reads its configuration file at startup (REQ-142).
+          // REQ-114/REQ-234: the entry binds the absolute global launcher and
+          // carries no key or environment setup; the registered server reads
+          // its configuration file at startup (REQ-142). REQ-235/REQ-236 refuse
+          // source-checkout and _npx launches before any configuration write.
+          const resolution = resolveGlobalInstallLauncher();
+          if (resolution.error !== undefined) {
+            process.exitCode = reportLauncherRefusal(resolution.error);
+            return;
+          }
           process.exitCode = runInstallUninstallCommand("install", {
             home: argv.home as string | undefined,
             resourcesRoot: resolveSkillsResourcesRoot(resolve(__dirname, "..")),
             includeDebugSkills: argv.debugSkills === true,
+            ...(resolution.launcher === undefined ? {} : { launcher: resolution.launcher }),
           });
         }
       )
@@ -1703,9 +1773,11 @@ if (isMainModule) {
             })
             .example([["$0 show", "Print CLI Configuration and Installation Status tables"]]),
         (argv) => {
+          const resolution = resolveInstalledLauncher();
           process.exitCode = runShowCommand({
             home: argv.home as string | undefined,
             resourcesRoot: resolveSkillsResourcesRoot(resolve(__dirname, "..")),
+            ...(resolution.ok ? { launcher: resolution.launcher } : {}),
           });
         }
       )

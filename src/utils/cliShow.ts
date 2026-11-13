@@ -13,8 +13,20 @@
 import { join } from "node:path";
 import { relative, resolve } from "node:path";
 import { loadCliSettings, MCP_SERVER_NAME } from "./cliSettings.js";
-import { CLI_TARGETS, compareSkillTree, isServerRegistered, type CliTargetId } from "./cliTargets.js";
+import {
+  CLI_TARGETS,
+  compareSkillTree,
+  readServerRegistration,
+  type CliTargetId,
+  type McpServerRegistration,
+} from "./cliTargets.js";
 import { loadSkillsManifest } from "./cliInstaller.js";
+import {
+  compareServerRegistration,
+  formatServerRegistration,
+  resolveInstalledLauncher,
+  type InstalledLauncherDeps,
+} from "./installedLauncher.js";
 
 /**
  * @brief Maximum rendered width of one table cell in characters.
@@ -133,26 +145,36 @@ function buildCliRows(home?: string): string[][] {
  * @brief Build the Installation Status table rows.
  * @details Emits rows only for enabled CLIs: one `Server` row for the
  * managed `mcp-google-api` entry plus one `Skill` row per manifest skill,
- * each with OK / MISSING / STALE detection. Skill comparison accepts both
- * the plain and the debug-overlay-extended installed `SKILL.md` (REQ-158).
+ * each with OK / MISSING / STALE detection. The server row compares the
+ * stored launcher with the resolved global launcher and renders the stored
+ * command line in the `Launcher` column (REQ-118, REQ-237). Skill comparison
+ * accepts both the plain and the debug-overlay-extended installed `SKILL.md`
+ * (REQ-158).
  * @param home {string | undefined} Home-directory override.
  * @param resourcesRoot {string} Packaged skills resources root.
- * @return {string[][]} `(Type, Name, CLI, Enabled, Installed)` rows.
- * @satisfies REQ-118, REQ-158
+ * @param expected {McpServerRegistration | undefined} Resolved global launcher; omitted when unresolvable.
+ * @return {string[][]} `(Type, Name, CLI, Enabled, Installed, Launcher)` rows.
+ * @satisfies REQ-118, REQ-158, REQ-237
  */
-function buildInstallRows(home: string | undefined, resourcesRoot: string): string[][] {
+function buildInstallRows(
+  home: string | undefined,
+  resourcesRoot: string,
+  expected: McpServerRegistration | undefined
+): string[][] {
   const enabled = loadCliSettings(home).enabled;
   const manifest = loadSkillsManifest(resourcesRoot);
   const rows: string[][] = [];
   for (const cli of enabled) {
     const target = CLI_TARGETS[cli as CliTargetId];
     if (target === undefined) continue;
+    const binding = readServerRegistration(target, MCP_SERVER_NAME, home);
     rows.push([
       "Server",
       MCP_SERVER_NAME,
       target.id,
       "yes",
-      isServerRegistered(target, MCP_SERVER_NAME, home) ? STATUS_OK : STATUS_MISSING,
+      compareServerRegistration(binding, expected),
+      formatServerRegistration(binding),
     ]);
     for (const skill of manifest) {
       rows.push([
@@ -163,6 +185,7 @@ function buildInstallRows(home: string | undefined, resourcesRoot: string): stri
         compareSkillTree(join(resourcesRoot, skill.id), join(target.skillsDir(home), skill.id), {
           ...(skill.debugPath === undefined ? {} : { debugPath: skill.debugPath }),
         }),
+        "",
       ]);
     }
   }
@@ -170,23 +193,55 @@ function buildInstallRows(home: string | undefined, resourcesRoot: string): stri
 }
 
 /**
+ * @brief Resolve the launcher `show` compares stored bindings against.
+ * @details Returns the injected launcher unchanged, otherwise resolves the
+ * global installation tolerantly: an unresolvable root yields undefined so
+ * the table degrades to presence-only status instead of failing (REQ-237).
+ * @param options {object} `{ launcher?, launcherResolutionDeps? }`.
+ * @return {McpServerRegistration | undefined} Expected global launcher, when available.
+ * @note Complexity O(1) plus one child round-trip on the resolution path.
+ * @satisfies REQ-237
+ */
+function resolveExpectedLauncher(options: {
+  launcher?: McpServerRegistration;
+  launcherResolutionDeps?: InstalledLauncherDeps;
+}): McpServerRegistration | undefined {
+  if (options.launcher !== undefined) {
+    return options.launcher;
+  }
+  const resolution = resolveInstalledLauncher(options.launcherResolutionDeps ?? {});
+  return resolution.ok ? resolution.launcher : undefined;
+}
+
+/**
  * @brief Build the complete `show` report text.
  * @details Renders the CLI Configuration table (always, REQ-119) and the
  * Installation Status table (empty when no CLI is enabled), in this order,
- * separated by a blank line. Manifest load failures propagate so the command
- * handler reports a JSON error.
- * @param options {object} `{ home?, resourcesRoot }`.
+ * separated by a blank line. The Installation Status table carries the
+ * `Launcher` column and marks a stored binding `STALE` when it differs from
+ * the resolved global launcher (REQ-118, REQ-237). Manifest load failures
+ * propagate so the command handler reports a JSON error.
+ * @param options {object} `{ home?, resourcesRoot, launcher?, launcherResolutionDeps? }`.
  * @return {string} Report text with two titled tables.
  * @throws {Error} When the skills manifest cannot be loaded.
- * @satisfies REQ-117, REQ-118, REQ-119
+ * @satisfies REQ-117, REQ-118, REQ-119, REQ-237
  */
-export function buildCliShowReport(options: { home?: string; resourcesRoot: string }): string {
+export function buildCliShowReport(options: {
+  home?: string;
+  resourcesRoot: string;
+  launcher?: McpServerRegistration;
+  launcherResolutionDeps?: InstalledLauncherDeps;
+}): string {
+  const expected = resolveExpectedLauncher(options);
   return [
     "CLI Configuration",
     renderAsciiTable(["CLI", "Enabled", "MCP Config Path", "Skills Config Path"], buildCliRows(options.home)),
     "",
     "Installation Status",
-    renderAsciiTable(["Type", "Name", "CLI", "Enabled", "Installed"], buildInstallRows(options.home, options.resourcesRoot)),
+    renderAsciiTable(
+      ["Type", "Name", "CLI", "Enabled", "Installed", "Launcher"],
+      buildInstallRows(options.home, options.resourcesRoot, expected)
+    ),
   ].join("\n");
 }
 

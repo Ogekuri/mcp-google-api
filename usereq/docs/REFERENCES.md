@@ -45,12 +45,13 @@
         ├── configResolver.ts
         ├── configSchema.ts
         ├── configView.ts
+        ├── installedLauncher.ts
         ├── requestContext.ts
         ├── toolProfiles.ts
         └── upgradeManager.ts
 ```
 
-# cli.ts | TypeScript | 1905L | 40 symbols | 21 imports | 70 comments
+# cli.ts | TypeScript | 1977L | 42 symbols | 22 imports | 74 comments
 > Path: `src/cli.ts`
 
 ## Imports
@@ -72,7 +73,8 @@ import { describeToolsProfile } from "./utils/toolProfiles.js";
 import { renderClientSnippet, type SnippetClient, type SnippetOptions } from "./utils/clientSnippets.js";
 import { ApiKeyManager } from "./utils/apiKeyManager.js";
 import { loadCliSettings, loadConfiguredApiKey, saveCliSettings } from "./utils/cliSettings.js";
-import { resolveCliTarget, supportedCliNames } from "./utils/cliTargets.js";
+import { resolveCliTarget, supportedCliNames, type McpServerRegistration } from "./utils/cliTargets.js";
+import {
 import {
 import { buildCliShowReport } from "./utils/cliShow.js";
 import { CONFIG_CLI_USAGE, runConfigCommandIfMatched } from "./utils/configCli.js";
@@ -80,13 +82,13 @@ import { CONFIG_CLI_USAGE, runConfigCommandIfMatched } from "./utils/configCli.j
 
 ## Definitions
 
-### iface `export interface ServerStartupOutcome` (L48-52)
+### iface `export interface ServerStartupOutcome` (L53-57)
 - @brief Aggregated HTTP startup result across all configured server instances.
 - @details `started`/`failed` count per instance; `servers` holds only the
 instances that are listening, so a zero-length array with `started === 0`
 is the reliable-failure signal consumed by the default command (REQ-095).
 
-### fn `export async function startServer(` (L72-129)
+### fn `export async function startServer(` (L77-134)
 - @brief Starts every configured HTTP MCP server instance and reports the outcome.
 - @details Validates the requested listen port (integer 1-65535), skips the
 invalid instance with remediation guidance while marking it failed
@@ -104,9 +106,9 @@ diagnostics identify the application as `MCP Google API server`
 - @see installShutdownHandlers
 - @satisfies REQ-008, REQ-009, REQ-096, REQ-165
 
-- type `export type ShutdownExitHook = (code: number) => void;` (L132)
+- type `export type ShutdownExitHook = (code: number) => void;` (L137)
 - @brief Exit hook signature used by the shutdown handler. */
-### fn `export function createShutdownHandler(` (L146-160)
+### fn `export function createShutdownHandler(` (L151-165)
 - @brief Builds a one-shot orderly shutdown handler for HTTP server instances.
 - @details On first invocation it stops every given server via
 `stopHttpServer()` (transport close + socket close, errors tolerated) and
@@ -118,7 +120,7 @@ signals never double-stop. Complexity O(servers).
 - @see stopHttpServer
 - @satisfies REQ-096
 
-### fn `export function installShutdownHandlers(servers: readonly BaseMcpServer[]): void` (L172-176)
+### fn `export function installShutdownHandlers(servers: readonly BaseMcpServer[]): void` (L177-181)
 - @brief Registers SIGINT/SIGTERM handlers that orderly-stop the given servers.
 - @details Wraps `createShutdownHandler` and attaches it to both signals so
 Ctrl-C and terminate requests close all HTTP sessions and the listening
@@ -128,32 +130,32 @@ socket before process exit (REQ-096). Complexity O(1).
 - @see createShutdownHandler
 - @satisfies REQ-096
 
-- type `type ExecFailureResponse = {` (L201)
-### iface `interface ExecOutput` (L206-208)
+- type `type ExecFailureResponse = {` (L206)
+### iface `interface ExecOutput` (L211-213)
 
-### iface `interface ExecStreams` (L210-213)
+### iface `interface ExecStreams` (L215-218)
 
-- type `type ExecToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L215)
-- type `export type DoctorCheck = {` (L217)
-- type `export type DoctorReport = {` (L223)
-- type `type DoctorToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L230)
-### fn `function isExecFailureResponse(result: unknown): result is ExecFailureResponse` (L232-239)
+- type `type ExecToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L220)
+- type `export type DoctorCheck = {` (L222)
+- type `export type DoctorReport = {` (L228)
+- type `type DoctorToolRunner = (toolName: string, params: any, apiKey: string) => Promise<unknown>;` (L235)
+### fn `function isExecFailureResponse(result: unknown): result is ExecFailureResponse` (L237-244)
 
-### fn `function getExecFailureMessage(toolName: string, result: ExecFailureResponse): string` (L241-249)
+### fn `function getExecFailureMessage(toolName: string, result: ExecFailureResponse): string` (L246-254)
 
-### fn `export async function execTool(toolName: string, params: any, apiKey: string): Promise<any>` (L251-365)
+### fn `export async function execTool(toolName: string, params: any, apiKey: string): Promise<any>` (L256-370)
 
-### fn `export async function runExecCommand(` (L375-380)
+### fn `export async function runExecCommand(` (L380-385)
 
-- type `export type DoctorProbeId = "geocoding" | "places-new" | "routes";` (L400)
+- type `export type DoctorProbeId = "geocoding" | "places-new" | "routes";` (L405)
 - @brief Selectable live-probe identifier used by `doctor --live --probes`. */
-### iface `export interface DoctorLiveProbe` (L403-408)
+### iface `export interface DoctorLiveProbe` (L408-413)
 - @brief Static definition of one billable live probe executed by doctor. */
 
-### iface `export interface DoctorProbesParseResult` (L440-443)
+### iface `export interface DoctorProbesParseResult` (L445-448)
 - @brief Parsed `--probes` CLI value: either valid probe ids or an error. */
 
-### fn `export function parseDoctorProbes(raw: string | undefined): DoctorProbesParseResult` (L455-477)
+### fn `export function parseDoctorProbes(raw: string | undefined): DoctorProbesParseResult` (L460-482)
 - @brief Parses the raw `--probes` CLI string into validated probe ids.
 - @details `undefined` input -> `{ probes: undefined }` (probe all three,
 legacy `--live` behavior). Splits on commas, trims, lowercases, maps through
@@ -163,13 +165,13 @@ with a remediation error. Complexity O(n) in items; pure.
 - @return {DoctorProbesParseResult} Validated ids, or `error` describing the invalid input.
 - @satisfies REQ-091
 
-### iface `export interface DoctorOptions` (L485-490)
+### iface `export interface DoctorOptions` (L490-495)
 - @brief Injectable doctor dependencies for deterministic testing.
 - @details `nodeVersion` overrides `process.versions.node`; `config` overrides
 environment-derived runtime configuration; `allToolNames` overrides the
 registered tool-name registry used by the profile check.
 
-### fn `export async function runDoctor(` (L514-519)
+### fn `export async function runDoctor(` (L519-524)
 - @brief Runs the readiness self-check decoupled from server startup.
 - @details Local checks (zero network calls): Node major >=
 `NODE_ENGINE_FLOOR` (24, aligned with `package.json` `engines`, REQ-070),
@@ -191,7 +193,7 @@ to the exit code.
 - @see describeToolsProfile
 - @satisfies REQ-070, REQ-071, REQ-072, REQ-089, REQ-090, REQ-091
 
-### fn `export function runSnippetCommand(` (L629-631)
+### fn `export function runSnippetCommand(` (L634-636)
 - @brief Renders a client registration snippet and routes output per PRJ-008.
 - @details Delegates JSON construction to `renderClientSnippet`, writes the
 snippet JSON to `stdout` and each guidance note to `stderr` so stdout stays
@@ -203,7 +205,7 @@ JSON stderr error with exit code 1. Complexity O(1).
 - @see renderClientSnippet
 - @satisfies PRJ-010, REQ-092, REQ-093
 
-### fn `export function runEnableDisableCliCommand(` (L666-669)
+### fn `export function runEnableDisableCliCommand(` (L671-674)
 - @brief Enables or disables one supported CLI in the persisted settings.
 - @details Resolves the CLI adapter case-insensitively; unsupported names
 exit 2 with a JSON stderr error listing supported names (REQ-110).
@@ -219,7 +221,7 @@ resulting enabled state (REQ-184, human-readable exception to PRJ-008).
 - @see saveCliSettings
 - @satisfies REQ-110, REQ-111, REQ-184
 
-### fn `export function runApiKeyCommand(` (L713-715)
+### fn `export function runApiKeyCommand(` (L718-720)
 - @brief Saves the Google Maps API key in the persisted settings and refreshes enabled-CLI registrations.
 - @details Validates the key first (REQ-020 format via `ApiKeyManager`),
 rejecting empty, whitespace-only, or malformed input with a human-readable
@@ -239,7 +241,7 @@ result, or the enable hint when zero CLIs are enabled.
 - @see installEnabledCliResources
 - @satisfies REQ-136, REQ-137, REQ-138, REQ-139, REQ-159
 
-### fn `export function runAutoUpdateCommand(` (L774-776)
+### fn `export function runAutoUpdateCommand(` (L783-785)
 - @brief Enables or disables the automatic update check in the persisted settings.
 - @details Accepts `enable`, `disable`, `1`, `0` case-insensitively (REQ-148)
 and persists the resolved boolean into the settings `autoUpdate` field
@@ -254,7 +256,7 @@ error listing the accepted values and persists nothing (REQ-151).
 - @see saveCliSettings
 - @satisfies REQ-148, REQ-149, REQ-150, REQ-151
 
-### fn `export function runToolsCommand(` (L819-821)
+### fn `export function runToolsCommand(` (L828-830)
 - @brief Persists the enabled-tool allowlist via the `tools` command.
 - @details Accepts a comma-separated tool-name list or the literal `*`
 (full set). Unknown names, empty items only, or a missing value print a
@@ -269,7 +271,7 @@ confirmation is printed. Complexity O(n + m).
 - @see saveCliSettings
 - @satisfies REQ-167
 
-### fn `export function runHostCommand(` (L876-878)
+### fn `export function runHostCommand(` (L885-887)
 - @brief Persists the HTTP bind host via the `host` command.
 - @details Rejects missing or whitespace-only values with a human-readable
 stderr error, persisting nothing (REQ-168); a valid non-empty hostname is
@@ -282,7 +284,7 @@ human-readable stdout confirmation is printed. Complexity O(1).
 - @see saveCliSettings
 - @satisfies REQ-168
 
-### fn `export function runPortCommand(` (L912-914)
+### fn `export function runPortCommand(` (L921-923)
 - @brief Persists the HTTP listen port via the `port` command.
 - @details Rejects missing or non-integer values outside 1..65535 with a
 human-readable stderr error, persisting nothing (REQ-169); a valid port is
@@ -295,7 +297,30 @@ human-readable stdout confirmation is printed. Complexity O(1).
 - @see saveCliSettings
 - @satisfies REQ-169
 
-### fn `export function runInstallUninstallCommand(` (L954-956)
+### fn `function resolveGlobalInstallLauncher(): { launcher?: McpServerRegistration; error?: string }` (L958-968)
+- @brief Resolve the absolute global launcher required by install-kind commands.
+- @details Runs `resolveInstalledLauncher` and then classifies the running
+package root (`<module dir>/..`) through `describeEntrypointBinding`: a
+source checkout or an npm `_npx` cache copy refuses registration
+(REQ-235), and an unresolvable or absent global root refuses as well
+(REQ-236). Every refusal names `npm install -g mcp-google-api@latest`.
+- @return {{ launcher?: McpServerRegistration; error?: string }} Absolute launcher or refusal diagnostic.
+- @note Complexity O(1) plus one child round-trip. Pure decision logic.
+- @see resolveInstalledLauncher
+- @see describeEntrypointBinding
+- @satisfies REQ-235, REQ-236
+
+### fn `function reportLauncherRefusal(error: string): number` (L980-983)
+- @brief Report an install-kind launcher refusal on stderr.
+- @details Writes exactly one JSON object carrying the diagnostic and the
+global-refresh remediation command, reserving stdout for the normal report,
+and returns exit code 1 (REQ-235, REQ-236).
+- @param error {string} Refusal diagnostic produced by the launcher resolution.
+- @return {number} Exit code 1.
+- @note Complexity O(n) in message length.
+- @satisfies REQ-235, REQ-236
+
+### fn `export function runInstallUninstallCommand(` (L1003-1011)
 - @brief Shared handler for the `install` and `uninstall` commands.
 - @details Runs the requested operation over every enabled CLI and prints a
 human-readable per-CLI activity report on stdout (REQ-166): one header
@@ -313,7 +338,7 @@ so each skill's declared debug overlay is appended to the installed
 - @see uninstallEnabledCliResources
 - @satisfies REQ-114, REQ-115, REQ-116, REQ-119, REQ-154, REQ-155, REQ-156, REQ-166
 
-### fn `export function runShowCommand(` (L1004-1005)
+### fn `export function runShowCommand(` (L1060-1061)
 - @brief Prints the CLI Configuration and Installation Status tables.
 - @details Delegates rendering to `buildCliShowReport` and writes the report
 text to stdout (human-readable exception to PRJ-008). Manifest or render
@@ -323,7 +348,7 @@ failures surface as a JSON stderr error with exit code 1.
 - @see buildCliShowReport
 - @satisfies REQ-117, REQ-118, REQ-119
 
-### fn `function isEntryMainModule(): boolean` (L1041-1051)
+### fn `function isEntryMainModule(): boolean` (L1097-1107)
 - @brief Detects whether this module is the process main module.
 - @details Compares the REAL paths of both sides after symlink resolution:
 `realpathSync(process.argv[1])` versus the real path of this module
@@ -342,7 +367,7 @@ metadata lookups; no side effects.
 - @return {boolean} True when this module was launched as the main module.
 - @satisfies PRJ-003
 
-### fn `export function describeUndispatchedServerStart(args: readonly string[]): string | undefined` (L1069-1080)
+### fn `export function describeUndispatchedServerStart(args: readonly string[]): string | undefined` (L1125-1136)
 - @brief Detects a stdio server-start argv shape that the entry gate skipped.
 - @details Matches the registered MCP-client stdio launch shape (REQ-114
 launcher `npx -y mcp-google-api start --stdio`): the post-entry argument
@@ -358,7 +383,7 @@ naming the local rebuild and the global-refresh commands; undefined for
 any other argv shape (plain module imports, unrelated commands).
 - @satisfies REQ-094
 
-### fn `export function handleUndispatchedEntry(` (L1097-1099)
+### fn `export function handleUndispatchedEntry(` (L1153-1155)
 - @brief Reports an undispatched server-start launch on stderr and exits non-zero.
 - @details Detects the server-start argv shape via
 `describeUndispatchedServerStart`; when present, writes exactly one JSON
@@ -373,7 +398,7 @@ code is returned, never exited inline.
 - @return {number} 1 when the remediation diagnostic was emitted; 0 otherwise.
 - @satisfies REQ-094, REQ-015, CTN-003
 
-### fn `function wrapHelpText(text: string, width: number): string` (L1146-1173)
+### fn `function wrapHelpText(text: string, width: number): string` (L1202-1229)
 - @brief Wraps one logical help-text block at word boundaries, preserving indentation.
 - @details Extracts each line's leading whitespace as its indentation, then greedily packs
 whitespace-separated tokens so every emitted line stays within `width` characters;
@@ -385,7 +410,7 @@ as hard breaks. Pure; complexity O(n) in token count.
 - @return {string} Wrapped block joined with `\n`.
 - @satisfies REQ-224
 
-### fn `function formatHelpEntry(label: string, description: string): string[]` (L1186-1206)
+### fn `function formatHelpEntry(label: string, description: string): string[]` (L1242-1262)
 - @brief Renders one epilog entry with a hanging indent at word boundaries.
 - @details Emits the padded label plus the first wrapped description line, then pads every
 continuation line to `HELP_EPILOG_LABEL_WIDTH`, so the description column stays aligned while
@@ -396,7 +421,7 @@ complexity O(n) in description length.
 - @return {string[]} Rendered lines in output order.
 - @satisfies REQ-224
 
-### fn `const buildServerCommandOptions = (yargs: Argv) =>` (L1271-1296)
+### fn `const buildServerCommandOptions = (yargs: Argv) =>` (L1327-1352)
 - @brief Applies the shared server-start options to a yargs builder.
 - @details Declares `--port`, `--host`, and `--stdio` with defaults taken
 from the persisted settings (DES-015) plus the server-mode examples.
@@ -406,8 +431,8 @@ identical option surface (PRJ-003). Complexity O(1).
 - @return {Argv} The same builder instance with the typed server options attached.
 - @satisfies REQ-079, REQ-008
 
-- type `type ServerCommandArgs = BuilderArguments<typeof buildServerCommandOptions>;` (L1299)
-### fn `const runServerCommand = async (argv: ServerCommandArgs): Promise<void> =>` (L1318-1377)
+- type `type ServerCommandArgs = BuilderArguments<typeof buildServerCommandOptions>;` (L1355)
+### fn `const runServerCommand = async (argv: ServerCommandArgs): Promise<void> =>` (L1374-1433)
 - @brief Server-start handler shared by the `start` and `run` commands.
 - @details Resolves the effective API key exclusively from the persisted
 settings key (REQ-142) and injects it into `ApiKeyManager` (DES-006);
@@ -424,51 +449,53 @@ HTTP mode without an API key logs a warning and still starts (REQ-080).
 - @return {Promise<void>} Resolves when stdio mode stops; HTTP mode persists.
 - @satisfies REQ-079, REQ-080, REQ-082, REQ-095, REQ-142, REQ-143, REQ-165
 
-### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1828-1840)
+### fn `const semaphore = async (tasks: (() => Promise<void>)[], limit: number) =>` (L1900-1912)
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`ServerStartupOutcome`|iface||48-52|export interface ServerStartupOutcome|
-|`startServer`|fn||72-129|export async function startServer(|
-|`ShutdownExitHook`|type||132||
-|`createShutdownHandler`|fn||146-160|export function createShutdownHandler(|
-|`installShutdownHandlers`|fn||172-176|export function installShutdownHandlers(servers: readonly...|
-|`ExecFailureResponse`|type||201||
-|`ExecOutput`|iface||206-208|interface ExecOutput|
-|`ExecStreams`|iface||210-213|interface ExecStreams|
-|`ExecToolRunner`|type||215||
-|`DoctorCheck`|type||217||
-|`DoctorReport`|type||223||
-|`DoctorToolRunner`|type||230||
-|`isExecFailureResponse`|fn||232-239|function isExecFailureResponse(result: unknown): result i...|
-|`getExecFailureMessage`|fn||241-249|function getExecFailureMessage(toolName: string, result: ...|
-|`execTool`|fn||251-365|export async function execTool(toolName: string, params: ...|
-|`runExecCommand`|fn||375-380|export async function runExecCommand(|
-|`DoctorProbeId`|type||400||
-|`DoctorLiveProbe`|iface||403-408|export interface DoctorLiveProbe|
-|`DoctorProbesParseResult`|iface||440-443|export interface DoctorProbesParseResult|
-|`parseDoctorProbes`|fn||455-477|export function parseDoctorProbes(raw: string | undefined...|
-|`DoctorOptions`|iface||485-490|export interface DoctorOptions|
-|`runDoctor`|fn||514-519|export async function runDoctor(|
-|`runSnippetCommand`|fn||629-631|export function runSnippetCommand(|
-|`runEnableDisableCliCommand`|fn||666-669|export function runEnableDisableCliCommand(|
-|`runApiKeyCommand`|fn||713-715|export function runApiKeyCommand(|
-|`runAutoUpdateCommand`|fn||774-776|export function runAutoUpdateCommand(|
-|`runToolsCommand`|fn||819-821|export function runToolsCommand(|
-|`runHostCommand`|fn||876-878|export function runHostCommand(|
-|`runPortCommand`|fn||912-914|export function runPortCommand(|
-|`runInstallUninstallCommand`|fn||954-956|export function runInstallUninstallCommand(|
-|`runShowCommand`|fn||1004-1005|export function runShowCommand(|
-|`isEntryMainModule`|fn||1041-1051|function isEntryMainModule(): boolean|
-|`describeUndispatchedServerStart`|fn||1069-1080|export function describeUndispatchedServerStart(args: rea...|
-|`handleUndispatchedEntry`|fn||1097-1099|export function handleUndispatchedEntry(|
-|`wrapHelpText`|fn||1146-1173|function wrapHelpText(text: string, width: number): string|
-|`formatHelpEntry`|fn||1186-1206|function formatHelpEntry(label: string, description: stri...|
-|`buildServerCommandOptions`|fn||1271-1296|const buildServerCommandOptions = (yargs: Argv) =>|
-|`ServerCommandArgs`|type||1299||
-|`runServerCommand`|fn||1318-1377|const runServerCommand = async (argv: ServerCommandArgs):...|
-|`semaphore`|fn||1828-1840|const semaphore = async (tasks: (() => Promise<void>)[], ...|
+|`ServerStartupOutcome`|iface||53-57|export interface ServerStartupOutcome|
+|`startServer`|fn||77-134|export async function startServer(|
+|`ShutdownExitHook`|type||137||
+|`createShutdownHandler`|fn||151-165|export function createShutdownHandler(|
+|`installShutdownHandlers`|fn||177-181|export function installShutdownHandlers(servers: readonly...|
+|`ExecFailureResponse`|type||206||
+|`ExecOutput`|iface||211-213|interface ExecOutput|
+|`ExecStreams`|iface||215-218|interface ExecStreams|
+|`ExecToolRunner`|type||220||
+|`DoctorCheck`|type||222||
+|`DoctorReport`|type||228||
+|`DoctorToolRunner`|type||235||
+|`isExecFailureResponse`|fn||237-244|function isExecFailureResponse(result: unknown): result i...|
+|`getExecFailureMessage`|fn||246-254|function getExecFailureMessage(toolName: string, result: ...|
+|`execTool`|fn||256-370|export async function execTool(toolName: string, params: ...|
+|`runExecCommand`|fn||380-385|export async function runExecCommand(|
+|`DoctorProbeId`|type||405||
+|`DoctorLiveProbe`|iface||408-413|export interface DoctorLiveProbe|
+|`DoctorProbesParseResult`|iface||445-448|export interface DoctorProbesParseResult|
+|`parseDoctorProbes`|fn||460-482|export function parseDoctorProbes(raw: string | undefined...|
+|`DoctorOptions`|iface||490-495|export interface DoctorOptions|
+|`runDoctor`|fn||519-524|export async function runDoctor(|
+|`runSnippetCommand`|fn||634-636|export function runSnippetCommand(|
+|`runEnableDisableCliCommand`|fn||671-674|export function runEnableDisableCliCommand(|
+|`runApiKeyCommand`|fn||718-720|export function runApiKeyCommand(|
+|`runAutoUpdateCommand`|fn||783-785|export function runAutoUpdateCommand(|
+|`runToolsCommand`|fn||828-830|export function runToolsCommand(|
+|`runHostCommand`|fn||885-887|export function runHostCommand(|
+|`runPortCommand`|fn||921-923|export function runPortCommand(|
+|`resolveGlobalInstallLauncher`|fn||958-968|function resolveGlobalInstallLauncher(): { launcher?: Mcp...|
+|`reportLauncherRefusal`|fn||980-983|function reportLauncherRefusal(error: string): number|
+|`runInstallUninstallCommand`|fn||1003-1011|export function runInstallUninstallCommand(|
+|`runShowCommand`|fn||1060-1061|export function runShowCommand(|
+|`isEntryMainModule`|fn||1097-1107|function isEntryMainModule(): boolean|
+|`describeUndispatchedServerStart`|fn||1125-1136|export function describeUndispatchedServerStart(args: rea...|
+|`handleUndispatchedEntry`|fn||1153-1155|export function handleUndispatchedEntry(|
+|`wrapHelpText`|fn||1202-1229|function wrapHelpText(text: string, width: number): string|
+|`formatHelpEntry`|fn||1242-1262|function formatHelpEntry(label: string, description: stri...|
+|`buildServerCommandOptions`|fn||1327-1352|const buildServerCommandOptions = (yargs: Argv) =>|
+|`ServerCommandArgs`|type||1355||
+|`runServerCommand`|fn||1374-1433|const runServerCommand = async (argv: ServerCommandArgs):...|
+|`semaphore`|fn||1900-1912|const semaphore = async (tasks: (() => Promise<void>)[], ...|
 
 
 ---
@@ -1395,7 +1422,7 @@ never throws.
 
 ---
 
-# cliInstaller.ts | TypeScript | 247L | 9 symbols | 4 imports | 10 comments
+# cliInstaller.ts | TypeScript | 272L | 9 symbols | 5 imports | 10 comments
 > Path: `src/utils/cliInstaller.ts`
 - @brief Orchestrate MCP-server registration and skill installation for enabled CLIs.
 - @details Loads the enabled-CLI settings, reads the packaged skills
@@ -1413,36 +1440,44 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { loadCliSettings, MCP_SERVER_NAME } from "./cliSettings.js";
 import {
+import {
 ```
 
 ## Definitions
 
-### iface `export interface ManifestSkill` (L33-40)
+### iface `export interface ManifestSkill` (L38-45)
 - @brief One manifest skill entry from `skills/manifest.json`.
 - @details `id` names the packaged `<id>/` directory holding `SKILL.md`;
 `debugPath` is the optional debug overlay path relative to that directory
 (REQ-152).
 - @satisfies REQ-152
 
-### iface `export interface CliOperationSummary` (L47-51)
+### iface `export interface CliOperationSummary` (L52-56)
 - @brief Per-CLI outcome of one install or uninstall run.
 - @details `server` counts the MCP registration (0 or 1); `skills` counts
 processed manifest skills for that CLI.
 
-### iface `export interface CliOperationResult` (L57-60)
+### iface `export interface CliOperationResult` (L62-65)
 - @brief Aggregate outcome of one install or uninstall run.
 - @details Both lists are empty when no CLI is enabled (REQ-116, REQ-119).
 
-### fn `export function buildServerRegistration(): { command: string; args: string[] }` (L71-73)
+### fn `export function buildServerRegistration(` (L83-85)
 - @brief Build the stdio MCP-server registration entry.
-- @details Launcher `npx -y mcp-google-api start --stdio` with no `env`
-payload: the registered server resolves its API key from its own
-configuration file at startup (REQ-142), so CLI registrations never embed
-keys or environment setup (REQ-114).
-- @return {object} Registration entry consumed by every supported CLI.
-- @satisfies REQ-114
+- @details Returns the injected absolute launcher when supplied, otherwise
+resolves the global installation through `resolveInstalledLauncher`
+(DES-030). The entry carries no `env` payload: the registered server reads
+its API key from its own configuration file at startup (REQ-142), so CLI
+registrations never embed keys or environment setup (REQ-114). Resolution
+failures propagate the remediation diagnostic so no name-only spec is ever
+persisted (REQ-234, REQ-236).
+- @param launcher {McpServerRegistration | undefined} Pre-resolved absolute launcher; resolution runs when omitted.
+- @param deps {InstalledLauncherDeps} Optional resolver dependency overrides.
+- @return {McpServerRegistration} Absolute stdio registration entry.
+- @throws {Error} When the global launcher cannot be resolved (REQ-236).
+- @see resolveInstalledLauncher
+- @satisfies REQ-114, REQ-231, REQ-234, REQ-236
 
-### fn `export function resolveSkillsResourcesRoot(packageRoot: string): string` (L85-91)
+### fn `export function resolveSkillsResourcesRoot(packageRoot: string): string` (L107-113)
 - @brief Resolve the packaged skills root for the running installation.
 - @details Checks `<packageRoot>/skills` — the layout used
 both by from-source runs and by the published npm package, which ships the
@@ -1452,7 +1487,7 @@ same subtree at the package root (PKG-024).
 - @throws {Error} When the skills root directory is missing.
 - @satisfies PKG-024
 
-### fn `export function loadSkillsManifest(resourcesRoot: string): ManifestSkill[]` (L104-144)
+### fn `export function loadSkillsManifest(resourcesRoot: string): ManifestSkill[]` (L126-166)
 - @brief Load and validate the packaged skills manifest.
 - @details Validates each entry's `id`, `path`, and optional `debug` overlay;
 the overlay path is resolved relative to the skill directory. Malformed
@@ -1463,7 +1498,7 @@ overlay declarations and missing referenced files fail the whole manifest.
 `SKILL.md` or debug overlay path.
 - @satisfies REQ-152
 
-### fn `export function resolveSkillContentLayout(skill: ManifestSkill, includeDebug: boolean): SkillContentLayout` (L156-161)
+### fn `export function resolveSkillContentLayout(skill: ManifestSkill, includeDebug: boolean): SkillContentLayout` (L178-183)
 - @brief Build the install layout of one manifest skill.
 - @details Resolves the declared debug overlay and whether its content must be
 appended to the installed `SKILL.md` (REQ-155, REQ-156). Skills without a
@@ -1473,7 +1508,7 @@ declared overlay always resolve to the empty layout.
 - @return {SkillContentLayout} Layout consumed by `syncSkillTree`.
 - @satisfies REQ-155, REQ-156, REQ-157
 
-### fn `export function installEnabledCliResources(options:` (L178-209)
+### fn `export function installEnabledCliResources(options:` (L201-234)
 - @brief Install the MCP server entry and every manifest skill per enabled CLI.
 - @details For each enabled CLI in settings order: registers the stdio entry
 via `applyServerRegistration` (no key or environment payload; the server
@@ -1483,12 +1518,13 @@ manifest skill directory `<resourcesRoot>/<skill-id>` into
 debug overlay is excluded as a standalone file and appended to the installed
 `SKILL.md` only when `includeDebugSkills` is true.
 Failures are collected per CLI and remaining CLIs still run.
-- @param options {object} `{ home?, resourcesRoot, includeDebugSkills? }`.
+- @param options {object} `{ home?, resourcesRoot, includeDebugSkills?, launcher?, launcherResolutionDeps? }`.
 - @return {CliOperationResult} Per-CLI summaries and failure diagnostics.
-- @throws {Error} When the skills manifest cannot be loaded (all CLIs fail).
-- @satisfies REQ-114, REQ-116, REQ-155, REQ-156, REQ-157
+- @throws {Error} When the skills manifest cannot be loaded (all CLIs fail) or
+when the absolute launcher cannot be resolved (REQ-236).
+- @satisfies REQ-114, REQ-116, REQ-155, REQ-156, REQ-157, REQ-231, REQ-234, REQ-236
 
-### fn `export function uninstallEnabledCliResources(options:` (L222-247)
+### fn `export function uninstallEnabledCliResources(options:` (L247-272)
 - @brief Remove the MCP server entry and managed skills per enabled CLI.
 - @details Reciprocal of `installEnabledCliResources`: removes the managed
 server entry and deletes each manifest skill directory. Missing entries
@@ -1502,15 +1538,15 @@ remaining CLIs still run.
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`ManifestSkill`|iface||33-40|export interface ManifestSkill|
-|`CliOperationSummary`|iface||47-51|export interface CliOperationSummary|
-|`CliOperationResult`|iface||57-60|export interface CliOperationResult|
-|`buildServerRegistration`|fn||71-73|export function buildServerRegistration(): { command: str...|
-|`resolveSkillsResourcesRoot`|fn||85-91|export function resolveSkillsResourcesRoot(packageRoot: s...|
-|`loadSkillsManifest`|fn||104-144|export function loadSkillsManifest(resourcesRoot: string)...|
-|`resolveSkillContentLayout`|fn||156-161|export function resolveSkillContentLayout(skill: Manifest...|
-|`installEnabledCliResources`|fn||178-209|export function installEnabledCliResources(options:|
-|`uninstallEnabledCliResources`|fn||222-247|export function uninstallEnabledCliResources(options:|
+|`ManifestSkill`|iface||38-45|export interface ManifestSkill|
+|`CliOperationSummary`|iface||52-56|export interface CliOperationSummary|
+|`CliOperationResult`|iface||62-65|export interface CliOperationResult|
+|`buildServerRegistration`|fn||83-85|export function buildServerRegistration(|
+|`resolveSkillsResourcesRoot`|fn||107-113|export function resolveSkillsResourcesRoot(packageRoot: s...|
+|`loadSkillsManifest`|fn||126-166|export function loadSkillsManifest(resourcesRoot: string)...|
+|`resolveSkillContentLayout`|fn||178-183|export function resolveSkillContentLayout(skill: Manifest...|
+|`installEnabledCliResources`|fn||201-234|export function installEnabledCliResources(options:|
+|`uninstallEnabledCliResources`|fn||247-272|export function uninstallEnabledCliResources(options:|
 
 
 ---
@@ -1682,7 +1718,7 @@ flushing, or replacement fails; the temporary file is best-effort removed.
 
 ---
 
-# cliShow.ts | TypeScript | 193L | 7 symbols | 5 imports | 10 comments
+# cliShow.ts | TypeScript | 248L | 8 symbols | 6 imports | 11 comments
 > Path: `src/utils/cliShow.ts`
 - @brief Render the CLI Configuration and Installation Status report tables.
 - @details Builds the human-readable `show` output: a CLI Configuration
@@ -1698,13 +1734,14 @@ OK / MISSING / STALE detection. Both tables render as box-drawing grids
 import { join } from "node:path";
 import { relative, resolve } from "node:path";
 import { loadCliSettings, MCP_SERVER_NAME } from "./cliSettings.js";
-import { CLI_TARGETS, compareSkillTree, isServerRegistered, type CliTargetId } from "./cliTargets.js";
+import {
 import { loadSkillsManifest } from "./cliInstaller.js";
+import {
 ```
 
 ## Definitions
 
-### fn `function wrapCell(text: string, width: number): string[]` (L43-68)
+### fn `function wrapCell(text: string, width: number): string[]` (L55-80)
 - @brief Wrap one cell value into fixed-width lines on word boundaries.
 - @details Collapses whitespace, splits overlong tokens into `width`-sized
 chunks, and greedily packs words without exceeding `width`.
@@ -1712,7 +1749,7 @@ chunks, and greedily packs words without exceeding `width`.
 - @param width {number} Maximum line width in characters; MUST be positive.
 - @return {string[]} Rendered lines; `[""]` for an empty value.
 
-### fn `export function renderAsciiTable(headers: string[], rows: string[][], maxWidth = MAX_CELL_WIDTH): string` (L83-106)
+### fn `export function renderAsciiTable(headers: string[], rows: string[][], maxWidth = MAX_CELL_WIDTH): string` (L95-118)
 - @brief Render a box-drawing grid table with aligned and wrapped cells.
 - @details Column widths are the longest cell capped by `maxWidth`; the
 header row is framed by the `┌─┬┐` top border and the `├─┼┤` separator,
@@ -1725,11 +1762,11 @@ padded to the row height (REQ-185, REQ-186).
 - @return {string} Rendered table text without trailing newline.
 - @satisfies REQ-185, REQ-186
 
-### fn `const borderLine = (left: string, middle: string, right: string): string =>` (L88-99)
+### fn `const borderLine = (left: string, middle: string, right: string): string =>` (L100-111)
 
-### fn `const renderRow = (cells: string[]): string[] =>` (L90-99)
+### fn `const renderRow = (cells: string[]): string[] =>` (L102-111)
 
-### fn `function buildCliRows(home?: string): string[][]` (L118-130)
+### fn `function buildCliRows(home?: string): string[][]` (L130-142)
 - @brief Build the CLI Configuration table rows.
 - @details One row per supported CLI in alphabetical registry order
 (antigravity, claude, codex, copilot, openclaw, opencode, pi; REQ-117):
@@ -1739,43 +1776,60 @@ skills directory.
 - @return {string[][]} `(CLI, Enabled, MCP Config Path, Skills Config Path)` rows.
 - @satisfies REQ-117
 
-### fn `function buildInstallRows(home: string | undefined, resourcesRoot: string): string[][]` (L143-170)
+### fn `function buildInstallRows(` (L159-193)
 - @brief Build the Installation Status table rows.
 - @details Emits rows only for enabled CLIs: one `Server` row for the
 managed `mcp-google-api` entry plus one `Skill` row per manifest skill,
-each with OK / MISSING / STALE detection. Skill comparison accepts both
-the plain and the debug-overlay-extended installed `SKILL.md` (REQ-158).
+each with OK / MISSING / STALE detection. The server row compares the
+stored launcher with the resolved global launcher and renders the stored
+command line in the `Launcher` column (REQ-118, REQ-237). Skill comparison
+accepts both the plain and the debug-overlay-extended installed `SKILL.md`
+(REQ-158).
 - @param home {string | undefined} Home-directory override.
 - @param resourcesRoot {string} Packaged skills resources root.
-- @return {string[][]} `(Type, Name, CLI, Enabled, Installed)` rows.
-- @satisfies REQ-118, REQ-158
+- @param expected {McpServerRegistration | undefined} Resolved global launcher; omitted when unresolvable.
+- @return {string[][]} `(Type, Name, CLI, Enabled, Installed, Launcher)` rows.
+- @satisfies REQ-118, REQ-158, REQ-237
 
-### fn `export function buildCliShowReport(options: { home?: string; resourcesRoot: string }): string` (L183-191)
+### fn `function resolveExpectedLauncher(options:` (L205-214)
+- @brief Resolve the launcher `show` compares stored bindings against.
+- @details Returns the injected launcher unchanged, otherwise resolves the
+global installation tolerantly: an unresolvable root yields undefined so
+the table degrades to presence-only status instead of failing (REQ-237).
+- @param options {object} `{ launcher?, launcherResolutionDeps? }`.
+- @return {McpServerRegistration | undefined} Expected global launcher, when available.
+- @note Complexity O(1) plus one child round-trip on the resolution path.
+- @satisfies REQ-237
+
+### fn `export function buildCliShowReport(options:` (L229-246)
 - @brief Build the complete `show` report text.
 - @details Renders the CLI Configuration table (always, REQ-119) and the
 Installation Status table (empty when no CLI is enabled), in this order,
-separated by a blank line. Manifest load failures propagate so the command
-handler reports a JSON error.
-- @param options {object} `{ home?, resourcesRoot }`.
+separated by a blank line. The Installation Status table carries the
+`Launcher` column and marks a stored binding `STALE` when it differs from
+the resolved global launcher (REQ-118, REQ-237). Manifest load failures
+propagate so the command handler reports a JSON error.
+- @param options {object} `{ home?, resourcesRoot, launcher?, launcherResolutionDeps? }`.
 - @return {string} Report text with two titled tables.
 - @throws {Error} When the skills manifest cannot be loaded.
-- @satisfies REQ-117, REQ-118, REQ-119
+- @satisfies REQ-117, REQ-118, REQ-119, REQ-237
 
 ## Symbol Index
 |Symbol|Kind|Vis|Lines|Sig|
 |---|---|---|---|---|
-|`wrapCell`|fn||43-68|function wrapCell(text: string, width: number): string[]|
-|`renderAsciiTable`|fn||83-106|export function renderAsciiTable(headers: string[], rows:...|
-|`borderLine`|fn||88-99|const borderLine = (left: string, middle: string, right: ...|
-|`renderRow`|fn||90-99|const renderRow = (cells: string[]): string[] =>|
-|`buildCliRows`|fn||118-130|function buildCliRows(home?: string): string[][]|
-|`buildInstallRows`|fn||143-170|function buildInstallRows(home: string | undefined, resou...|
-|`buildCliShowReport`|fn||183-191|export function buildCliShowReport(options: { home?: stri...|
+|`wrapCell`|fn||55-80|function wrapCell(text: string, width: number): string[]|
+|`renderAsciiTable`|fn||95-118|export function renderAsciiTable(headers: string[], rows:...|
+|`borderLine`|fn||100-111|const borderLine = (left: string, middle: string, right: ...|
+|`renderRow`|fn||102-111|const renderRow = (cells: string[]): string[] =>|
+|`buildCliRows`|fn||130-142|function buildCliRows(home?: string): string[][]|
+|`buildInstallRows`|fn||159-193|function buildInstallRows(|
+|`resolveExpectedLauncher`|fn||205-214|function resolveExpectedLauncher(options:|
+|`buildCliShowReport`|fn||229-246|export function buildCliShowReport(options:|
 
 
 ---
 
-# cliTargets.ts | TypeScript | 634L | 28 symbols | 2 imports | 38 comments
+# cliTargets.ts | TypeScript | 730L | 32 symbols | 2 imports | 42 comments
 > Path: `src/utils/cliTargets.ts`
 - @brief Provide per-CLI MCP-configuration and skills-destination adapters.
 - @details Defines one adapter for each supported CLI agent
@@ -1949,14 +2003,52 @@ the managed table is removed and the file is rewritten atomically.
 - @param serverName {string} Server key inside `mcp_servers`.
 - @return {boolean} True when the managed table header exists.
 
-### fn `function listFilesRecursive(root: string): string[]` (L458-473)
+### fn `function unescapeTomlString(value: string): string` (L460-462)
+- @brief Decode one TOML basic-string token produced by `tomlString`.
+- @details Reverses the `\\` and `\"` escapes emitted by the writer only.
+- @param value {string} Escaped token body without surrounding quotes.
+- @return {string} Decoded text.
+- @note Complexity O(n). Pure; no side effects.
+
+### fn `function parseTomlStringArray(raw: string): string[]` (L472-481)
+- @brief Parse the body of one TOML string-array literal.
+- @details Extracts every quoted item in order; malformed items are skipped so
+a hand-edited table degrades to fewer arguments instead of throwing.
+- @param raw {string} Text between `[` and `]` of an `args` line.
+- @return {string[]} Decoded array items in file order.
+- @note Complexity O(n). Pure; no side effects.
+
+### fn `function readTomlSection(content: string, serverName: string): McpServerRegistration | undefined` (L494-518)
+- @brief Read one managed server table from raw TOML content.
+- @details Locates the `[mcp_servers.<name>]` header, then reads only the
+`command` and `args` lines emitted by `registrationToTomlLines` up to the
+next table header. `env` is ignored because managed registrations never
+carry one (REQ-114).
+- @param content {string} Raw TOML document content.
+- @param serverName {string} Server key inside `mcp_servers`.
+- @return {McpServerRegistration | undefined} Parsed entry; undefined when absent or commandless.
+- @note Complexity O(n). Pure; no side effects.
+
+### fn `export function readServerRegistration(` (L532-547)
+- @brief Read the managed server entry of one CLI target in either config format.
+- @details JSON targets delegate to `readJsonMcpServerEntry`; TOML targets
+parse the managed table through `readTomlSection`. Missing files and
+unparseable content yield undefined so `show` reports MISSING instead of failing.
+- @param target {CliTarget} CLI adapter.
+- @param serverName {string} Managed server key.
+- @param home {string | undefined} Home-directory override.
+- @return {McpServerRegistration | undefined} Stored registration entry, when present.
+- @note Complexity O(file size). Read-only.
+- @satisfies REQ-237
+
+### fn `function listFilesRecursive(root: string): string[]` (L554-569)
 - @brief Recursively list relative file paths under a directory.
 - @param root {string} Directory to scan.
 - @return {string[]} POSIX-style relative file paths; empty when the directory is absent.
 
-### fn `const walk = (dir: string): void =>` (L461-470)
+### fn `const walk = (dir: string): void =>` (L557-566)
 
-### iface `export interface SkillContentLayout` (L492-495)
+### iface `export interface SkillContentLayout` (L588-591)
 - @brief Skill content layout consumed by install synchronization and status comparison.
 - @details `debugPath` names the packaged debug overlay file relative to the
 skill directory and is excluded from the synchronized tree in every mode
@@ -1966,7 +2058,7 @@ repeated runs never duplicate the overlay (REQ-157). Status comparison
 accepts both the plain and the overlay-extended document (REQ-158).
 - @satisfies REQ-155, REQ-156, REQ-157, REQ-158
 
-### fn `export function syncSkillTree(source: string, destination: string, layout: SkillContentLayout = {}): void` (L514-535)
+### fn `export function syncSkillTree(source: string, destination: string, layout: SkillContentLayout = {}): void` (L610-631)
 - @brief Synchronize one packaged skill directory into a destination.
 - @details Creates the destination, recursively copies every packaged content
 file with overwrite while excluding any declared debug overlay, then deletes
@@ -1983,7 +2075,7 @@ content is appended to the installed `SKILL.md` after the fresh copy.
 - @pre `source` MUST exist.
 - @post `destination` mirrors exactly the packaged content tree plus the optional debug overlay.
 
-### fn `export function removeSkillDir(skillDir: string): void` (L546-548)
+### fn `export function removeSkillDir(skillDir: string): void` (L642-644)
 - @brief Remove one managed skill directory from a skills destination.
 - @details Missing directories are successful no-ops; nothing outside the
 named directory is touched and no directory is created.
@@ -1992,7 +2084,7 @@ named directory is touched and no directory is created.
 - @throws {Error} When recursive deletion fails.
 - @satisfies DES-020, REQ-115
 
-### fn `export function compareSkillTree(` (L565-568)
+### fn `export function compareSkillTree(` (L661-664)
 - @brief Compare one packaged skill directory with its installed copy.
 - @details Every packaged content file must exist in the destination with
 identical bytes; the declared debug overlay is ignored as a standalone file
@@ -2007,14 +2099,14 @@ packaged content).
 package or destination is absent, `STALE` on byte mismatch.
 - @satisfies REQ-118, REQ-158
 
-### fn `export function isServerRegistered(target: CliTarget, serverName: string, home?: string): boolean` (L595-601)
+### fn `export function isServerRegistered(target: CliTarget, serverName: string, home?: string): boolean` (L691-697)
 - @brief Detect whether a CLI has the managed server entry registered.
 - @param target {CliTarget} CLI adapter.
 - @param serverName {string} Managed server key.
 - @param home {string | undefined} Home-directory override.
 - @return {boolean} True when the entry/table is present and parseable.
 
-### fn `export function applyServerRegistration(` (L614-634)
+### fn `export function applyServerRegistration(` (L710-730)
 - @brief Write or remove the managed server entry for one CLI target.
 - @param target {CliTarget} CLI adapter.
 - @param serverName {string} Managed server key.
@@ -2048,14 +2140,18 @@ undefined removes the entry.
 |`writeTomlMcpServerSection`|fn||406-419|export function writeTomlMcpServerSection(|
 |`removeTomlMcpServerSection`|fn||431-440|export function removeTomlMcpServerSection(configPath: st...|
 |`hasTomlMcpServerSection`|fn||448-451|export function hasTomlMcpServerSection(configPath: strin...|
-|`listFilesRecursive`|fn||458-473|function listFilesRecursive(root: string): string[]|
-|`walk`|fn||461-470|const walk = (dir: string): void =>|
-|`SkillContentLayout`|iface||492-495|export interface SkillContentLayout|
-|`syncSkillTree`|fn||514-535|export function syncSkillTree(source: string, destination...|
-|`removeSkillDir`|fn||546-548|export function removeSkillDir(skillDir: string): void|
-|`compareSkillTree`|fn||565-568|export function compareSkillTree(|
-|`isServerRegistered`|fn||595-601|export function isServerRegistered(target: CliTarget, ser...|
-|`applyServerRegistration`|fn||614-634|export function applyServerRegistration(|
+|`unescapeTomlString`|fn||460-462|function unescapeTomlString(value: string): string|
+|`parseTomlStringArray`|fn||472-481|function parseTomlStringArray(raw: string): string[]|
+|`readTomlSection`|fn||494-518|function readTomlSection(content: string, serverName: str...|
+|`readServerRegistration`|fn||532-547|export function readServerRegistration(|
+|`listFilesRecursive`|fn||554-569|function listFilesRecursive(root: string): string[]|
+|`walk`|fn||557-566|const walk = (dir: string): void =>|
+|`SkillContentLayout`|iface||588-591|export interface SkillContentLayout|
+|`syncSkillTree`|fn||610-631|export function syncSkillTree(source: string, destination...|
+|`removeSkillDir`|fn||642-644|export function removeSkillDir(skillDir: string): void|
+|`compareSkillTree`|fn||661-664|export function compareSkillTree(|
+|`isServerRegistered`|fn||691-697|export function isServerRegistered(target: CliTarget, ser...|
+|`applyServerRegistration`|fn||710-730|export function applyServerRegistration(|
 
 
 ---
@@ -3030,6 +3126,114 @@ directly and yield a diagnostic naming the documented path (REQ-198).
 |`buildInfoParameterNode`|fn||258-294|function buildInfoParameterNode(|
 |`buildConfigPrintView`|fn||310-341|export function buildConfigPrintView(|
 |`buildConfigInfoView`|fn||354-381|export function buildConfigInfoView(context: ConfigSchema...|
+
+
+---
+
+# installedLauncher.ts | TypeScript | 192L | 7 symbols | 5 imports | 13 comments
+> Path: `src/utils/installedLauncher.ts`
+- @brief Resolve the absolute stdio launcher of the globally installed package.
+- @details Single resolver (DES-030) turning the npm global root into the
+absolute Node.js executable plus the absolute packaged launcher path used by
+every MCP-client registration (REQ-114, REQ-234). The resolved shape is
+invariant to the client working directory, so no name-only `npx` spec is
+ever persisted (REQ-233, REQ-234). The module also classifies the running
+entrypoint against the global package directory (REQ-235) and compares a
+stored registration with the expected launcher for `show` (REQ-237).
+- @note Pure decision logic plus one captured `npm prefix -g` probe through
+`resolveGlobalPackageDir`; no configuration write and no cwd dependence.
+- @satisfies DES-030, REQ-114, REQ-233, REQ-234, REQ-235, REQ-236, REQ-237
+
+## Imports
+```
+import { existsSync, realpathSync } from "node:fs";
+import { join } from "node:path";
+import { MCP_SERVER_NAME } from "./cliSettings.js";
+import type { McpServerRegistration } from "./cliTargets.js";
+import { resolveGlobalPackageDir, type PackageManagerDeps } from "./upgradeManager.js";
+```
+
+## Definitions
+
+### iface `export interface InstalledLauncherDeps extends PackageManagerDeps` : PackageManagerDeps (L39-46)
+- @brief Dependency surface of the launcher resolver and entrypoint classifier.
+- @details Extends the package-manager injection surface (spawner, platform,
+logger) with the filesystem probes used to verify the launcher script and to
+compare real paths, plus the Node.js executable reported in the registration
+(REQ-114, REQ-235). Every field is optional; production calls pass none.
+- @satisfies DES-030, REQ-114, REQ-235
+
+- type `export type InstalledLauncherResolution =` (L56)
+- @brief Discriminated outcome of one global launcher resolution.
+- @details `ok: true` carries the absolute registration entry together with
+the resolved global package directory and launcher path, which callers reuse
+for entrypoint classification (REQ-235); `ok: false` carries an English
+remediation diagnostic (REQ-236).
+- @satisfies REQ-114, REQ-236
+### fn `export function resolveInstalledLauncher(` (L81-82)
+- @brief Resolve the absolute stdio launcher of the globally installed package.
+- @details Resolution order: `resolveGlobalPackageDir(deps)` (captured
+`npm prefix -g`, POSIX `<prefix>/lib/node_modules`, win32
+`<prefix>/node_modules`) -> `<global package dir>/bin/mcp-google-api.mjs`
+existence probe -> registration `{ command: <node executable>, args:
+[<absolute launcher>, "start", "--stdio"] }`. Every failure returns
+`{ ok: false }` with the GLOBAL_INSTALL_REMEDIATION command; no name-only
+spec and no cwd-relative path is ever produced (REQ-232, REQ-234, REQ-236).
+- @param deps {InstalledLauncherDeps} Optional spawner, platform, filesystem, and executable overrides.
+- @return {InstalledLauncherResolution} Absolute launcher resolution or remediation diagnostic.
+- @note Complexity O(1) plus one child round-trip. No configuration write.
+- @see resolveGlobalPackageDir
+- @see describeEntrypointBinding
+- @satisfies DES-030, REQ-114, REQ-234, REQ-236
+
+### fn `export function describeEntrypointBinding(` (L124-127)
+- @brief Classify a running package root against the global package directory.
+- @details Resolves both sides through the injected `realpathSync` (tolerant:
+an unresolvable side keeps its literal path) and compares them. A differing
+root means the running entrypoint is a source checkout or an npm `_npx`
+cache copy, so `install` MUST refuse to register (REQ-235). Returns
+undefined when the paths match, i.e. the global installation is running.
+- @param packageRoot {string} Absolute root directory of the running package.
+- @param globalPackageDir {string} Absolute directory returned by the launcher resolution.
+- @param deps {InstalledLauncherDeps} Optional realpath override.
+- @return {string | undefined} Refusal diagnostic naming the remediation, or undefined when bound.
+- @note Complexity O(1) plus two filesystem metadata lookups. Pure; no side effects.
+- @satisfies REQ-235
+
+### fn `const real = (value: string): string =>` (L130-136)
+
+### fn `export function compareServerRegistration(` (L160-176)
+- @brief Compare one stored registration with the expected global launcher.
+- @details Classifies the binding for `show` (REQ-237): absent entry ->
+`MISSING`; no expected launcher (unresolvable global root) -> `OK` because no
+comparison is possible; otherwise equal `command` plus element-wise equal
+`args` -> `OK`, any difference -> `STALE`. An expected entry is never
+subset-matched: extra or reordered arguments are stale.
+- @param binding {McpServerRegistration | undefined} Stored client registration.
+- @param expected {McpServerRegistration | undefined} Resolved global launcher, when available.
+- @return {"OK" | "MISSING" | "STALE"} Binding classification.
+- @note Complexity O(arguments). Pure; no side effects.
+- @satisfies REQ-237
+
+### fn `export function formatServerRegistration(entry: McpServerRegistration | undefined): string` (L187-192)
+- @brief Render one registration entry as a single display line.
+- @details Joins `command` and every argument with one space; empty entries
+render as the empty string so table cells stay compact (REQ-118, REQ-237).
+- @param entry {McpServerRegistration | undefined} Registration to render.
+- @return {string} Display text; empty when no entry is given.
+- @note Complexity O(arguments). Pure; no side effects.
+- @satisfies REQ-237
+
+## Symbol Index
+|Symbol|Kind|Vis|Lines|Sig|
+|---|---|---|---|---|
+|`InstalledLauncherDeps`|iface||39-46|export interface InstalledLauncherDeps extends PackageMan...|
+|`InstalledLauncherResolution`|type||56||
+|`resolveInstalledLauncher`|fn||81-82|export function resolveInstalledLauncher(|
+|`describeEntrypointBinding`|fn||124-127|export function describeEntrypointBinding(|
+|`real`|fn||130-136|const real = (value: string): string =>|
+|`compareServerRegistration`|fn||160-176|export function compareServerRegistration(|
+|`formatServerRegistration`|fn||187-192|export function formatServerRegistration(entry: McpServer...|
 
 
 ---
