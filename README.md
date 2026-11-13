@@ -22,7 +22,7 @@
 <p align="center">
   <strong>MCP Google API server — Google APIs for AI agents over the <a href="https://modelcontextprotocol.io">Model Context Protocol</a></strong>
   <br>
-  The server exposes Google API families to AI agents over stdio or Streamable HTTP. The currently implemented family is <strong>Google Maps</strong>, providing 18 read-only tools: geocoding and reverse geocoding, Places API (New) text/nearby search with server-side filters (<code>priceLevels</code>, <code>minRating</code>, <code>strictTypeFiltering</code>), place details, directions, distance matrix, timezone, elevation, weather, air quality, static maps, batch geocode, and the composite tools explore-area, plan-route, compare-places, search-along-route, and local-rank-tracker. Tools are declared read-only, non-destructive, idempotent, and open-world via MCP annotations. The server ships the <strong>eatspot-discovery</strong> agent skill for budget-, quality-, category-, and schedule-validated venue search, and installs itself plus its skills into supported CLI agents (antigravity, claude, codex, copilot, openclaw, opencode, pi) with one command.
+  The server exposes Google API families to AI agents over stdio or Streamable HTTP. The currently implemented family is <strong>Google Maps</strong>, providing 18 read-only tools: geocoding and reverse geocoding, Places API (New) text search with server-side filters (<code>priceLevels</code>, <code>minRating</code>, <code>strictTypeFiltering</code>), nearby search with client-side <code>openNow</code> and <code>minRating</code> post-filters, place details, directions, distance matrix, timezone, elevation, weather, air quality, static maps, batch geocode, and the composite tools explore-area, plan-route, compare-places, search-along-route, and local-rank-tracker. Tools are declared read-only, non-destructive, idempotent, and open-world via MCP annotations. The server ships the <strong>eatspot-discovery</strong> agent skill for budget-, quality-, category-, and schedule-validated venue search, and installs itself plus its skills into supported CLI agents (antigravity, claude, codex, copilot, openclaw, opencode, pi) with one command.
 </p>
 
 <p align="center">
@@ -120,13 +120,13 @@ Every setting is persisted in `~/.config/mcp-google-api/config.json` through ded
 | Command | Field | Purpose |
 | --- | --- | --- |
 | `mcp-google-api api-key <key>` | `apiKey` | Validate (20-50 characters: letters, digits, hyphens, underscores), persist the Google Maps API key, then refresh every enabled CLI registration; masked in every report |
-| `mcp-google-api enable <cli>` / `disable <cli>` | `enabled` | Add or remove a CLI agent (idempotent, case-insensitive) |
+| `mcp-google-api enable <cli>` / `disable <cli>` | `enabled` | Add or remove a CLI agent (idempotent, case-insensitive; an unsupported name exits 2 with the ordered list of supported names) |
 | `mcp-google-api tools <names\|*>` | `enabledTools` | Restrict the exposed tools with a comma-separated list, e.g. `maps_geocode,maps_search_places`; `*` exposes all 18 tools; unknown names are rejected; a persisted list matching zero tools falls back to the full set with an error log |
 | `mcp-google-api host <host>` | `host` | HTTP bind host (default `127.0.0.1` loopback; `0.0.0.0` for all interfaces) |
 | `mcp-google-api port <port>` | `port` | HTTP listen port, integer 1-65535 (default `3000`) |
 | `mcp-google-api auto-update <enable\|disable\|1\|0>` | `autoUpdate` | Enable or disable the startup update check (enabled by default) |
 
-The `--host` and `--port` flags (`-p`) override the persisted settings for a single `start` or `run` invocation. Missing or malformed settings content loads with normalized defaults.
+The `--host` and `--port` flags (`-p`) override the persisted settings for a single `start` or `run` invocation. Missing or malformed settings content loads with normalized defaults. The configuration and registration commands (`enable`, `disable`, `auto-update`, `tools`, `host`, `port`, `api-key`, `install`, `uninstall`, `show`) accept `--home <dir>` to target an alternative home root.
 
 ## Configuration interface
 
@@ -165,7 +165,7 @@ mcp-google-api --unset Settings:host
 
 ## CLI agents: registration and removal
 
-`mcp-google-api install` registers, for every enabled CLI, the stdio entry `mcp-google-api` launching `npx -y mcp-google-api start --stdio`, with no API key or environment payload embedded (the registered server reads its key from the settings file at startup), and synchronizes every bundled skill. It prints a per-CLI activity report and exits 1 on any per-CLI failure. `mcp-google-api uninstall` is the exact reciprocal; absent entries count as removed. Unrelated configuration entries are always preserved.
+`mcp-google-api install` registers, for every enabled CLI, the stdio entry `mcp-google-api` launching `npx -y mcp-google-api start --stdio`, with no API key or environment payload embedded (the registered server reads its key from the settings file at startup), and synchronizes every bundled skill. It prints a per-CLI activity report and exits 1 on any per-CLI failure. `mcp-google-api uninstall` is the exact reciprocal; absent entries count as removed. Unrelated configuration entries are always preserved. With no enabled CLI both commands print an enable hint and exit 0.
 
 | CLI | MCP configuration | Skills directory |
 | --- | --- | --- |
@@ -217,7 +217,7 @@ On the HTTP transport each request may supply its own key with top priority: the
 mcp-google-api doctor                                    # local: Node >= 24, package version, key presence, effective settings (masked, with per-field source), Google APIs required per enabled tool
 mcp-google-api doctor --live                             # billable probes: Geocoding, Places (New), Routes
 mcp-google-api doctor --live --probes geocoding,routes   # probe only the selected subset
-mcp-google-api doctor --live --apikey "AIza..."          # override the key for the probes only (alias -k)
+mcp-google-api doctor --live --apikey "AIza..."          # override the configured key for this run (alias -k)
 ```
 
 `doctor` prints a machine-readable JSON report on stdout and diagnostics on stderr. It exits 0 only when no check fails.
@@ -243,6 +243,7 @@ mcp-google-api snippet --client pi --launcher node --command /abs/path/dist/cli.
 ```
 
 - `--client` accepts `generic`, `claude`, `cursor`, `pi`; `--launcher` accepts `npx`, `node`, `bin`; `--transport` accepts `stdio`, `http`.
+- `--host` and `--port` shape the HTTP URL, and `--name` sets the server key inside `mcpServers` (default `mcp-google-api`).
 - `snippet` prints a valid `mcpServers` JSON registration on stdout and guidance notes on stderr. It never writes files. Entries embed no API key and no environment payload; configure the key with `api-key`.
 
 ## Version management and removal
@@ -267,6 +268,7 @@ mcp-google-api --uninstall                  # npm uninstall -g mcp-google-api
 
 - [docs/TOOLS.md](https://github.com/Ogekuri/mcp-google-api/blob/main/docs/TOOLS.md) — catalog and parameters of the 18 exposed tools.
 - [docs/CONFIGURATION.md](https://github.com/Ogekuri/mcp-google-api/blob/main/docs/CONFIGURATION.md) — configuration reference: settings file, commands, transports, per-request keys, registration.
+- [docs/SKILLS_AUTHORING.md](https://github.com/Ogekuri/mcp-google-api/blob/main/docs/SKILLS_AUTHORING.md) — conventions for adding a packaged skill with a `manifest.json` entry and no source change.
 - [skills/](https://github.com/Ogekuri/mcp-google-api/tree/main/skills) — bundled agent skills; `eatspot-discovery` implements budget (breakfast EUR 10 / lunch EUR 30 / dinner EUR 40 defaults), quality grades A-E, category and opening-hours validation, geographic search modes (3/10/20 km), and a binding anti-fabrication rule: every published Google Maps value must originate from an executed tool call.
 
 ## Data locations
@@ -281,8 +283,6 @@ mcp-google-api --uninstall                  # npm uninstall -g mcp-google-api
 - `maps_static_map` does not enforce the documented 640x640 maximum size; only the 16384-character URL limit is enforced.
 - Transit routing has regional coverage gaps (notably Japan and India), surfaced as errors or warnings rather than fallbacks.
 - `maps_search_places` forwards `pageToken`, but the Places SDK silently drops it, so pagination has no server-side effect. `nextPageToken` is still returned when the API provides it.
-- Weather API returns a dedicated error for unsupported locations.
-- `--set Settings:enabled` and `--set Settings:apiKey` do not refresh MCP registrations or installed skills; run `install` or `api-key` for that.
 
 # License
 
