@@ -1,6 +1,6 @@
 {
   "name": "mcp-google-api",
-  "version": "0.26.7",
+  "version": "0.26.8",
   "description": "Google API MCP server — 18 Google Maps tools for AI agents: geocoding, Places API (New) search with server-side filters, directions, distance matrix and more, via stdio or Streamable HTTP",
   "type": "module",
   "bin": {

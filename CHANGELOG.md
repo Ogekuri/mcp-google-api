@@ -1,12 +1,37 @@
 # Changelog
 
-## [0.26.7](https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.7) - 2026-11-13
+## [0.26.8](https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.8) - 2026-11-13
 ### ⛰️  Features
 - Update gitalias config.
 - add scripts/clean.sh build-artifact cleaner [useReq] *(clean)*
   PKG-094..PKG-101 new: standalone cwd-independent cleaner removing exactly the PKG-072 generated dist/ files, pruning emptied ancestor directories including dist/ itself, preserving non-generated entries and symlinks, idempotent absent-dist no-op, PASS/FAILED reporting, no install/publish/destructive-git; scripts/clean.sh new: EXIT-trapped temp list, NUL-delimited sweep, deepest-first rmdir pruning; TST-030 new: tests/cleanScript.unit.test.ts, 2 static + 6 sandbox tests (8 total); SRS 1.2 tree line updated for scripts/clean.sh
 
 ### 🐛  Bug Fixes
+- name the npm ci remediation for missing prerequisites [useReq] *(pre-release-check)*
+  PKG-081 defect: the aggregated preflight abort named the missing binaries but gave
+  no restoration command, so an operator blocked on a checkout without
+  node_modules could not satisfy the gate from its own diagnostic.
+  report_missing_prerequisites now closes with FAILED: N missing prerequisite(s);
+  run 'npm ci' to install the declared dependencies and rerun this gate; the script
+  still installs nothing (PKG-060) and still aborts with the PKG-089 RESULT line.
+  Tests: new sandbox reproducer asserting the failure names the install command;
+  the PKG-060 guard now rejects only install/publication invocations in command
+  position, so diagnostic text may name the remediation without tripping it.
+- name every missing prerequisite in one preflight run [useReq] *(pre-release-check)*
+  PKG-081 defect: the preflight aborted at the first absent prerequisite, so a run
+  with no node_modules named only node_modules/.bin/tsc and repeated runs were needed
+  to discover tsup and tsx.
+  Replace the fail-fast require_command/require_binary helpers with
+  collect_command/collect_binary/collect_node_engine that accumulate every missing
+  PATH command, Node.js engine violation, and dependency binary, then
+  report_missing_prerequisites emits one MISSING line per item plus a single FAILED
+  header before aborting. Per-item message texts, the PKG-083 git work-tree check,
+  the PKG-082 snapshot, and the PKG-084/085/089 trap semantics are unchanged.
+  Add the PKG-081 reproducer sandbox test asserting that one run names tsc, tsup, and tsx.
+- report published npm latest in --ver and upgrade summary [useReq] *(upgradeManager)*
+  LatestVersionProbe current outcome now carries the probed registry latest version.; resolveProbeLatestVersion maps newer and current to the published version, so
+  --ver no longer substitutes the installed version when npm latest is equal or older.
+  Upgrade summary reports the probed npm latest after an unconditional update/downgrade.; Add reproducer unit tests for both version-reporting paths.; Refresh WORKFLOW references and regenerated REFERENCES.
 - anchor npm publish tarball spec to the local file path [useReq] *(release-npm)*
   The release publish step passed the bare relative tarball spec dist/mcp-google-api-<version>.tgz to npm, which npm parses as a hosted git shorthand (github:dist/mcp-google-api-<version>.tgz), runs git ls-remote and aborts with exit 128 before publishing (PKG-042, PKG-113). Prefixing the spec with ./ forces local-file resolution of the committed tarball. Adds a ciContract reproducer asserting the path-anchored publish argument.
 - restore dist bundle without a compiler toolchain [useReq] *(prepare-lifecycle)*
@@ -30,6 +55,30 @@
   Requirements unchanged; PKG-036, PKG-013, REQ-152, REQ-153, PKG-075..079 preserved.
 
 ### 🚜  Changes
+- add opt-in --install toolchain provisioning [useReq] *(pre-release-check)*
+  Requirements: PKG-060 narrowed to publication-free execution; PKG-140..PKG-145 add the
+  explicit --install flag, default-off provisioning, npm ci in the repository root with a
+  FAILED provisioning phase, a post-provisioning integrity baseline, unchanged PKG-081
+  validation, and rejection of unsupported arguments; TST-024 updated, TST-038 added.
+  scripts/pre-release-check.sh: parse_arguments accepts only --install; provision_toolchain
+  runs npm ci when opted in and logs a skip otherwise; run_preflight now validates commands,
+  then the git work tree, then provisions, then validates the binaries, then records the
+  git --ignored snapshot so the provisioned tree is the baseline; the aggregated prerequisite
+  diagnostic names both npm ci and --install.
+  tests: five new PKG-140..PKG-145 cases (opt-in guard, default-mode no-install, provisioning
+  success with unchanged baseline, provisioning failure, argument rejection) plus sandbox
+  helpers for a PATH-injected npm stub; suite 236/236.
+- BREAKING CHANGE: bind MCP registrations to the absolute global launcher [useReq] *(registration)*
+  Requirement delta: REQ-114 absolute launcher, new REQ-231..REQ-237, DES-030, PKG-022/023/138/139, TST-036/037; Resolve node executable plus global launcher via npm prefix -g; no npx spec; Refuse install/api-key from source checkout or _npx cache without writes; Rewrite legacy npx entries; show reports launcher and STALE binding; Add registrationBinding unit suite; refresh docs and references
+- fall back to committed release tarball without compiler [useReq] *(mcp-google-api.sh)*
+  Requirements: PRJ-019 rebuilds from sources only when node_modules/.bin/tsup is executable; PRJ-029 adds the committed dist/<name>-<version>.tgz fallback; PRJ-024 aborts only when neither bundle source exists, naming both and the remediation; PRJ-022 targets the resolved bundle; PRJ-026 ignores every dist entry except the committed release tarball; TST-035 added.
+  Launcher: scripts/mcp-google-api.sh resolves an ordered bundle source (compiler, then tarball extraction into the private temp directory), links the repository dependency tree beside the compiler output directory, verifies cli.js, forwards arguments, propagates the exit code, and keeps the EXIT-trap cleanup.
+  Tests: tests/launcherBundleSource.unit.test.ts covers compiler preference, tarball fallback, dual-source abort, dist byte identity, and temp cleanup.
+  Verification: npm test 221/221 pass, typecheck and eslint clean, static-check clean, --ver works on both bundle sources, dist/ byte-identical.
+- build launcher bundle outside dist to preserve git state [useReq] *(mcp-google-api.sh)*
+  Requirements: PRJ-019/PRJ-022 retarget the launcher rebuild to a private temporary runtime bundle; PRJ-024..PRJ-028 add the compiler preflight, the dist/ no-touch rule, dist/-content independence, temporary-directory cleanup, and unchanged working tree.
+  Launcher: scripts/mcp-google-api.sh compiles with node_modules/.bin/tsup into a private OS-temp directory, links the repository dependency tree beside the compiler output directory, verifies cli.js, forwards every argument unchanged, propagates the exit code, and cleans up through an EXIT trap.
+  Verification: bash -n clean; real launcher run leaves dist/ byte-identical with no temp leftovers; npm test 217/217 pass; typecheck and eslint clean; static-check clean.
 - install the develop release asset and force-remove the global tree [useReq] *(upgradeManager)*
   Requirements: REQ-171/REQ-172/REQ-225/REQ-228 move the develop channel to the
   GitHub Release tarball asset install; REQ-182/REQ-183/REQ-226/REQ-227/REQ-229
@@ -682,7 +731,7 @@
 - \[0.24.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.24.0
 - \[0.25.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.25.0
 - \[0.26.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.26.0
-- \[0.26.7\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.26.7
+- \[0.26.8\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.26.8
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.2.0..v0.3.0
@@ -708,4 +757,4 @@
 [0.24.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.23.0..v0.24.0
 [0.25.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.24.0..v0.25.0
 [0.26.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.25.0..v0.26.0
-[0.26.7]: https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.7
+[0.26.8]: https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.8
