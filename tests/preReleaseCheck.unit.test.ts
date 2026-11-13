@@ -19,7 +19,7 @@
  * @note HDT level 0 (atomic) for the static contract tests; the sandbox tests isolate their only
  * external interaction (one offline `bash` child on a temp-dir script copy) and prove the outcome is
  * independent of the `dist/` state it seeds (populated or absent).
- * @satisfies PKG-058, PKG-059, PKG-060, PKG-061, PKG-062, PKG-080, PKG-123, PKG-124, PKG-019, TST-024
+ * @satisfies PKG-058, PKG-059, PKG-060, PKG-061, PKG-062, PKG-080, PKG-081, PKG-123, PKG-124, PKG-019, TST-024
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -155,6 +155,42 @@ test("test_pre_release_check_runs_stages_from_repository_root", () => {
   // Assert
   const expected_output = true;
   assert.equal(resolvesRepoRootFromScriptLocation, expected_output);
+});
+
+/**
+ * @brief Sandbox proof that one preflight run names every missing toolchain prerequisite.
+ * @details Runs a temp-dir script copy whose sandbox root carries no `node_modules/.bin` directory, so
+ * the `tsc`, `tsup`, and `tsx` dependency binaries are all absent simultaneously, and asserts that the
+ * single run reports each of them before aborting (PKG-081: validate the toolchain naming each missing
+ * item). The fail-fast `require_binary` shape this test rejects named only the first absent binary,
+ * forcing one rerun per missing prerequisite. Deterministic: offline `bash` child on a temp-dir copy,
+ * bounded timeout, no repository `dist/` or `node_modules` dependence.
+ * @satisfies PKG-081, TST-024
+ */
+test("test_pre_release_check_preflight_names_every_missing_prerequisite", () => {
+  // PKG-081: every missing toolchain item must be named by a single preflight run.
+  // Arrange
+  const sandbox = writeSandboxScript([]);
+  const expectedMissingBinaries: readonly string[] = ["tsc", "tsup", "tsx"];
+  try {
+    // Act
+    const run = spawnSync("bash", [sandbox.scriptPath], {
+      encoding: "utf8",
+      timeout: SANDBOX_TIMEOUT_MS,
+      cwd: sandbox.dir,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stderr = run.stderr ?? "";
+    // Assert
+    const expected_output = { status: 1, unnamedBinaries: [] as string[] };
+    assert.equal(run.status, expected_output.status);
+    const unnamedBinaries = expectedMissingBinaries.filter(
+      (binary) => !stderr.includes(`node_modules/.bin/${binary}`),
+    );
+    assert.deepEqual(unnamedBinaries, expected_output.unnamedBinaries);
+  } finally {
+    rmSync(sandbox.dir, { recursive: true, force: true });
+  }
 });
 
 test("test_pre_release_check_never_installs_or_publishes", () => {

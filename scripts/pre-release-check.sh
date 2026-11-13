@@ -6,7 +6,8 @@
 #  * 0. Preflight (PKG-081, PKG-083): `git`, `node`, `npm`, `diff`, `cmp` on PATH; Node.js >= 24;
 #  *    installed `node_modules/.bin/{tsc,tsup,tsx}`; git work tree; a private temporary work directory
 #  *    located outside the repository working tree (PKG-061); the `git status --porcelain --ignored`
-#  *    snapshot (PKG-082). Never installs.
+#  *    snapshot (PKG-082). Every missing toolchain item is collected first and named together in one
+#  *    aggregated diagnostic, so a single run reports each missing prerequisite (PKG-081). Never installs.
 #  * 1. `npm run check:publish-version` - publish version guard (PKG-017, PKG-057).
 #  * 2. `npm run typecheck` - TypeScript type surface (`tsc --noEmit`).
 #  * 3. `npm test` - full unit suite (live e2e excluded, TST-010).
@@ -46,6 +47,8 @@ REPO_SNAPSHOT_READY=0
 WORKDIR=""
 # Private temporary build output directory below WORKDIR (PKG-061).
 BUILD_DIR=""
+# Missing toolchain items collected by the preflight so one run names every missing item (PKG-081).
+MISSING_PREREQUISITES=()
 
 # /**
 #  * @brief Prints one informational line on stdout with the script tag.
@@ -71,28 +74,84 @@ fail() {
 }
 
 # /**
-#  * @brief Verifies that a command is resolvable on PATH.
-#  * @param name {string} Command name.
-#  * @return {void} Returns when the command exists.
-#  * @throws {exit 1} Via `fail` when the command is absent (PKG-081).
+#  * @brief Records one unresolvable PATH command as a missing prerequisite.
+#  * @details Appends a diagnostic to `MISSING_PREREQUISITES` instead of aborting, so the preflight
+#  * reports every missing item in one aggregated failure (PKG-081). Complexity O(1).
+#  * @param name {string} Command name, e.g. `git`.
+#  * @return {void}
+#  * @side_effect Appends to `MISSING_PREREQUISITES` when the command is absent.
+#  * @satisfies PKG-081
 #  */
-require_command() {
+collect_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
-    fail "required command not found on PATH: $1"
+    MISSING_PREREQUISITES+=("required command not found on PATH: $1")
   fi
 }
 
 # /**
-#  * @brief Verifies that an installed dependency binary exists under node_modules/.bin.
+#  * @brief Records one absent installed dependency binary as a missing prerequisite.
 #  * @details Installation is never performed by this script (PKG-060); the binary must already exist.
+#  * A missing binary is appended to `MISSING_PREREQUISITES` so `tsc`, `tsup`, and `tsx` are all named
+#  * by a single preflight run (PKG-081). Complexity O(1).
 #  * @param name {string} Binary name, e.g. `tsup`.
-#  * @return {void} Returns when the binary exists and is executable.
-#  * @throws {exit 1} Via `fail` when the binary is absent (PKG-081).
+#  * @return {void}
+#  * @side_effect Appends to `MISSING_PREREQUISITES` when the binary is absent or not executable.
+#  * @satisfies PKG-081
 #  */
-require_binary() {
+collect_binary() {
   if [ ! -x "node_modules/.bin/$1" ]; then
-    fail "installed dependency binary missing: node_modules/.bin/$1 (dependencies must be installed beforehand)"
+    MISSING_PREREQUISITES+=("installed dependency binary missing: node_modules/.bin/$1 (dependencies must be installed beforehand)")
   fi
+}
+
+# /**
+#  * @brief Records an unusable Node.js engine as a missing prerequisite.
+#  * @details Skips silently when `node` itself is absent, because `collect_command` already recorded
+#  * that item. An unreadable or non-numeric major version and a major version below
+#  * `MIN_NODE_MAJOR` (CTN-005) are appended to `MISSING_PREREQUISITES` (PKG-081). Complexity O(1).
+#  * @return {void}
+#  * @side_effect Appends to `MISSING_PREREQUISITES` when the engine floor is violated.
+#  * @satisfies PKG-081
+#  */
+collect_node_engine() {
+  local node_major
+  if ! command -v node >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! node_major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null)"; then
+    MISSING_PREREQUISITES+=("could not determine the Node.js major version; Node.js >= $MIN_NODE_MAJOR required (CTN-005)")
+    return 0
+  fi
+  case "$node_major" in
+    '' | *[!0-9]*) MISSING_PREREQUISITES+=("could not determine the Node.js major version; Node.js >= $MIN_NODE_MAJOR required (CTN-005)") ;;
+    *)
+      if [ "$node_major" -lt "$MIN_NODE_MAJOR" ]; then
+        MISSING_PREREQUISITES+=("Node.js >= $MIN_NODE_MAJOR required (CTN-005), found major $node_major")
+      fi
+      ;;
+  esac
+}
+
+# /**
+#  * @brief Aborts the preflight naming every collected missing prerequisite.
+#  * @details Prints one `MISSING` line per collected item on stderr, then aborts through `fail` with a
+#  * single FAILED header carrying the item count, so one run reports each missing item (PKG-081) and
+#  * the EXIT trap still removes the private work directory (PKG-084, PKG-085). Returns without output
+#  * when nothing is missing. Complexity O(items).
+#  * @return {void} Returns when every collected prerequisite is present.
+#  * @throws {exit 1} Via `fail` when at least one prerequisite is missing.
+#  * @side_effect Writes diagnostics to stderr and terminates the process on failure.
+#  * @satisfies PKG-081
+#  */
+report_missing_prerequisites() {
+  if [ "${#MISSING_PREREQUISITES[@]}" -eq 0 ]; then
+    return 0
+  fi
+  local item
+  for item in "${MISSING_PREREQUISITES[@]}"; do
+    printf '[pre-release-check] %s: MISSING: %s\n' "$CURRENT_PHASE" "$item" >&2
+  done
+  fail "${#MISSING_PREREQUISITES[@]} missing prerequisite(s); install the declared dependencies beforehand"
 }
 
 # /**
@@ -110,29 +169,28 @@ is_outside_repository() {
 
 # /**
 #  * @brief Executes every preflight check and records the repository and work-directory state.
-#  * @details Order: required commands, Node.js major >= 24 (CTN-005), installed dependency binaries,
-#  * git work tree (PKG-083), private temporary work directory outside the repository working tree
-#  * (PKG-061), and the `git status --porcelain --ignored` snapshot (PKG-082). Complexity O(repository
-#  * status size).
+#  * @details Order: required commands, Node.js major >= 24 (CTN-005), and installed dependency
+#  * binaries are collected first and reported together in one aggregated diagnostic naming every
+#  * missing item (PKG-081); then the git work tree (PKG-083), the private temporary work directory
+#  * outside the repository working tree (PKG-061), and the `git status --porcelain --ignored` snapshot
+#  * (PKG-082). Complexity O(repository status size).
 #  * @return {void}
 #  * @side_effect Creates `$WORKDIR` under the OS temp root and `$WORKDIR/repo-before.txt`.
-#  * @throws {exit 1} Via `fail` on any missing prerequisite or snapshot failure.
+#  * @throws {exit 1} Via `fail` when any prerequisite is missing or a snapshot step fails.
+#  * @satisfies PKG-081, PKG-082, PKG-083
 #  */
 run_preflight() {
   CURRENT_PHASE="preflight"
-  require_command git
-  require_command node
-  require_command npm
-  require_command diff
-  require_command cmp
-  local node_major
-  node_major="$(node -p 'process.versions.node.split(".")[0]')"
-  if [ "$node_major" -lt "$MIN_NODE_MAJOR" ]; then
-    fail "Node.js >= $MIN_NODE_MAJOR required (CTN-005), found major $node_major"
-  fi
-  require_binary tsc
-  require_binary tsup
-  require_binary tsx
+  collect_command git
+  collect_command node
+  collect_command npm
+  collect_command diff
+  collect_command cmp
+  collect_node_engine
+  collect_binary tsc
+  collect_binary tsup
+  collect_binary tsx
+  report_missing_prerequisites
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     fail "repository is not a git work tree; integrity cannot be verified (PKG-083)"
   fi
