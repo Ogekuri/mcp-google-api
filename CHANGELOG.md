@@ -1,12 +1,14 @@
 # Changelog
 
-## [0.26.8](https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.8) - 2026-11-13
+## [0.26.9](https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.9) - 2026-11-13
 ### ⛰️  Features
 - Update gitalias config.
 - add scripts/clean.sh build-artifact cleaner [useReq] *(clean)*
   PKG-094..PKG-101 new: standalone cwd-independent cleaner removing exactly the PKG-072 generated dist/ files, pruning emptied ancestor directories including dist/ itself, preserving non-generated entries and symlinks, idempotent absent-dist no-op, PASS/FAILED reporting, no install/publish/destructive-git; scripts/clean.sh new: EXIT-trapped temp list, NUL-delimited sweep, deepest-first rmdir pruning; TST-030 new: tests/cleanScript.unit.test.ts, 2 static + 6 sandbox tests (8 total); SRS 1.2 tree line updated for scripts/clean.sh
 
 ### 🐛  Bug Fixes
+- link packaged skills into the temporary bundle root [useReq] *(mcp-google-api.sh)*
+  The launcher rebuilt cli.js under <tmp>/build and package root <tmp> lacked skills/, so show/install/uninstall/api-key threw 'skills resources root not found' from resolveSkillsResourcesRoot (PKG-024, PRJ-018, REQ-117/REQ-118).\nThe launcher now links the repository skills/ tree at the private package root, read-only and never copied, so skills-consuming commands resolve <packageRoot>/skills exactly like the installed distribution; the EXIT trap still removes only the private temp dir (PRJ-027) and dist/ stays untouched (PRJ-025/PRJ-026).\nAdds a sandboxed reproducer test asserting the temporary package root exposes the skills payload.
 - name the npm ci remediation for missing prerequisites [useReq] *(pre-release-check)*
   PKG-081 defect: the aggregated preflight abort named the missing binaries but gave
   no restoration command, so an operator blocked on a checkout without
@@ -55,6 +57,8 @@
   Requirements unchanged; PKG-036, PKG-013, REQ-152, REQ-153, PKG-075..079 preserved.
 
 ### 🚜  Changes
+- register and report home-referenced launcher paths [useReq] *(launcher)*
+  Requirements: REQ-114/REQ-232/REQ-237 adjusted, REQ-238-REQ-241 and DES-031 added, LIM-010 recorded, PKG-023/PKG-138 realigned.\nSource: resolveUserHome/toHomeReference helpers render every home-rooted launcher executable, script, MCP config and skills path as ~/..., keep non-home paths absolute, and normalize registrations before compare.\nDocs: README.md and docs/CONFIGURATION.md describe home-referenced registration and the ~/ expansion dependency.
 - add opt-in --install toolchain provisioning [useReq] *(pre-release-check)*
   Requirements: PKG-060 narrowed to publication-free execution; PKG-140..PKG-145 add the
   explicit --install flag, default-off provisioning, npm ci in the repository root with a
@@ -731,7 +735,7 @@
 - \[0.24.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.24.0
 - \[0.25.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.25.0
 - \[0.26.0\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.26.0
-- \[0.26.8\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.26.8
+- \[0.26.9\]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.26.9
 
 [0.2.0]: https://github.com/Ogekuri/mcp-google-api/releases/tag/v0.2.0
 [0.3.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.2.0..v0.3.0
@@ -757,4 +761,4 @@
 [0.24.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.23.0..v0.24.0
 [0.25.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.24.0..v0.25.0
 [0.26.0]: https://github.com/Ogekuri/mcp-google-api/compare/v0.25.0..v0.26.0
-[0.26.8]: https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.8
+[0.26.9]: https://github.com/Ogekuri/mcp-google-api/compare/v0.26.0..v0.26.9
