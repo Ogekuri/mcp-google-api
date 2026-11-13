@@ -3,35 +3,42 @@
 #  * @file pre-release-check.sh
 #  * @brief Runs every release-gating check required before an official npm release.
 #  * @details Executes from the repository root, in fail-fast order (PKG-059, PKG-080):
-#  * 0. Preflight (PKG-081, PKG-083): `git`, `node`, `npm`, `diff`, `cmp` on PATH; Node.js >= 24;
-#  *    installed `node_modules/.bin/{tsc,tsup,tsx}`; git work tree; a private temporary work directory
-#  *    located outside the repository working tree (PKG-061); the `git status --porcelain --ignored`
-#  *    snapshot (PKG-082). Every missing toolchain item is collected first and named together in one
-#  *    aggregated diagnostic that also names the `npm ci` remediation command, so a single run reports
-#  *    each missing prerequisite and how to restore it (PKG-081). Never installs.
-#  * 1. `npm run check:publish-version` - publish version guard (PKG-017, PKG-057).
-#  * 2. `npm run typecheck` - TypeScript type surface (`tsc --noEmit`).
-#  * 3. `npm test` - full unit suite (live e2e excluded, TST-010).
-#  * 4. Test build (PKG-061): `node_modules/.bin/tsup --out-dir <private temp build directory>` emits
+#  * 0. Argument parsing (PKG-140, PKG-145): the single optional `--install` token opts into toolchain
+#  *    provisioning; every other argument aborts with a `usage` FAILED diagnostic.
+#  * 1. Preflight (PKG-081, PKG-083): `git`, `node`, `npm`, `diff`, `cmp` on PATH; Node.js >= 24;
+#  *    git work tree; opt-in `npm ci` provisioning (PKG-140..PKG-144, disabled by default so the
+#  *    default gate installs nothing, PKG-141); installed `node_modules/.bin/{tsc,tsup,tsx}`; a
+#  *    private temporary work directory located outside the repository working tree (PKG-061); the
+#  *    `git status --porcelain --ignored` snapshot (PKG-082) recorded after provisioning so the
+#  *    provisioned tree is the integrity baseline (PKG-143). Every missing toolchain item is collected
+#  *    first and named together in one aggregated diagnostic that also names the `npm ci`
+#  *    remediation command, so a single run reports each missing prerequisite and how to restore it
+#  *    (PKG-081).
+#  * 2. `npm run check:publish-version` - publish version guard (PKG-017, PKG-057).
+#  * 3. `npm run typecheck` - TypeScript type surface (`tsc --noEmit`).
+#  * 4. `npm test` - full unit suite (live e2e excluded, TST-010).
+#  * 5. Test build (PKG-061): `node_modules/.bin/tsup --out-dir <private temp build directory>` emits
 #  *    the production ESM runtime bundle outside the repository working tree.
-#  * 5. Temporary artifact verification (PKG-080): the emitted `cli.js` entry MUST
+#  * 6. Temporary artifact verification (PKG-080): the emitted `cli.js` entry MUST
 #  *    exist, be non-empty, and pass `node --check`.
 #  * Cleanup and integrity (EXIT trap, PKG-084..PKG-086): the final `git status --porcelain --ignored`
 #  * output is compared with the pre-run snapshot (PKG-082) and the private temporary work directory is
 #  * removed (PKG-084). The original failing exit status is never overwritten (PKG-085). A passing run
 #  * whose cleanup or integrity check fails exits 1 (PKG-086). Signals HUP, INT, TERM exit through the
-#  * same trap with status 129, 130, 143 (PKG-087). No dependency install, no package publication
-#  * (PKG-060), and no destructive git command (PKG-088).
+#  * same trap with status 129, 130, 143 (PKG-087). No dependency install unless `--install` was passed,
+#  * no package publication (PKG-060, PKG-141), and no destructive git command (PKG-088).
 #  * @return Exit code 0 only when every stage passes and cleanup plus integrity verification succeed;
 #  *         1 at the first failed stage or cleanup/integrity failure.
-#  * @pre Dependencies installed beforehand by the project package manager; repository is a git work tree.
+#  * @pre Dependencies installed beforehand by the project package manager, or `--install` supplied to
+#  *      provision them; repository is a git work tree.
 #  * @post No artifact created by the run remains; the private temporary work directory is removed;
-#  *       tracked, untracked, and ignored repository state equals the pre-run snapshot.
+#  *       tracked, untracked, and ignored repository state equals the post-provisioning snapshot.
 #  * @note Independent of the repository `dist/` directory: this script neither creates, modifies,
 #  *       deletes, cleans, reads, nor validates any `dist/` entry (PKG-062, PKG-123, PKG-124).
 #  *       Runnable from any working directory; the repository root is resolved from the script location.
 #  * @satisfies PKG-058, PKG-059, PKG-060, PKG-061, PKG-062, PKG-080, PKG-081, PKG-082, PKG-083,
-#  *            PKG-084, PKG-085, PKG-086, PKG-087, PKG-088, PKG-089, PKG-123, PKG-124
+#  *            PKG-084, PKG-085, PKG-086, PKG-087, PKG-088, PKG-089, PKG-123, PKG-124, PKG-140,
+#  *            PKG-141, PKG-142, PKG-143, PKG-144, PKG-145
 #  */
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -50,6 +57,8 @@ WORKDIR=""
 BUILD_DIR=""
 # Missing toolchain items collected by the preflight so one run names every missing item (PKG-081).
 MISSING_PREREQUISITES=()
+# 1 when the operator opted into toolchain provisioning with `--install` (PKG-140, PKG-141).
+PROVISION_TOOLCHAIN=0
 
 # /**
 #  * @brief Prints one informational line on stdout with the script tag.
@@ -136,14 +145,15 @@ collect_node_engine() {
 # /**
 #  * @brief Aborts the preflight naming every collected missing prerequisite and its remediation.
 #  * @details Prints one `MISSING` line per collected item on stderr, then aborts through `fail` with a
-#  * single FAILED header carrying the item count plus the `npm ci` remediation command, so one run
-#  * reports each missing item (PKG-081) and the operator's restore path without the script itself ever
-#  * installing anything (PKG-060). The EXIT trap still removes the private work directory
-#  * (PKG-084, PKG-085). Returns without output when nothing is missing. Complexity O(items).
+#  * single FAILED header carrying the item count plus both restoration paths — the manual `npm ci`
+#  * command and the `--install` opt-in (PKG-140) — so one run reports each missing item (PKG-081) and
+#  * the operator's remedy without the default gate ever installing anything (PKG-141). The EXIT trap
+#  * still removes the private work directory (PKG-084, PKG-085). Returns without output when nothing
+#  * is missing. Complexity O(items).
 #  * @return {void} Returns when every collected prerequisite is present.
 #  * @throws {exit 1} Via `fail` when at least one prerequisite is missing.
 #  * @side_effect Writes diagnostics to stderr and terminates the process on failure.
-#  * @satisfies PKG-060, PKG-081
+#  * @satisfies PKG-081, PKG-140, PKG-141
 #  */
 report_missing_prerequisites() {
   if [ "${#MISSING_PREREQUISITES[@]}" -eq 0 ]; then
@@ -153,7 +163,60 @@ report_missing_prerequisites() {
   for item in "${MISSING_PREREQUISITES[@]}"; do
     printf '[pre-release-check] %s: MISSING: %s\n' "$CURRENT_PHASE" "$item" >&2
   done
-  fail "${#MISSING_PREREQUISITES[@]} missing prerequisite(s); run 'npm ci' to install the declared dependencies and rerun this gate"
+  fail "${#MISSING_PREREQUISITES[@]} missing prerequisite(s); run 'npm ci' or rerun this gate with --install"
+}
+
+# /**
+#  * @brief Parses the script arguments and rejects every unsupported shape.
+#  * @details Accepts the optional `--install` token, which selects the opt-in toolchain provisioning
+#  * (PKG-140); every other argument aborts through `fail` with the `usage` phase label, a diagnostic
+#  * naming the offending argument and the supported set, and a non-zero exit status (PKG-145).
+#  * Complexity O(arguments); the only state change is the `PROVISION_TOOLCHAIN` opt-in.
+#  * @param args {string...} Raw script arguments.
+#  * @return {void}
+#  * @throws {exit 1} Via `fail` on an unsupported argument (PKG-145).
+#  * @side_effect Sets `PROVISION_TOOLCHAIN` to 1 when `--install` is present (PKG-140).
+#  * @satisfies PKG-140, PKG-145
+#  */
+parse_arguments() {
+  CURRENT_PHASE="usage"
+  local argument
+  for argument in "$@"; do
+    case "$argument" in
+      --install) PROVISION_TOOLCHAIN=1 ;;
+      *) fail "unsupported argument: $argument (supported arguments: --install)" ;;
+    esac
+  done
+}
+
+# /**
+#  * @brief Provisions the dependency toolchain when `--install` was supplied.
+#  * @details No-op when `PROVISION_TOOLCHAIN` is 0: the default gate runs no dependency install
+#  * (PKG-141) and only logs the opt-in hint. When enabled it runs `npm ci` in the repository root
+#  * (PKG-142) before the PKG-081 binary validation, so the validated toolchain is the one produced by
+#  * that install (PKG-144); a non-zero `npm ci` aborts with the `provisioning` phase label (PKG-142).
+#  * `run_preflight` records the `git status --porcelain --ignored` snapshot only afterwards, so the
+#  * provisioned tree becomes the integrity baseline and provisioning never trips PKG-082 (PKG-143).
+#  * Complexity O(install runtime).
+#  * @return {void} Returns on a skip or a successful `npm ci`.
+#  * @throws {exit 1} Via `fail` when `npm` is unavailable or `npm ci` exits non-zero (PKG-142).
+#  * @side_effect Installs the declared dependencies into `node_modules/` of the repository root.
+#  * @satisfies PKG-140, PKG-141, PKG-142, PKG-143, PKG-144
+#  */
+provision_toolchain() {
+  CURRENT_PHASE="provisioning"
+  if [ "$PROVISION_TOOLCHAIN" -ne 1 ]; then
+    log "provisioning: skipped (opt-in: pass --install to run npm ci before the toolchain validation)"
+    return 0
+  fi
+  if ! command -v npm >/dev/null 2>&1; then
+    fail "cannot provision the toolchain: npm is not available on PATH"
+  fi
+  log "provisioning: running npm ci in $REPO_ROOT"
+  if ! npm ci; then
+    fail "npm ci exited non-zero; the dependency toolchain is not provisioned"
+  fi
+  log "provisioning: npm ci completed"
 }
 
 # /**
@@ -171,15 +234,18 @@ is_outside_repository() {
 
 # /**
 #  * @brief Executes every preflight check and records the repository and work-directory state.
-#  * @details Order: required commands, Node.js major >= 24 (CTN-005), and installed dependency
-#  * binaries are collected first and reported together in one aggregated diagnostic naming every
-#  * missing item (PKG-081); then the git work tree (PKG-083), the private temporary work directory
-#  * outside the repository working tree (PKG-061), and the `git status --porcelain --ignored` snapshot
-#  * (PKG-082). Complexity O(repository status size).
+#  * @details Order: required commands and the Node.js engine are collected and reported first; then
+#  * the git work tree (PKG-083); then the opt-in `--install` provisioning (PKG-140..PKG-144); then the
+#  * installed dependency binaries are collected and reported, naming every still-missing item
+#  * (PKG-081, PKG-144); finally the private temporary work directory outside the repository working
+#  * tree (PKG-061) and the `git status --porcelain --ignored` snapshot (PKG-082), recorded after
+#  * provisioning so the provisioned tree is the integrity baseline (PKG-143).
+#  * Complexity O(repository status size) plus the optional install runtime.
 #  * @return {void}
-#  * @side_effect Creates `$WORKDIR` under the OS temp root and `$WORKDIR/repo-before.txt`.
+#  * @side_effect Creates `$WORKDIR` under the OS temp root and `$WORKDIR/repo-before.txt`; runs
+#  * `npm ci` when `--install` was supplied.
 #  * @throws {exit 1} Via `fail` when any prerequisite is missing or a snapshot step fails.
-#  * @satisfies PKG-081, PKG-082, PKG-083
+#  * @satisfies PKG-081, PKG-082, PKG-083, PKG-140, PKG-141, PKG-142, PKG-143, PKG-144
 #  */
 run_preflight() {
   CURRENT_PHASE="preflight"
@@ -189,13 +255,16 @@ run_preflight() {
   collect_command diff
   collect_command cmp
   collect_node_engine
-  collect_binary tsc
-  collect_binary tsup
-  collect_binary tsx
   report_missing_prerequisites
   if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     fail "repository is not a git work tree; integrity cannot be verified (PKG-083)"
   fi
+  provision_toolchain
+  CURRENT_PHASE="preflight"
+  collect_binary tsc
+  collect_binary tsup
+  collect_binary tsx
+  report_missing_prerequisites
   if ! WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/pre-release-check.XXXXXX")"; then
     fail "could not create the private temporary work directory"
   fi
@@ -382,6 +451,7 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+parse_arguments "$@"
 run_preflight
 
 # Release-gating stages in mandatory order (PKG-059, PKG-080).
